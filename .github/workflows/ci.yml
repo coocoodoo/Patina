@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Install fonts (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
+
+      - name: Rust format check
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust build and offscreen render
+        run: |
+          cargo build --release
+          cd core && cargo run --example snapshot
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Build and embed the native core
+        run: go run ./tools/build
+
+      - name: Go tests (offscreen)
+        run: go test ./...
+
+      - name: Build examples
+        run: |
+          go build ./examples/hello
+          go build ./examples/showcase
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshots-${{ matrix.os }}
+          path: core/snapshots/*.png

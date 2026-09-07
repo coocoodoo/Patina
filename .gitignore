@@ -1,0 +1,17 @@
+# Rust
+/target/
+core/snapshots/
+
+# Go
+/bin/
+*.test
+*.out
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Embedded cores are produced by `go run ./tools/build`
+/internal/native/lib/*/

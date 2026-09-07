@@ -1,0 +1,22 @@
+[package]
+name = "patina-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "Rendering, layout and windowing core for Patina, a beautiful UI toolkit for Go."
+repository = "https://github.com/patina-ui/patina"
+publish = false
+
+[lib]
+name = "patina_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+winit = "0.30"
+softbuffer = "0.4"
+tiny-skia = "0.12"
+taffy = { version = "0.14", default-features = false, features = ["std", "taffy_tree", "flexbox", "content_size"] }
+fontdue = "0.9"
+resvg = { version = "0.48", default-features = false }
+roxmltree = "0.21"
