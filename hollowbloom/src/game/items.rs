@@ -67,6 +67,12 @@ pub enum Kind {
     /// Something someone in town asked you to find or carry. Only turns up while their
     /// request is open.
     Keepsake,
+    /// Drunk in one gulp: health, mana and energy back at once.
+    Potion {
+        hp: i32,
+        mana: i32,
+        energy: i32,
+    },
 }
 
 pub struct ItemDef {
@@ -120,6 +126,10 @@ const fn feast(hp: i32, energy: i32, stat: Stat, val: i16, secs: u16) -> Kind {
 
 const fn produce(hp: i32, energy: i32) -> Kind {
     Kind::Produce { hp, energy }
+}
+
+const fn potion(hp: i32, mana: i32, energy: i32) -> Kind {
+    Kind::Potion { hp, mana, energy }
 }
 
 use Class::*;
@@ -503,6 +513,19 @@ items! {
     GlowOil = "glow_oil", "Glow Oil", "glow_oil", 99, 0, Kind::Keepsake, "Wisp light in a bottle. Lamps love it.";
     GlowBeetle = "glow_beetle", "Glow Beetle", "glow_beetle", 99, 0, Kind::Keepsake, "A sleepy beetle whose back glows green.";
     PhoenixQuill = "phoenix_quill", "Phoenix Quill", "phoenix_quill", 1, 0, Kind::Keepsake, "It writes in firelight.";
+
+    // Potions and what goes into them.
+    Vial = "vial", "Glass Vial", "vial", 99, 6, Material, "An empty little bottle, waiting for a potion.";
+    Heartleaf = "heartleaf", "Heartleaf", "heartleaf", 99, 14, Material, "A red-veined herb that mends what ails you. Grows in the wild bushes.";
+    SmallHealthPotion = "small_health_potion", "Small Health Potion", "hp_potion_s", 30, 30, potion(45, 0, 0), "A swig of red. Restores 45 HP at once.";
+    HealthPotion = "health_potion", "Medium Health Potion", "hp_potion_m", 30, 90, potion(110, 0, 0), "Restores 110 HP at once.";
+    LargeHealthPotion = "large_health_potion", "Large Health Potion", "hp_potion_l", 30, 260, potion(260, 0, 0), "A big bubbling jug. Restores 260 HP at once.";
+    SmallManaPotion = "small_mana_potion", "Small Mana Potion", "mp_potion_s", 30, 35, potion(0, 35, 0), "Tastes of blueberries and starlight. Restores 35 mana.";
+    ManaPotion = "mana_potion", "Medium Mana Potion", "mp_potion_m", 30, 100, potion(0, 85, 0), "Restores 85 mana at once.";
+    LargeManaPotion = "large_mana_potion", "Large Mana Potion", "mp_potion_l", 30, 280, potion(0, 200, 0), "Restores 200 mana. Fizzes on your tongue.";
+    SmallEnergyPotion = "small_energy_potion", "Small Energy Potion", "ep_potion_s", 30, 30, potion(0, 0, 45), "Zesty! Restores 45 energy.";
+    EnergyPotion = "energy_potion", "Medium Energy Potion", "ep_potion_m", 30, 90, potion(0, 0, 110), "Restores 110 energy at once.";
+    LargeEnergyPotion = "large_energy_potion", "Large Energy Potion", "ep_potion_l", 30, 250, potion(15, 0, 250), "Liquid sunshine. Restores 250 energy and a little health.";
 }
 
 impl Serialize for Item {
@@ -1083,13 +1106,21 @@ pub enum Cat {
     Home,
     Kitchen,
     Magic,
+    Potions,
 }
 
-pub const CATS: [Cat; 5] = [Cat::Tools, Cat::Gear, Cat::Home, Cat::Kitchen, Cat::Magic];
+pub const CATS: [Cat; 6] = [
+    Cat::Tools,
+    Cat::Gear,
+    Cat::Home,
+    Cat::Kitchen,
+    Cat::Magic,
+    Cat::Potions,
+];
 
 impl Cat {
     pub fn name(self) -> &'static str {
-        ["Tools", "Gear", "Home", "Kitchen", "Magic"][self as usize]
+        ["Tools", "Gear", "Home", "Kitchen", "Magic", "Potions"][self as usize]
     }
 }
 
@@ -1236,6 +1267,18 @@ recipes! {
     Magic: WishStar x 1 <= [Moonstone 2, WispDust 6, Starfruit 1];
     Magic: SunStone x 1 <= [Topaz 3, Amber 3, Sunflower 2];
     Magic: HeartCrystal x 1 <= [Amber 3, FrostGem 2, Moonbloom 1];
+
+    // Potions: small ones from scratch, then two of a size brew into one of the next.
+    Potions: Vial x 3 <= [Stone 2, SlimeGel 1];
+    Potions: SmallHealthPotion x 2 <= [Vial 2, Heartleaf 1];
+    Potions: HealthPotion x 1 <= [SmallHealthPotion 2, SlimeGel 2];
+    Potions: LargeHealthPotion x 1 <= [HealthPotion 2, Amber 1];
+    Potions: SmallManaPotion x 2 <= [Vial 2, Blueberry 2];
+    Potions: ManaPotion x 1 <= [SmallManaPotion 2, WispDust 1];
+    Potions: LargeManaPotion x 1 <= [ManaPotion 2, Crystal 2];
+    Potions: SmallEnergyPotion x 2 <= [Vial 2, CaveCarrot 1];
+    Potions: EnergyPotion x 1 <= [SmallEnergyPotion 2, Spore 2];
+    Potions: LargeEnergyPotion x 1 <= [EnergyPotion 2, Sunflower 1];
 }
 
 impl Recipe {

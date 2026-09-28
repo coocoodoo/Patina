@@ -23,6 +23,8 @@ pub enum ActKind {
     Till,
     Water,
     Reap,
+    /// A spell leaving your hands (see `magic.rs`).
+    Cast,
 }
 
 impl ActKind {
@@ -36,6 +38,7 @@ impl ActKind {
             ActKind::Till => 0.38,
             ActKind::Water => 0.42,
             ActKind::Reap => 0.34,
+            ActKind::Cast => 0.32,
         }
     }
 
@@ -43,7 +46,7 @@ impl ActKind {
     pub fn impact(self) -> f32 {
         match self {
             ActKind::Slash | ActKind::Reap => 0.3,
-            ActKind::Bolt => 0.35,
+            ActKind::Bolt | ActKind::Cast => 0.35,
             ActKind::Water => 0.4,
             ActKind::Blast => 0.55,
             _ => 0.6,
@@ -54,7 +57,7 @@ impl ActKind {
         match self {
             ActKind::Slash | ActKind::Reap => Swing::Slash,
             ActKind::Water => Swing::Pour,
-            ActKind::Bolt => Swing::Cast,
+            ActKind::Bolt | ActKind::Cast => Swing::Cast,
             ActKind::Blast => Swing::Raise,
             _ => Swing::Chop,
         }
@@ -143,6 +146,10 @@ pub struct Player {
     pub eat_t: f32,
     pub regen_acc: f32,
     pub no_mana_t: f32,
+    /// Harm the Ward spell will still soak up, for how many more seconds, at what level.
+    pub ward: f32,
+    pub ward_t: f32,
+    pub ward_lv: u8,
 }
 
 /// The part of the player that goes into a save file.
@@ -226,6 +233,9 @@ impl Player {
             eat_t: 0.0,
             regen_acc: 0.0,
             no_mana_t: 0.0,
+            ward: 0.0,
+            ward_t: 0.0,
+            ward_lv: 0,
         };
         p.refresh();
         p.hp = p.max_hp();

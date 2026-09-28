@@ -59,6 +59,8 @@ pub struct SaveData {
     pub marks: u32,
     #[serde(default)]
     pub rank: u8,
+    #[serde(default)]
+    pub spells: super::spells::Spellbook,
 }
 
 const FLOORS: [(Floor, char); 15] = [
@@ -218,6 +220,7 @@ pub fn write(p: &Play) -> Result<(), String> {
         taken: p.taken.clone(),
         marks: p.marks,
         rank: p.rank,
+        spells: p.spells.clone(),
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let path = path().ok_or("no data directory")?;
@@ -270,6 +273,8 @@ pub fn read() -> Result<Play, String> {
     p.taken = d.taken;
     p.marks = d.marks;
     p.rank = d.rank.min(super::quests::RANKS.len() as u8 - 1);
+    p.spells = d.spells;
+    p.spells.fix();
     p.town = super::town::generate(p.restored);
     let (dx, dz) = super::farm::MARKS.door;
     let pos = glam::Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);

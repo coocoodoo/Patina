@@ -440,7 +440,12 @@ fn eyes(m: &mut Mesh, tex: TexId, y: f32, z: f32, gap: f32, size: f32) {
 }
 
 pub struct Critters {
+    /// The see-through jelly body.
     pub slime: Mesh,
+    /// What floats inside it.
+    pub slime_core: Mesh,
+    /// Eyes and mouth, drawn solid on the surface.
+    pub slime_face: Mesh,
     pub bat_body: Mesh,
     pub bat_wing: Mesh,
     pub shroom: Mesh,
@@ -449,6 +454,7 @@ pub struct Critters {
     pub beetle: Mesh,
     pub golem: Mesh,
     pub ghost: Mesh,
+    pub ghost_face: Mesh,
     pub imp: Humanoid,
     pub skeleton: Humanoid,
     pub mole: Mesh,
@@ -456,6 +462,7 @@ pub struct Critters {
     pub cat_tail: Mesh,
     /// Texture ids that palette variants swap.
     pub slime_tex: TexId,
+    pub slime_core_tex: TexId,
     pub cap_tex: TexId,
     pub shell_tex: TexId,
     pub wisp_tex: TexId,
@@ -482,36 +489,95 @@ fn slime_skin(pal: [u8; 3]) -> Texture {
     t
 }
 
+/// Jelly: a bright crown, a clear body and a deeper colour where it pools at the bottom.
+fn jelly_skin(pal: [u8; 3]) -> Texture {
+    let [hi, mid, lo] = pal;
+    let mut t = Texture::new(16, 8, mid);
+    for y in 0..8 {
+        for x in 0..16 {
+            let c = match y {
+                0 => hi,
+                1 if (x + y) % 3 != 0 => hi,
+                2 if x % 4 == 0 => hi,
+                6 if x % 2 == 0 => lo,
+                7 => lo,
+                _ => mid,
+            };
+            t.set(x, y, c);
+        }
+    }
+    // A couple of bubbles caught in the surface.
+    t.set(4, 3, hi);
+    t.set(12, 4, hi);
+    t
+}
+
 pub fn critters(bank: &mut TexBank) -> Critters {
     let eye = bank.add(Texture::new(4, 4, INK));
     let white = bank.add(Texture::new(4, 4, WHITE));
     let w4 = Texture::new(4, 4, 0);
 
-    // Slime: a squat dome with a shine and two eyes.
-    let slime_tex = bank.add(slime_skin([LIME, GREEN, TEAL]));
+    // Slime: a squat dome of jelly with something floating in the middle, and a face.
+    let slime_tex = bank.add(jelly_skin([LIME, GREEN, TEAL]));
     let mut slime = Mesh::new();
     lathe(
         &mut slime,
         Vec3::ZERO,
         &[
             (0.0, 0.0),
-            (0.36, 0.0),
-            (0.42, 0.12),
-            (0.38, 0.28),
-            (0.25, 0.4),
-            (0.0, 0.44),
+            (0.34, 0.0),
+            (0.41, 0.07),
+            (0.43, 0.16),
+            (0.39, 0.27),
+            (0.3, 0.37),
+            (0.16, 0.43),
+            (0.0, 0.45),
         ],
-        8,
-        0.39,
+        10,
+        0.31,
         slime_tex,
         true,
     );
-    eyes(&mut slime, eye, 0.2, 0.39, 0.11, 0.09);
+    // The nucleus: a dark, knobbly heart that shows through the jelly.
+    let mut core_t = Texture::new(8, 8, TEAL);
+    for (x, y) in [(1, 1), (2, 1), (5, 4)] {
+        core_t.set(x, y, GREEN);
+    }
+    let slime_core_tex = bank.add(core_t);
+    let mut slime_core = Mesh::new();
+    lathe(
+        &mut slime_core,
+        Vec3::ZERO,
+        &[
+            (0.0, -0.12),
+            (0.13, -0.08),
+            (0.17, 0.0),
+            (0.12, 0.09),
+            (0.0, 0.13),
+        ],
+        6,
+        0.2,
+        slime_core_tex,
+        false,
+    );
+    // Big eyes that sit proud of the jelly, each with a shine, and a little smile.
+    let mut slime_face = Mesh::new();
+    eyes(&mut slime_face, eye, 0.22, 0.418, 0.125, 0.12);
+    for sx in [-1.0f32, 1.0] {
+        let c = Vec3::new(sx * 0.125 - 0.018, 0.25, 0.45);
+        skin_box(
+            &mut slime_face,
+            c - Vec3::new(0.017, 0.017, 0.0),
+            c + Vec3::new(0.017, 0.017, 0.012),
+            white,
+            &w4,
+        );
+    }
     skin_box(
-        &mut slime,
-        Vec3::new(-0.2, 0.33, 0.12),
-        Vec3::new(-0.12, 0.37, 0.2),
-        white,
+        &mut slime_face,
+        Vec3::new(-0.045, 0.115, 0.425),
+        Vec3::new(0.045, 0.14, 0.45),
+        eye,
         &w4,
     );
 
@@ -799,7 +865,8 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         sheet,
         true,
     );
-    eyes(&mut ghost, eye, 0.42, 0.28, 0.1, 0.1);
+    let mut ghost_face = Mesh::new();
+    eyes(&mut ghost_face, eye, 0.42, 0.305, 0.1, 0.1);
 
     let imp = humanoid(
         bank,
@@ -943,6 +1010,8 @@ pub fn critters(bank: &mut TexBank) -> Critters {
 
     Critters {
         slime,
+        slime_core,
+        slime_face,
         bat_body,
         bat_wing,
         shroom,
@@ -951,12 +1020,14 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         beetle,
         golem,
         ghost,
+        ghost_face,
         imp,
         skeleton,
         mole,
         cat,
         cat_tail,
         slime_tex,
+        slime_core_tex,
         cap_tex,
         shell_tex,
         wisp_tex,
@@ -1008,9 +1079,229 @@ pub struct Props {
     pub sign: Mesh,
     pub enchant_table: Mesh,
     pub enchant_book: Mesh,
+    /// Little clumps of grass scattered over the lawns; the last `TALL_TUFTS` are tall.
+    pub tufts: Vec<Mesh>,
+    /// A leafy weed with dandelions, and a dry one gone to seed.
+    pub weeds: Vec<Mesh>,
+    /// Wild bushes on the farm: leafy, blueberry and bramble.
+    pub shrubs: Vec<Mesh>,
+    /// The Ward spell's bubble of light.
+    pub bubble: Mesh,
+}
+
+/// How many of `Props::tufts` (at the end) are tall meadow grass.
+pub const TALL_TUFTS: usize = 2;
+
+/// A strip shading from a light tip down to a dark root, for blades and leaves.
+fn blade_tex(tip: u8, mid: u8, root: u8) -> Texture {
+    let mut t = Texture::new(4, 16, mid);
+    for y in 0..16 {
+        for x in 0..4 {
+            let c = if y < 7 {
+                tip
+            } else if y > 11 {
+                root
+            } else {
+                mid
+            };
+            t.set(x, y, c);
+        }
+    }
+    t
+}
+
+/// Fans `n` blades around a centre: `h` tall, `width` at the root, tips leaning out by
+/// `lean`. Every blade is lit like the ground it grows from, a little brighter when it
+/// leans towards the sun.
+#[allow(clippy::too_many_arguments)]
+fn blades(
+    m: &mut Mesh,
+    tex: TexId,
+    n: usize,
+    h: f32,
+    lean: f32,
+    width: f32,
+    spread: f32,
+    r: &mut Rng,
+) {
+    use std::f32::consts::TAU;
+    for j in 0..n {
+        let a = j as f32 / n as f32 * TAU + r.range_f(-0.4, 0.4);
+        let dir = Vec3::new(a.cos(), 0.0, a.sin());
+        let side = Vec3::new(-a.sin(), 0.0, a.cos());
+        let c = dir * r.range_f(0.0, spread);
+        let w = width * r.range_f(0.8, 1.2) * 0.5;
+        let tip = c + dir * (lean * r.range_f(0.6, 1.3)) + Vec3::Y * (h * r.range_f(0.7, 1.1));
+        let first = m.verts.len();
+        m.tri(
+            [c - side * w, c + side * w, tip],
+            [
+                glam::Vec2::new(0.3, 15.7),
+                glam::Vec2::new(3.7, 15.7),
+                glam::Vec2::new(2.0, 0.3),
+            ],
+            tex,
+        );
+        let normal = (Vec3::Y + dir * 0.5).normalize();
+        for v in &mut m.verts[first..] {
+            v.n = normal;
+        }
+    }
+}
+
+fn foliage(bank: &mut TexBank) -> (Vec<Mesh>, Vec<Mesh>, Vec<Mesh>) {
+    let w4 = Texture::new(4, 4, 0);
+    let mut r = Rng::new(0x6A55);
+    let lawn = bank.add(blade_tex(LIME, GREEN, TEAL));
+    let deep = bank.add(blade_tex(LIME, TEAL, DEEP_TEAL));
+    let mut tufts = Vec::new();
+    // Short tufts first, then the tall meadow clumps (see `TALL_TUFTS`).
+    for (n, h, lean, width, tex) in [
+        (5, 0.36, 0.1, 0.085, lawn),
+        (7, 0.3, 0.13, 0.075, lawn),
+        (4, 0.42, 0.08, 0.075, deep),
+        (6, 0.33, 0.15, 0.08, lawn),
+        (9, 0.62, 0.14, 0.09, lawn),
+        (8, 0.54, 0.18, 0.085, deep),
+    ] {
+        let mut m = Mesh::new();
+        blades(&mut m, tex, n, h, lean, width, 0.06, &mut r);
+        tufts.push(m);
+    }
+
+    // Weeds: broad, messy rosettes that plainly want pulling.
+    let leafy = bank.add(blade_tex(LIME, GREEN, DEEP_TEAL));
+    let dry = bank.add(blade_tex(SAND, KHAKI, ROSEWOOD));
+    let stalk = bank.add(tiles::solid(GREEN));
+    let straw = bank.add(tiles::solid(KHAKI));
+    let bloom = bank.add(tiles::solid(GOLD));
+    let fluff = bank.add(tiles::solid(WHITE));
+    let mut weeds = Vec::new();
+    for (tex, stem, head) in [(leafy, stalk, bloom), (dry, straw, fluff)] {
+        let mut m = Mesh::new();
+        blades(&mut m, tex, 7, 0.3, 0.2, 0.11, 0.06, &mut r);
+        blades(&mut m, tex, 5, 0.4, 0.1, 0.06, 0.03, &mut r);
+        for (x, z, h) in [(0.05f32, 0.02f32, 0.46f32), (-0.06, -0.03, 0.38)] {
+            skin_box(
+                &mut m,
+                Vec3::new(x - 0.012, 0.0, z - 0.012),
+                Vec3::new(x + 0.012, h, z + 0.012),
+                stem,
+                &w4,
+            );
+            skin_box(
+                &mut m,
+                Vec3::new(x - 0.04, h, z - 0.04),
+                Vec3::new(x + 0.04, h + 0.07, z + 0.04),
+                head,
+                &w4,
+            );
+        }
+        weeds.push(m);
+    }
+
+    // Wild bushes.
+    let leaves = bank.add(tiles::canopy([LIME, GREEN, TEAL, DEEP_TEAL], 61));
+    let dark = bank.add(tiles::canopy([GREEN, TEAL, DEEP_TEAL, INK], 62));
+    let berry = bank.add(tiles::solid(BLUE));
+    let berry_hi = bank.add(tiles::solid(SKY));
+    let twig = bank.add(tiles::solid(RUST));
+    let petal = bank.add(tiles::solid(BLUSH));
+    let mut shrubs = Vec::new();
+    for v in 0..3 {
+        let mut m = Mesh::new();
+        let tex = if v == 2 { dark } else { leaves };
+        lathe(
+            &mut m,
+            Vec3::ZERO,
+            &[
+                (0.0, 0.0),
+                (0.34, 0.04),
+                (0.4, 0.24),
+                (0.3, 0.46),
+                (0.0, 0.54),
+            ],
+            7,
+            v as f32 * 0.7,
+            tex,
+            false,
+        );
+        lathe(
+            &mut m,
+            Vec3::new(0.16, 0.0, -0.1),
+            &[(0.0, 0.3), (0.22, 0.36), (0.2, 0.56), (0.0, 0.64)],
+            6,
+            v as f32,
+            tex,
+            false,
+        );
+        match v {
+            1 => {
+                for i in 0..9 {
+                    let a = i as f32 * 0.8 + 0.2;
+                    let y = 0.14 + (i % 3) as f32 * 0.12;
+                    let rad = 0.4 - (y - 0.14) * 0.35;
+                    let p = Vec3::new(a.cos() * rad, y, a.sin() * rad);
+                    let t = if i % 3 == 0 { berry_hi } else { berry };
+                    skin_box(
+                        &mut m,
+                        p - Vec3::splat(0.035),
+                        p + Vec3::splat(0.035),
+                        t,
+                        &w4,
+                    );
+                }
+            }
+            2 => {
+                for i in 0..5 {
+                    let a = i as f32 * 1.3;
+                    let d = Vec3::new(a.cos(), 0.0, a.sin());
+                    let p = d * 0.3 + Vec3::Y * (0.3 + (i % 2) as f32 * 0.14);
+                    let end = p + d * 0.16 + Vec3::Y * 0.06;
+                    skin_box(
+                        &mut m,
+                        p.min(end) - Vec3::splat(0.015),
+                        p.max(end) + Vec3::splat(0.015),
+                        twig,
+                        &w4,
+                    );
+                    let q = p + d * 0.06 + Vec3::Y * 0.12;
+                    skin_box(
+                        &mut m,
+                        q - Vec3::splat(0.03),
+                        q + Vec3::splat(0.03),
+                        petal,
+                        &w4,
+                    );
+                }
+            }
+            _ => {}
+        }
+        shrubs.push(m);
+    }
+    (tufts, weeds, shrubs)
 }
 
 pub fn props(bank: &mut TexBank) -> Props {
+    let (tufts, weeds, shrubs) = foliage(bank);
+    let shimmer = bank.add(tiles::crystal([WHITE, MINT, AQUA]));
+    let mut bubble = Mesh::new();
+    lathe(
+        &mut bubble,
+        Vec3::ZERO,
+        &[
+            (0.0, -0.02),
+            (0.42, 0.12),
+            (0.6, 0.55),
+            (0.56, 0.95),
+            (0.36, 1.28),
+            (0.0, 1.4),
+        ],
+        12,
+        0.0,
+        shimmer,
+        false,
+    );
     let w4 = Texture::new(4, 4, 0);
     let bark = bank.add(tiles::bark());
     let rings = bank.add(tiles::rings());
@@ -1941,6 +2232,10 @@ pub fn props(bank: &mut TexBank) -> Props {
     Props {
         enchant_table,
         enchant_book,
+        tufts,
+        weeds,
+        shrubs,
+        bubble,
         trees,
         pines,
         stump,

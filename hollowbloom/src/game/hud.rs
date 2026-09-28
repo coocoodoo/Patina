@@ -232,6 +232,38 @@ impl Play {
                 INK,
             );
         }
+        // The two readied spells, on Q and R.
+        if !self.spells.known.is_empty() {
+            let sx = hx + hb_w + 9;
+            c.panel(sx - 3, hy - 3, 2 * 19 + 5, 24, Style::Dark);
+            for k in 0..2 {
+                let x = sx + k as i32 * 19;
+                c.panel(x, hy, 18, 18, Style::Inset);
+                if let Some(s) = self.spells.slots[k] {
+                    let d = s.def();
+                    let known = self.spells.get(s).copied();
+                    let cost = known.map_or(d.cost, |k| self.player.mana_cost(k.cost()));
+                    let icon = a.tex(a.icon(d.icon));
+                    let cool = self.spells.cool[k] / d.cooldown.max(0.01);
+                    if self.player.mana < cost {
+                        let dim = c.darken[1];
+                        c.sprite_map(icon, x + 1, hy + 1, |col| dim[col as usize]);
+                    } else {
+                        c.sprite(icon, x + 1, hy + 1);
+                    }
+                    // Cooling down: a shadow that shrinks away.
+                    if cool > 0.0 {
+                        let rows = (16.0 * cool).ceil() as i32;
+                        c.shade(x + 1, hy + 1, 16, rows, 1);
+                    }
+                    if let Some(k) = known {
+                        c.tiny(x + 17, hy + 12, &k.level.to_string(), CREAM, INK);
+                    }
+                }
+                c.tiny(x + 4, hy + 1, ["Q", "R"][k], CREAM, INK);
+            }
+        }
+
         // Name of the selected item, briefly.
         if self.sel_name_t < 1.6 {
             if let Some(s) = p.held_stack() {

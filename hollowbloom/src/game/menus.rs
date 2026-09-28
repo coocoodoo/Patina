@@ -38,6 +38,8 @@ pub struct Summary {
     pub earned: u64,
     pub grown: u32,
     pub ready: u32,
+    /// Weeds and bushes that sprang up on the farm.
+    pub sprouted: u32,
     pub rain: bool,
     pub passed_out: bool,
     pub fainted: bool,
@@ -104,6 +106,11 @@ pub enum Menu {
     },
     /// Quests, friends and records.
     Journal {
+        tab: usize,
+        sel: usize,
+    },
+    /// Hazel's spells: learning them (tab 0) and the attuning circle (tab 1).
+    Spells {
         tab: usize,
         sel: usize,
     },
@@ -393,6 +400,9 @@ pub fn shop_goods(p: &Play) -> Vec<(Item, u32)> {
     let d = p.deepest;
     let mut v = vec![
         (Item::Torch, 12),
+        (Item::Vial, 10),
+        (Item::SmallHealthPotion, 70),
+        (Item::SmallManaPotion, 80),
         (Item::HealingTonic, 120),
         (Item::ManaTonic, 120),
         (Item::StaminaTonic, 120),
@@ -565,6 +575,10 @@ impl Play {
             self.drop_stack(Stack { n: left, ..made });
         }
         self.on_craft(made.item);
+        if matches!(made.item.def().kind, Kind::Potion { .. }) {
+            self.on_brew(made.n);
+            io.audio.play(Sfx::Brew);
+        }
         io.audio.play(Sfx::Craft);
         match made.rarity() {
             Some(rar) => {
@@ -1054,6 +1068,7 @@ impl Play {
             } => self.update_talk(io, who, text, shown, choices, sel, blip),
             Menu::Board { guild, sel } => self.update_board(io, guild, sel),
             Menu::Journal { tab, sel } => self.update_journal(io, tab, sel),
+            Menu::Spells { tab, sel } => self.update_spellery(io, tab, sel),
             Menu::Cheer => self.update_cheer(io),
             Menu::Shop {
                 at,
@@ -1355,6 +1370,13 @@ impl Play {
                 if s.ready > 0 {
                     line(c, format!("{} are ready to harvest!", s.ready), GREEN);
                 }
+                if s.sprouted > 0 {
+                    line(
+                        c,
+                        format!("{} weeds and bushes sprang up on the farm", s.sprouted),
+                        KHAKI,
+                    );
+                }
                 line(
                     c,
                     if s.rain {
@@ -1557,6 +1579,7 @@ impl Play {
             } => self.draw_talk(c, a, *who, text, *shown, choices, *sel),
             Menu::Board { guild, sel } => self.draw_board(c, a, *guild, *sel),
             Menu::Journal { tab, sel } => self.draw_journal(c, a, *tab, *sel),
+            Menu::Spells { tab, sel } => self.draw_spellery(c, a, *tab, *sel, mouse),
             Menu::Cheer => self.draw_cheer(c, a),
             Menu::Ship { cursor } => {
                 let l = panel_layout(w, h);
@@ -2041,6 +2064,7 @@ pub fn shop_tab_widths(at: Option<Place>) -> Vec<i32> {
             "Specials" => 46,
             "Supplies" => 46,
             "Seeds" | "Goods" | "Gems" | "Decor" | "Magic" | "Treats" | "Today" => 36,
+            "Potions" => 42,
             "Menu" => 32,
             _ => 30,
         })
@@ -2061,13 +2085,13 @@ pub fn tab_rects(l: &Layout, widths: &[i32]) -> Vec<(i32, i32)> {
 }
 
 fn cat_rects(l: &Layout) -> Vec<(i32, i32)> {
-    let widths = [20, 28, 24, 28, 38, 32];
+    let widths = [15, 28, 25, 26, 37, 27, 37];
     let mut x = l.px + 8;
     widths
         .iter()
         .map(|w| {
             let r = (x, *w);
-            x += w + 3;
+            x += w + 2;
             r
         })
         .collect()

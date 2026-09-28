@@ -8,7 +8,7 @@ use super::fx::{Fx, Shot};
 use super::world::World;
 use crate::assets::Assets;
 use crate::palette::*;
-use crate::render::{DrawOpts, Light, Mode, PointLight, Renderer};
+use crate::render::{DrawOpts, Light, Mode, PointLight, Renderer, Warp};
 use crate::util::{Rng, approach};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -152,6 +152,19 @@ impl Enemy {
 
     pub fn world_pos(&self) -> Vec3 {
         Vec3::new(self.pos.x, self.y, self.pos.y)
+    }
+
+    /// Jelly and ghosts are see-through, so they are drawn after everything else.
+    pub fn translucent(&self) -> bool {
+        matches!(self.foe, Foe::Slime | Foe::Ghost)
+    }
+
+    /// Hard shells and bones strike sparks.
+    pub fn armored(&self) -> bool {
+        matches!(
+            self.foe,
+            Foe::Crab | Foe::Beetle | Foe::Golem | Foe::Skeleton
+        )
     }
 
     /// Does this enemy touch the ground (and so can bump the player)?
@@ -554,9 +567,6 @@ impl Enemy {
         } else if self.burn > 0.0 {
             o.glow = 0.9 + (self.anim * 12.0).sin() * 0.15;
         }
-        if self.foe == Foe::Ghost {
-            o.screen_door = true;
-        }
         let b = self.biome.min(a.foes.slime.len() - 1);
         let rot = Mat4::from_rotation_y(self.yaw);
         let at = |y: f32| Mat4::from_translation(Vec3::new(self.pos.x, y, self.pos.y));
@@ -572,12 +582,63 @@ impl Enemy {
                         1.0 - self.squash * 0.3 - breathe,
                     )
                 };
-                r.mesh(
-                    &a.bank,
-                    &a.foes.slime[b],
-                    &(at(self.y) * rot * sc(sx, sy)),
-                    &o,
+                // Jelly wobbles: the top lags behind a shove and quivers after a landing
+                // or a hit.
+                let side = if self.dir.length_squared() > 0.01 {
+                    self.dir.normalize()
+                } else {
+                    Vec2::new(0.8, 0.6)
+                };
+                let quiver = (self.anim * 17.0).sin()
+                    * (0.012 + self.squash * 0.07 + (self.flash * 3.0).min(0.3));
+                let lean = (-self.vel * 0.035 + side * quiver) * s;
+                let warp = Warp::Bend {
+                    base: self.y,
+                    h: 0.45 * s * sy,
+                    lean,
+                };
+                let body = at(self.y) * rot * sc(sx, sy);
+                let cols = a.foes.slime_cols[b];
+                // The nucleus drifts about inside, and bubbles rise through the jelly.
+                let drift = Vec3::new(
+                    (self.anim * 1.3).sin() * 0.05,
+                    0.2 + (self.anim * 2.1).sin() * 0.025,
+                    (self.anim * 1.7).cos() * 0.04,
                 );
+                let core = at(self.y)
+                    * sc(sx, sy)
+                    * Mat4::from_translation(drift)
+                    * Mat4::from_rotation_y(self.anim * 0.8);
+                r.mesh(&a.bank, &a.foes.slime_core[b], &core, &o.with_warp(warp));
+                for i in 0..3 {
+                    let k = (self.anim * 0.45 + i as f32 * 0.33 + self.seed as f32 * 0.07).fract();
+                    let ang = i as f32 * 2.1 + self.seed as f32;
+                    let p = Vec3::new(
+                        self.pos.x + ang.cos() * 0.17 * s * sx,
+                        self.y + (0.06 + k * 0.3) * s * sy,
+                        self.pos.y + ang.sin() * 0.17 * s * sx,
+                    );
+                    r.point(warp.apply(p), 1, if i == 0 { WHITE } else { cols[0] });
+                }
+                r.mesh(&a.bank, &a.critters.slime_face, &body, &o.with_warp(warp));
+                let shell = if self.flash > 0.0 {
+                    o
+                } else {
+                    o.glass(0.36).with_glow(o.glow.max(0.55))
+                };
+                r.mesh(&a.bank, &a.foes.slime[b], &body, &shell.with_warp(warp));
+                // A crisp glint where the dome mirrors the key light.
+                let base = Vec3::new(self.pos.x, self.y, self.pos.y);
+                let view = (r.cam.eye - base).normalize_or_zero();
+                let hv = (crate::render::light::KEY + view).normalize_or_zero();
+                let (ra, rb) = (0.42 * s * sx, 0.45 * s * sy);
+                let (a2, b2) = (ra * ra, rb * rb);
+                let norm = (a2 * hv.x * hv.x + b2 * hv.y * hv.y + a2 * hv.z * hv.z).sqrt();
+                let spot =
+                    base + Vec3::new(a2 * hv.x, b2 * hv.y, a2 * hv.z) / norm.max(1e-4) + hv * 0.04;
+                let spot = warp.apply(spot);
+                r.point(spot, if s > 1.0 { 3 } else { 2 }, WHITE);
+                r.point(spot + Vec3::new(0.09, -0.07, 0.02) * s, 1, cols[0]);
             }
             Foe::Bat => {
                 let m = at(self.y) * rot * sc(1.0, 1.0);
@@ -671,12 +732,22 @@ impl Enemy {
                 );
             }
             Foe::Ghost => {
-                r.mesh(
-                    &a.bank,
-                    &a.critters.ghost,
-                    &(at(self.y - 0.3) * rot * sc(1.0, 1.0)),
-                    &o,
-                );
+                // A wisp of sheet trailing behind as it drifts.
+                let m = at(self.y - 0.3) * rot * sc(1.0, 1.0);
+                let tail = Vec2::new((self.anim * 3.0).sin(), (self.anim * 2.3).cos()) * 0.05
+                    - self.dir * 0.08;
+                let warp = Warp::Bend {
+                    base: self.y - 0.3 + 0.4 * s,
+                    h: -0.4 * s,
+                    lean: tail * s,
+                };
+                r.mesh(&a.bank, &a.critters.ghost_face, &m, &o);
+                let sheet = if self.flash > 0.0 {
+                    o
+                } else {
+                    o.glass(0.28).with_glow(o.glow.max(0.8))
+                };
+                r.mesh(&a.bank, &a.critters.ghost, &m, &sheet.with_warp(warp));
             }
             Foe::Imp | Foe::Skeleton => {
                 let h = if self.foe == Foe::Imp {

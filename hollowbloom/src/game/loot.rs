@@ -339,6 +339,37 @@ pub fn chest_loot(depth: u32, biome: usize, f: Fortune, rng: &mut Rng) -> Vec<St
     if rng.chance(0.25) {
         out.push(Stack::new(Item::Feather, 1));
     }
+    // A potion or two, bigger the deeper you go.
+    if rng.chance(0.5) {
+        let tier = if d >= 30 && rng.chance(0.4) {
+            2
+        } else if d >= 10 && rng.chance(0.6) {
+            1
+        } else {
+            0
+        };
+        let kinds = [
+            [
+                Item::SmallHealthPotion,
+                Item::HealthPotion,
+                Item::LargeHealthPotion,
+            ],
+            [
+                Item::SmallManaPotion,
+                Item::ManaPotion,
+                Item::LargeManaPotion,
+            ],
+            [
+                Item::SmallEnergyPotion,
+                Item::EnergyPotion,
+                Item::LargeEnergyPotion,
+            ],
+        ];
+        out.push(Stack::new(
+            kinds[rng.below(3)][tier],
+            1 + rng.below(2) as u16,
+        ));
+    }
     if rng.chance(0.05 + d as f32 * 0.002) {
         let special = [Item::HeartCrystal, Item::SunStone, Item::WishStar];
         out.push(Stack::new(special[rng.below(3)], 1));
@@ -361,8 +392,15 @@ pub fn pot_loot(depth: u32, biome: usize, f: Fortune, rng: &mut Rng) -> Vec<Stac
     } else if r < 0.64 {
         out.push(Stack::new(Item::Torch, 2));
     } else if r < 0.71 {
-        let food = [Item::HealingTonic, Item::ManaTonic, Item::StaminaTonic];
-        out.push(Stack::new(food[rng.below(3)], 1));
+        let food = [
+            Item::HealingTonic,
+            Item::ManaTonic,
+            Item::StaminaTonic,
+            Item::SmallHealthPotion,
+            Item::SmallManaPotion,
+            Item::SmallEnergyPotion,
+        ];
+        out.push(Stack::new(food[rng.below(food.len())], 1));
     } else if r < 0.78 {
         out.push(Stack::new(Item::SlimeGel, 1));
     } else if r < 0.83 {

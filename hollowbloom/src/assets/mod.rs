@@ -3,6 +3,7 @@
 pub mod font;
 pub mod gear_art;
 pub mod item_art;
+pub mod magic_art;
 pub mod models;
 pub mod quest_art;
 pub mod sprites;
@@ -123,6 +124,9 @@ pub const ORE_COLORS: [[u8; 3]; ORES] = [
 /// Enemy meshes recoloured per biome.
 pub struct FoeSkins {
     pub slime: Vec<crate::render::Mesh>,
+    pub slime_core: Vec<crate::render::Mesh>,
+    /// Each biome's slime colours (light, mid, dark), for bubbles and glints.
+    pub slime_cols: [[u8; 3]; BIOMES],
     pub shroom: Vec<crate::render::Mesh>,
     pub bat_body: Vec<crate::render::Mesh>,
     pub bat_wing: Vec<crate::render::Mesh>,
@@ -214,6 +218,8 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
     ];
     let mut s = FoeSkins {
         slime: vec![],
+        slime_core: vec![],
+        slime_cols,
         shroom: vec![],
         bat_body: vec![],
         bat_wing: vec![],
@@ -227,6 +233,12 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
             bank,
             &c.slime,
             &[c.slime_tex],
+            &ramp([LIME, GREEN, TEAL], slime_cols[b]),
+        ));
+        s.slime_core.push(recolor(
+            bank,
+            &c.slime_core,
+            &[c.slime_core_tex],
             &ramp([LIME, GREEN, TEAL], slime_cols[b]),
         ));
         let cap = caps[b];
@@ -337,6 +349,7 @@ impl Assets {
         item_art::build(&mut bank, &mut icons);
         let gear = gear_art::build(&mut bank, &mut icons);
         quest_art::build(&mut bank, &mut icons);
+        magic_art::build(&mut bank, &mut icons);
         let grass = [
             bank.add(tiles::grass(1, false)),
             bank.add(tiles::grass(2, false)),

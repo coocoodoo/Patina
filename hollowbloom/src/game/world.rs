@@ -1,11 +1,12 @@
 //! The tile world shared by the farm and every Hollow floor: floors, walls, objects,
 //! collision and the cached chunk meshes.
 
-use glam::{Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
 use super::items::{Crop, Stack};
 use super::town::Place;
+use crate::assets::models::TALL_TUFTS;
 use crate::assets::{Assets, BIOMES, tiles};
 use crate::render::{Mesh, TexId, UvRect};
 use crate::util::hash2;
@@ -208,6 +209,11 @@ pub enum Obj {
     Fixture {
         var: u8,
     },
+    /// A wild bush that sprang up on the farm overnight: leafy, blueberry or bramble.
+    Shrub {
+        var: u8,
+        hp: i16,
+    },
 }
 
 impl Obj {
@@ -265,16 +271,25 @@ pub struct World {
     /// Accumulated damage on walls being mined, by tile index.
     pub wall_dmg: std::collections::HashMap<usize, i16>,
     chunks: Vec<Mesh>,
+    /// Tufts of grass on the open lawn, in `TUFTS`-tile blocks, drawn swaying in the breeze.
+    grass: Vec<Mesh>,
     dirty: Vec<bool>,
+    grass_dirty: Vec<bool>,
     cw: i32,
     ch: i32,
+    /// Grass blocks across.
+    gw: i32,
 }
+
+/// Grass is meshed in smaller blocks than the ground, so less of it is drawn off screen.
+const TUFTS: i32 = 8;
 
 impl World {
     pub fn new(w: i32, h: i32, area: Area, biome: usize) -> World {
         let n = (w * h) as usize;
         let cw = (w + CHUNK - 1) / CHUNK;
         let ch = (h + CHUNK - 1) / CHUNK;
+        let (gw, gh) = ((w + TUFTS - 1) / TUFTS, (h + TUFTS - 1) / TUFTS);
         World {
             w,
             h,
@@ -286,10 +301,18 @@ impl World {
             biome: biome.min(BIOMES - 1),
             wall_dmg: Default::default(),
             chunks: vec![Mesh::new(); (cw * ch) as usize],
+            grass: vec![Mesh::new(); (gw * gh) as usize],
             dirty: vec![true; (cw * ch) as usize],
+            grass_dirty: vec![true; (gw * gh) as usize],
             cw,
             ch,
+            gw,
         }
+    }
+
+    /// The grass block holding a tile.
+    fn tuft_block(&self, x: i32, z: i32) -> usize {
+        (z / TUFTS * self.gw + x / TUFTS) as usize
     }
 
     #[inline]
@@ -361,6 +384,9 @@ impl World {
             if stairs {
                 self.touch(x, z);
             }
+            // Grass only grows where nothing stands.
+            let b = self.tuft_block(x, z);
+            self.grass_dirty[b] = true;
         }
     }
 
@@ -401,12 +427,15 @@ impl World {
             if self.inside(tx, tz) {
                 let c = (tz / CHUNK * self.cw + tx / CHUNK) as usize;
                 self.dirty[c] = true;
+                let b = self.tuft_block(tx, tz);
+                self.grass_dirty[b] = true;
             }
         }
     }
 
     pub fn touch_all(&mut self) {
         self.dirty.fill(true);
+        self.grass_dirty.fill(true);
     }
 
     /// True if movement is blocked at this tile.
@@ -527,10 +556,53 @@ impl World {
                 }
             }
         }
+        for b in self.tuft_range(rect) {
+            if self.grass_dirty[b] {
+                let (bx, bz) = (b as i32 % self.gw, b as i32 / self.gw);
+                self.grass[b] = self.build_grass(a, bx, bz);
+                self.grass_dirty[b] = false;
+            }
+        }
     }
 
     /// Chunk meshes that intersect the rectangle.
     pub fn visible_chunks(&self, rect: (i32, i32, i32, i32)) -> Vec<&Mesh> {
+        self.chunk_range(rect)
+            .into_iter()
+            .map(|c| &self.chunks[c])
+            .collect()
+    }
+
+    /// Grass meshes that intersect the rectangle.
+    pub fn visible_grass(&self, rect: (i32, i32, i32, i32)) -> Vec<&Mesh> {
+        self.tuft_range(rect)
+            .into_iter()
+            .map(|b| &self.grass[b])
+            .filter(|m| !m.tris.is_empty())
+            .collect()
+    }
+
+    /// Grass blocks that intersect the rectangle.
+    fn tuft_range(&self, rect: (i32, i32, i32, i32)) -> Vec<usize> {
+        let (x0, z0, x1, z1) = rect;
+        let mut out = Vec::new();
+        if x1 < 0 || z1 < 0 || x0 >= self.w || z0 >= self.h {
+            return out;
+        }
+        let gh = (self.h + TUFTS - 1) / TUFTS;
+        let bx0 = (x0.max(0) / TUFTS).min(self.gw - 1);
+        let bx1 = (x1.max(0) / TUFTS).min(self.gw - 1);
+        let bz0 = (z0.max(0) / TUFTS).min(gh - 1);
+        let bz1 = (z1.max(0) / TUFTS).min(gh - 1);
+        for bz in bz0..=bz1 {
+            for bx in bx0..=bx1 {
+                out.push((bz * self.gw + bx) as usize);
+            }
+        }
+        out
+    }
+
+    fn chunk_range(&self, rect: (i32, i32, i32, i32)) -> Vec<usize> {
         let (x0, z0, x1, z1) = rect;
         let mut out = Vec::new();
         if x1 < 0 || z1 < 0 || x0 >= self.w || z0 >= self.h {
@@ -542,10 +614,59 @@ impl World {
         let cz1 = (z1.max(0) / CHUNK).min(self.ch - 1);
         for cz in cz0..=cz1 {
             for cx in cx0..=cx1 {
-                out.push(&self.chunks[(cz * self.cw + cx) as usize]);
+                out.push((cz * self.cw + cx) as usize);
             }
         }
         out
+    }
+
+    /// Scatters tufts over the open lawn of a block, a few to a tile.
+    fn build_grass(&self, a: &Assets, bx: i32, bz: i32) -> Mesh {
+        let mut m = Mesh::new();
+        if !matches!(self.area, Area::Farm | Area::Town) || a.props.tufts.is_empty() {
+            return m;
+        }
+        for z in bz * TUFTS..((bz + 1) * TUFTS).min(self.h) {
+            for x in bx * TUFTS..((bx + 1) * TUFTS).min(self.w) {
+                let i = self.idx(x, z);
+                if self.floor[i] != Floor::Grass
+                    || self.wall[i] != Wall::None
+                    || self.objs[i].is_some()
+                {
+                    continue;
+                }
+                let h = hash2(x, z, 31);
+                let n = [1, 2, 2, 3, 1, 2, 3, 2][(h % 8) as usize];
+                // Meadows: patches where the grass grows long.
+                let meadow = hash2(x.div_euclid(5), z.div_euclid(4), 33) % 4 == 0;
+                let short = a.props.tufts.len() - TALL_TUFTS;
+                for k in 0..n {
+                    let hk = hash2(x * 7 + k, z * 5 - k, 32);
+                    let ox = 0.15 + (hk % 70) as f32 / 100.0;
+                    let oz = 0.15 + ((hk / 70) % 70) as f32 / 100.0;
+                    let rot = ((hk / 4900) % 628) as f32 / 100.0;
+                    let s = 0.75 + ((hk / 7) % 50) as f32 / 100.0;
+                    let pick = hk as usize / 13;
+                    let tall = if meadow {
+                        pick % 3 != 0
+                    } else {
+                        pick % 11 == 0
+                    };
+                    let tuft = if tall {
+                        &a.props.tufts[short + pick % TALL_TUFTS]
+                    } else {
+                        &a.props.tufts[pick % short]
+                    };
+                    m.append(
+                        tuft,
+                        Mat4::from_translation(Vec3::new(x as f32 + ox, 0.0, z as f32 + oz))
+                            * Mat4::from_rotation_y(rot)
+                            * Mat4::from_scale(Vec3::splat(s)),
+                    );
+                }
+            }
+        }
+        m
     }
 
     /// Open lawn (no wall on it): roads round their corners off into it.
@@ -649,7 +770,7 @@ impl World {
             }
             Floor::Tiles => a.checker,
             Floor::Carpet => match self.area {
-                Area::Inside(Place::Scrolls) => a.carpets[1],
+                Area::Inside(Place::Scrolls | Place::Spellery) => a.carpets[1],
                 Area::Inside(Place::Jeweler) => a.carpets[2],
                 _ => a.carpets[0],
             },

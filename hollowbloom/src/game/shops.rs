@@ -37,6 +37,7 @@ pub fn tab_name(at: Option<Place>, t: ShopTab) -> &'static str {
         (Some(Place::Jeweler), ShopTab::Goods) => "Gems",
         (Some(Place::Nook), ShopTab::Goods) => "Decor",
         (Some(Place::Scrolls), ShopTab::Goods) => "Magic",
+        (Some(Place::Spellery), ShopTab::Goods) => "Potions",
         (Some(Place::Guild), ShopTab::Goods) => "Supplies",
         (_, ShopTab::Goods) => "Goods",
     }
@@ -64,6 +65,7 @@ pub fn patter(at: Option<Place>, t: ShopTab) -> &'static str {
         (Some(Place::Tavern), _) => "Barley: \"Best stew this side of the Hollow!\"",
         (Some(Place::Jeweler), _) => "Opal: \"Everything that sparkles, darling.\"",
         (Some(Place::Nook), _) => "Wren: \"Make your farm feel like a hug!\"",
+        (Some(Place::Spellery), _) => "Hazel: \"Mind the cauldron, it bites.\"",
         (Some(Place::Hall), _) => "",
     }
 }
@@ -82,6 +84,10 @@ pub fn buy_rate(at: Option<Place>, s: &Stack) -> u64 {
         Some(Place::Bakery | Place::Tavern) => matches!(k, Kind::Food { .. }),
         Some(Place::Nook) => matches!(k, Kind::Place(_)),
         Some(Place::Guild) => matches!(k, Kind::Material),
+        Some(Place::Spellery) => {
+            matches!(k, Kind::Potion { .. })
+                || matches!(s.item, Item::Heartleaf | Item::WispDust | Item::Spore)
+        }
         _ => false,
     };
     match (yes, at) {
@@ -231,6 +237,7 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
                 (0, Item::BakedPotato, 140),
                 (0, Item::HealingTonic, 110),
                 (0, Item::StaminaTonic, 110),
+                (0, Item::SmallEnergyPotion, 70),
                 (8, Item::GlowSoup, 210),
                 (10, Item::MushroomSkewer, 210),
                 (31, Item::EmberCurry, 330),
@@ -247,8 +254,30 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
             add(0, Item::HealingTonic, 100);
             add(0, Item::StaminaTonic, 100);
             add(0, Item::ManaTonic, 100);
+            add(0, Item::SmallHealthPotion, 65);
+            add(6, Item::HealthPotion, 190);
+            add(20, Item::LargeHealthPotion, 520);
             add(0, Item::Torch, 10);
             add(10, Item::SunStone, 9000);
+        }
+        Place::Spellery => {
+            for (need, item, price) in [
+                (0, Item::Vial, 8),
+                (0, Item::Heartleaf, 40),
+                (0, Item::SmallHealthPotion, 60),
+                (0, Item::SmallManaPotion, 70),
+                (0, Item::SmallEnergyPotion, 60),
+                (0, Item::ManaTonic, 110),
+                (8, Item::HealthPotion, 180),
+                (8, Item::ManaPotion, 200),
+                (8, Item::EnergyPotion, 180),
+                (25, Item::LargeHealthPotion, 480),
+                (25, Item::LargeManaPotion, 520),
+                (25, Item::LargeEnergyPotion, 460),
+                (30, Item::WishStar, 5500),
+            ] {
+                add(need, item, price);
+            }
         }
         Place::Hall => {}
     }

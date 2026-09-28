@@ -57,6 +57,9 @@ pub const FULL: f32 = 16.0;
 /// Number of warmth steps: 0 is cold moonlight, 4 neutral, 8 firelight.
 pub const WARMTHS: usize = 9;
 pub const NEUTRAL: f32 = 4.0;
+/// Opacity steps in the blend tables: step `k` covers `(k + 1) / (BLENDS + 1)`. A pixel's
+/// opacity dithers between neighbouring steps, from fully clear to fully solid.
+pub const BLENDS: usize = 8;
 
 /// 4x4 ordered-dither thresholds in [0, 1).
 pub const BAYER: [f32; 16] = [
@@ -120,6 +123,11 @@ pub struct Shading {
     pub darken: [[u8; 32]; 3],
     /// Highlight table, one step brighter.
     pub lighten: [u8; 32],
+    /// Translucency: `glass[(step * 32 + src) * 32 + dst]` is `src` laid over `dst` like
+    /// tinted jelly, at the step's opacity (see `BLENDS`).
+    pub glass: Vec<u8>,
+    /// Emitted light: `glow[(step * 32 + src) * 32 + dst]` is `dst` with `src` added on top.
+    pub glow: Vec<u8>,
     /// Palette as 0x00RRGGBB for presentation.
     pub rgb: [u32; 256],
     lab: [[f32; 3]; 32],
@@ -143,9 +151,32 @@ impl Shading {
             map: vec![0; WARMTHS * LEVELS * 32],
             darken: [[0; 32]; 3],
             lighten: [0; 32],
+            glass: vec![0; BLENDS * 32 * 32],
+            glow: vec![0; BLENDS * 32 * 32],
             rgb,
             lab,
         };
+        for k in 0..BLENDS {
+            let alpha = (k + 1) as f32 / (BLENDS + 1) as f32;
+            for src in 0..32u8 {
+                let a = linear_rgb(src);
+                for dst in 0..32u8 {
+                    let b = linear_rgb(dst);
+                    let i = (k * 32 + src as usize) * 32 + dst as usize;
+                    // Light through jelly takes on its colour (a filter), and some of the
+                    // surface's own colour scatters back towards the eye.
+                    let mut over = [0.0; 3];
+                    let mut add = [0.0; 3];
+                    for c in 0..3 {
+                        let filtered = b[c] * (0.12 + 0.88 * a[c]);
+                        over[c] = filtered * (1.0 - alpha) + a[c] * alpha;
+                        add[c] = (b[c] + a[c] * alpha).min(1.0);
+                    }
+                    s.glass[i] = s.nearest(over);
+                    s.glow[i] = s.nearest(add);
+                }
+            }
+        }
         for w in 0..WARMTHS {
             let tint = tint(w as f32);
             for lv in 0..LEVELS {
@@ -244,5 +275,24 @@ mod tests {
     fn darkness_goes_to_ink() {
         let s = Shading::new();
         assert_eq!(s.shade(NEUTRAL as usize, 0, WHITE), INK);
+    }
+
+    #[test]
+    fn blends_stay_in_palette_and_lean_the_right_way() {
+        let s = Shading::new();
+        assert!(s.glass.iter().chain(s.glow.iter()).all(|&i| i < 32));
+        let at = |k: usize, src: u8, dst: u8| s.glass[(k * 32 + src as usize) * 32 + dst as usize];
+        // Jelly over itself is itself; half-clear jelly shows what's behind it.
+        assert_eq!(at(BLENDS - 1, GREEN, GREEN), GREEN);
+        let lum = |i: u8| s.lab[i as usize][0];
+        for src in [GREEN, BLUE, PINK, ORANGE] {
+            let (dark, light) = (at(BLENDS / 2, src, INK), at(BLENDS / 2, src, WHITE));
+            assert!(lum(light) > lum(dark), "jelly {src} hides the floor");
+        }
+        // Adding light never darkens.
+        for dst in 0..32u8 {
+            let g = s.glow[((BLENDS - 1) * 32 + GOLD as usize) * 32 + dst as usize];
+            assert!(lum(g) + 0.02 >= lum(dst), "glow darkened {dst}");
+        }
     }
 }

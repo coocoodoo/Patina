@@ -5,7 +5,7 @@ use glam::{Vec2, Vec3};
 use super::combat::{Bolt, Flash};
 use super::draw::Env;
 use super::dungeon::{self, Level, biome_for, is_waystone_floor, ore_item};
-use super::farm::{self, MARKS};
+use super::farm::{self, MARKS, tillable};
 use super::foes::{Enemy, St, boss_name};
 use super::fx::{Drop, Fx, Shot};
 use super::gear::{Class, Rarity, Stat};
@@ -19,7 +19,7 @@ use super::world::{Area, FERTILE, Floor, Obj, WATERED, Wall, World};
 use super::{Io, Settings};
 use crate::assets::BIOME_STYLES;
 use crate::audio::{Sfx, Song};
-use crate::input::Action;
+use crate::input::{Action, KeyCode};
 use crate::palette::*;
 use crate::render::Camera;
 use crate::util::{Rng, damp, hash2, wrap_angle};
@@ -145,6 +145,13 @@ pub struct Play {
     pub bolts: Vec<Bolt>,
     /// Brief flashes of light from magic.
     pub flashes: Vec<Flash>,
+    /// Spells you know and the two you have ready.
+    pub spells: super::spells::Spellbook,
+    /// The spell on its way out of your hands.
+    pub casting: Option<super::spells::Spell>,
+    /// Starfall's stars, and Chain Spark's lightning.
+    pub stars: Vec<super::magic::Star>,
+    pub zaps: Vec<super::magic::Zap>,
     /// Burrowby's specials already bought today.
     pub bought: Vec<usize>,
     pub fx: Fx,
@@ -189,6 +196,10 @@ pub struct Stats {
     pub floors: u32,
     #[serde(default)]
     pub quests: u32,
+    #[serde(default)]
+    pub casts: u32,
+    #[serde(default)]
+    pub brewed: u32,
 }
 
 impl Play {
@@ -224,6 +235,10 @@ impl Play {
             shots: Vec::new(),
             bolts: Vec::new(),
             flashes: Vec::new(),
+            spells: Default::default(),
+            casting: None,
+            stars: Vec::new(),
+            zaps: Vec::new(),
             bought: Vec::new(),
             fx: Fx::default(),
             rng: Rng::new(seed ^ 0xC0FFEE),
@@ -367,6 +382,8 @@ impl Play {
                 clear: INK,
                 time: self.time,
                 night: 1.0,
+                wind: 0.0,
+                push: self.player.pos,
             },
             Area::Farm | Area::Town => {
                 const KEYS: [(f32, f32, f32); 9] = [
@@ -406,6 +423,9 @@ impl Play {
                     clear: if night > 0.5 { INK } else { DEEP_TEAL },
                     time: self.time,
                     night,
+                    // Blustery in the rain, calmer at night.
+                    wind: if self.rain { 1.6 } else { 1.0 - night * 0.35 },
+                    push: self.player.pos,
                 }
             }
             Area::Hollow { depth } => {
@@ -416,6 +436,8 @@ impl Play {
                     clear: st.clear,
                     time: self.time,
                     night: 1.0,
+                    wind: 0.0,
+                    push: self.player.pos,
                 }
             }
         }
@@ -431,7 +453,7 @@ impl Play {
                 }
             }
             Area::Inside(place) => {
-                let tr = [0, -3, 2, -2, -5, 3, 4, 1, 5, -1, 0][place as usize];
+                let tr = [0, -3, 2, -2, -5, 3, 4, 1, 5, -1, 0, 6][place as usize];
                 (Some(Song::Shop), tr, 1.0)
             }
             Area::Farm => {
@@ -616,7 +638,10 @@ impl Play {
         self.foes.clear();
         self.shots.clear();
         self.bolts.clear();
+        self.stars.clear();
+        self.zaps.clear();
         self.drops.clear();
+        p_ward_off(&mut self.player);
         self.area = Area::Farm;
         self.cam_pos = self.player.world_pos();
         self.last_summary = Some(super::menus::Summary {
@@ -624,6 +649,7 @@ impl Play {
             earned,
             grown: night.grown,
             ready: night.ready,
+            sprouted: night.sprouted,
             rain: self.rain,
             passed_out,
             fainted: false,
@@ -764,13 +790,19 @@ impl Play {
             let n = (self.player.sel + dir) % HOTBAR;
             self.select(n, io);
         }
-        if input.pressed(Action::NextSlot) {
+        // [ and ] step along the hotbar; Q and R cast your two spells.
+        if input.key_pressed(KeyCode::BracketRight) {
             let n = (self.player.sel + 1) % HOTBAR;
             self.select(n, io);
         }
-        if input.pressed(Action::PrevSlot) {
+        if input.key_pressed(KeyCode::BracketLeft) {
             let n = (self.player.sel + HOTBAR - 1) % HOTBAR;
             self.select(n, io);
+        }
+        for (slot, action) in [Action::Spell1, Action::Spell2].into_iter().enumerate() {
+            if input.pressed(action) {
+                self.begin_cast(slot, io);
+            }
         }
 
         self.player.refresh();
@@ -780,6 +812,7 @@ impl Play {
         self.update_foes(io);
         self.update_statuses(dt, io);
         self.update_bolts(dt, io);
+        self.update_spells(dt, io);
         self.update_drops(io);
         self.update_cat(dt);
         self.update_vitals(dt);
@@ -1040,16 +1073,10 @@ impl Play {
         };
         match item.def().kind {
             Kind::Gear(b) => match b.class {
-                Class::Hoe => {
-                    self.area == Area::Farm
-                        && matches!(w.floor(x, z), Floor::Grass | Floor::Soil)
-                        && w.wall(x, z) == Wall::None
-                        && w.obj(x, z)
-                            .is_none_or(|o| matches!(o, Obj::Weed { .. } | Obj::Flower { .. }))
-                }
+                Class::Hoe => self.area == Area::Farm && tillable(w, x, z),
                 Class::Can => w.floor(x, z) == Floor::Tilled || w.floor(x, z) == Floor::Water,
                 Class::Sickle => w.obj(x, z).is_some_and(|o| match o {
-                    Obj::Weed { .. } | Obj::Flower { .. } => true,
+                    Obj::Weed { .. } | Obj::Flower { .. } | Obj::Shrub { .. } => true,
                     Obj::Crop { crop, days, .. } => crop.stage(*days) == 3,
                     _ => false,
                 }),
@@ -1089,6 +1116,7 @@ impl Play {
                                 | Obj::Chest { .. }
                                 | Obj::Crate { .. }
                                 | Obj::Weed { .. }
+                                | Obj::Shrub { .. }
                         )
                     }) || w.wall(x, z) == Wall::Timber
                 }
@@ -1314,6 +1342,7 @@ impl Play {
                     .burst(tile_center(x, z), 6, &[SAND, KHAKI], 1.2, 1.0);
             }
             Kind::Produce { hp, energy } => self.eat(item, hp, energy, 0, None, io),
+            Kind::Potion { hp, mana, energy } => self.drink(item, hp, mana, energy, io),
             Kind::Food {
                 hp,
                 energy,
@@ -1376,6 +1405,54 @@ impl Play {
             }
             _ => {}
         }
+    }
+
+    /// Drinks a potion. Quicker than eating, so it works in a pinch mid-fight.
+    fn drink(&mut self, item: Item, hp: i32, mana: i32, energy: i32, io: &mut Io) {
+        let p = &mut self.player;
+        if p.eat_t > 0.0 {
+            return;
+        }
+        let needs = (hp > 0 && p.hp < p.max_hp())
+            || (mana > 0 && p.mana < p.max_mana() as f32)
+            || (energy > 0 && p.energy < p.max_energy() as f32);
+        if !needs {
+            self.toast("You don't need that right now.", None, 0);
+            return;
+        }
+        let sel = p.sel;
+        p.inv.take_one(sel);
+        p.hp = (p.hp + hp).min(p.max_hp());
+        p.mana = (p.mana + mana as f32).min(p.max_mana() as f32);
+        p.energy = (p.energy + energy as f32).min(p.max_energy() as f32);
+        p.eat_t = 0.3;
+        io.audio.play(Sfx::Gulp);
+        let pos = p.world_pos() + Vec3::Y * 0.9;
+        let at = p.world_pos();
+        let mut colors = Vec::new();
+        if hp > 0 {
+            self.fx.popup(pos, format!("+{hp}"), PINK);
+            colors.extend([PINK, RED]);
+        }
+        if mana > 0 {
+            self.fx
+                .popup(pos + Vec3::new(-0.3, 0.2, 0.0), format!("+{mana}"), SKY);
+            colors.extend([SKY, BLUE]);
+        }
+        if energy > 0 {
+            self.fx
+                .popup(pos + Vec3::new(0.3, 0.2, 0.0), format!("+{energy}"), GOLD);
+            colors.extend([GOLD, CREAM]);
+        }
+        colors.push(WHITE);
+        self.fx.motes(at + Vec3::Y * 0.3, 14, &colors, 0.35);
+        self.fx.ring(at, 2.2, 14, &colors);
+        self.flashes.push(Flash {
+            pos: at + Vec3::Y * 0.8,
+            t: 0.12,
+            warmth: if hp > 0 { 6.5 } else { 2.5 },
+        });
+        self.toast(format!("Drank {}", item.def().name), Some(item), 0);
     }
 
     fn eat(
@@ -1732,6 +1809,12 @@ impl Play {
                 }
                 if hits == 0 {
                     self.hit_soft(x, z, io);
+                    // Steel on stone.
+                    let q = p + dir.normalize_or_zero() * 0.95;
+                    let (tx, tz) = (q.x.floor() as i32, q.y.floor() as i32);
+                    if !self.strike_hard(tx, tz, io) {
+                        self.strike_hard(x, z, io);
+                    }
                 }
             }
             ActKind::Bolt => self.cast_bolt(dir, io),
@@ -1777,6 +1860,7 @@ impl Play {
                 }
             }
             ActKind::Reap => self.reap_patch((x, z), dir, io),
+            ActKind::Cast => self.release_spell(dir, io),
         }
     }
 
@@ -1842,6 +1926,10 @@ impl Play {
                         self.hit_soft(tx, tz, io);
                         any = true;
                     }
+                    Some(Obj::Shrub { .. }) => {
+                        self.cut_shrub(tx, tz, 2, io);
+                        any = true;
+                    }
                     _ => {}
                 }
             }
@@ -1873,6 +1961,14 @@ impl Play {
                     let seed = self.forage_seed();
                     self.drops.push(Drop::item(seed, 1, at, &mut self.rng));
                 }
+                // Heartleaf hides among the weeds.
+                if self
+                    .rng
+                    .chance(0.1 + self.player.sheet.frac(Stat::Forage, 60) * 0.3)
+                {
+                    self.drops
+                        .push(Drop::item(Item::Heartleaf, 1, at, &mut self.rng));
+                }
                 io.audio.play_at(Sfx::Swing, 0.5, 1.4);
             }
             Obj::Flower { .. } => {
@@ -1884,6 +1980,7 @@ impl Play {
                         .push(Drop::item(Item::Fiber, 1, at, &mut self.rng));
                 }
             }
+            Obj::Shrub { .. } => self.cut_shrub(x, z, 1, io),
             Obj::Pot { .. } | Obj::Crate { .. } => {
                 self.world_mut().set_obj(x, z, None);
                 io.audio.play(Sfx::Break);
@@ -1899,6 +1996,59 @@ impl Play {
                 self.spill(loot, at, io);
             }
             _ => {}
+        }
+    }
+
+    /// Whacks a wild bush. It comes out after a few hits, leaving fiber and sticks, and
+    /// blueberries if it was a berry bush.
+    fn cut_shrub(&mut self, x: i32, z: i32, dmg: i32, io: &mut Io) {
+        let Some(Obj::Shrub { var, hp }) = self.world().obj(x, z).cloned() else {
+            return;
+        };
+        let at = tile_center(x, z);
+        let leaves = if var == 2 {
+            [TEAL, DEEP_TEAL, GREEN]
+        } else {
+            [GREEN, LIME, TEAL]
+        };
+        self.fx.burst(at + Vec3::Y * 0.4, 7, &leaves, 1.8, 1.4);
+        io.audio.play(Sfx::Chop);
+        let hp = hp - dmg.max(1) as i16;
+        if hp > 0 {
+            self.world_mut().set_obj(x, z, Some(Obj::Shrub { var, hp }));
+            return;
+        }
+        self.world_mut().set_obj(x, z, None);
+        io.audio.play_at(Sfx::Break, 0.6, 1.3);
+        self.fx.burst(at + Vec3::Y * 0.5, 14, &leaves, 2.4, 1.6);
+        let fiber = 1 + self.rng.below(2) as u16;
+        self.drops
+            .push(Drop::item(Item::Fiber, fiber, at, &mut self.rng));
+        if self.rng.chance(0.6) {
+            let n = 1 + u16::from(self.bounty());
+            self.drops
+                .push(Drop::item(Item::Wood, n, at, &mut self.rng));
+        }
+        let forage = self.player.sheet.frac(Stat::Forage, 60);
+        match var {
+            1 => {
+                let n = 2 + self.rng.below(3) as u16;
+                self.drops
+                    .push(Drop::item(Item::Blueberry, n, at, &mut self.rng));
+            }
+            2 if self.rng.chance(0.35 + forage) => {
+                self.drops
+                    .push(Drop::item(Item::Heartleaf, 1, at, &mut self.rng));
+            }
+            _ => {}
+        }
+        if self.rng.chance(0.25 + forage) {
+            self.drops
+                .push(Drop::item(Item::Heartleaf, 1, at, &mut self.rng));
+        }
+        if self.rng.chance(0.06 + forage * 0.5) {
+            let seed = self.forage_seed();
+            self.drops.push(Drop::item(seed, 1, at, &mut self.rng));
         }
     }
 
@@ -1922,6 +2072,46 @@ impl Play {
         }
     }
 
+    /// The way out of something at `at` towards the hero, along the ground.
+    pub fn facing_out(&self, at: Vec3) -> Vec3 {
+        let d = self.player.world_pos() - at;
+        let v = Vec3::new(d.x, 0.0, d.z);
+        if v.length_squared() < 1e-6 {
+            Vec3::Z
+        } else {
+            v.normalize()
+        }
+    }
+
+    /// A blade or tool glancing off something hard in front of the hero: sparks fly.
+    /// Returns true if there was something hard there.
+    fn strike_hard(&mut self, x: i32, z: i32, io: &mut Io) -> bool {
+        let w = self.world();
+        let hard_wall = matches!(
+            w.wall(x, z),
+            Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Bedrock | Wall::Cliff
+        ) && w.inside(x, z);
+        let hard_obj = w.obj(x, z).is_some_and(|o| {
+            matches!(
+                o,
+                Obj::Rock { .. }
+                    | Obj::Boulder { .. }
+                    | Obj::Crystal { .. }
+                    | Obj::Stalagmite { .. }
+            )
+        });
+        if !hard_wall && !hard_obj {
+            return false;
+        }
+        let at = tile_center(x, z);
+        let out = self.facing_out(at);
+        let (reach, high) = if hard_wall { (0.5, 0.5) } else { (0.3, 0.3) };
+        self.fx.sparks(at + out * reach + Vec3::Y * high, out, 6);
+        io.audio
+            .play_at(Sfx::Clang, 0.5, 1.05 + self.rng.f32() * 0.2);
+        true
+    }
+
     /// A lucky extra drop (Bounty) when breaking something.
     fn bounty(&mut self) -> bool {
         let b = self.player.sheet.frac(Stat::Bounty, 90);
@@ -1943,7 +2133,9 @@ impl Play {
             let dmg = w.wall_dmg.entry(i).or_insert(0);
             *dmg += power as i16;
             let broke = *dmg as i32 >= hard;
-            let face = at + Vec3::new(0.0, 0.5, 0.5);
+            // Struck on the side facing the hero.
+            let out = self.facing_out(at);
+            let face = at + out * 0.5 + Vec3::Y * 0.5;
             let chips = match wall {
                 Wall::Ore(o) => crate::assets::ORE_COLORS[o as usize % 6].to_vec(),
                 Wall::Timber => vec![CLAY, RUST],
@@ -1951,6 +2143,12 @@ impl Play {
             };
             self.fx.burst(face, 5, &chips, 2.0, 1.5);
             io.audio.play(Sfx::Mine);
+            if wall != Wall::Timber {
+                let n = if matches!(wall, Wall::Ore(_)) { 11 } else { 7 };
+                self.fx.sparks(face, out, n);
+                io.audio
+                    .play_at(Sfx::Clang, 0.45, 0.9 + self.rng.f32() * 0.25);
+            }
             if broke {
                 self.world_mut().set_wall(x, z, Wall::None);
                 io.audio.play(Sfx::Break);
@@ -2024,6 +2222,20 @@ impl Play {
             }
             return;
         };
+        if matches!(
+            o,
+            Obj::Rock { .. } | Obj::Boulder { .. } | Obj::Crystal { .. } | Obj::Stalagmite { .. }
+        ) {
+            let out = self.facing_out(at);
+            let high = if matches!(o, Obj::Rock { .. }) {
+                0.2
+            } else {
+                0.4
+            };
+            self.fx.sparks(at + out * 0.3 + Vec3::Y * high, out, 7);
+            io.audio
+                .play_at(Sfx::Clang, 0.4, 0.95 + self.rng.f32() * 0.25);
+        }
         match o {
             Obj::Rock { hp, var } => {
                 let hp = hp - power as i16;
@@ -2192,6 +2404,7 @@ impl Play {
                 }
             }
             Obj::Weed { .. } => self.hit_soft(x, z, io),
+            Obj::Shrub { .. } => self.cut_shrub(x, z, power * 2, io),
             Obj::Crate { .. } => self.hit_soft(x, z, io),
             Obj::Fence | Obj::Bench | Obj::Workbench | Obj::Chest { .. } => {
                 self.pick_up(x, z, o, io)
@@ -2239,10 +2452,7 @@ impl Play {
         if let Some(Obj::Weed { .. } | Obj::Flower { .. }) = self.farm.obj(x, z) {
             self.hit_soft(x, z, io);
         }
-        if matches!(self.farm.floor(x, z), Floor::Grass | Floor::Soil)
-            && self.farm.obj(x, z).is_none()
-            && self.farm.wall(x, z) == Wall::None
-        {
+        if tillable(&self.farm, x, z) && self.farm.obj(x, z).is_none() {
             self.farm.set_floor(x, z, Floor::Tilled);
             io.audio.play(Sfx::Till);
             self.fx
@@ -2480,4 +2690,10 @@ pub fn transfer(from: &mut Inventory, slot: usize, to: &mut Inventory) {
             None
         };
     }
+}
+
+/// The Ward bubble pops (a new day, a fall in the Hollow).
+fn p_ward_off(p: &mut Player) {
+    p.ward = 0.0;
+    p.ward_t = 0.0;
 }

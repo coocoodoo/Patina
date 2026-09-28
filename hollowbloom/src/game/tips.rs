@@ -266,6 +266,19 @@ impl Play {
                     lines.push(l);
                 }
             }
+            Kind::Potion { hp, mana, energy } => {
+                let mut t = String::from("Potion -");
+                if hp > 0 {
+                    t += &format!(" +{hp} HP");
+                }
+                if mana > 0 {
+                    t += &format!(" +{mana} mana");
+                }
+                if energy > 0 {
+                    t += &format!(" +{energy} energy");
+                }
+                lines.push(line(t, PINK));
+            }
             Kind::Coin(_) => lines.push(line("Money", GOLD)),
             Kind::Gem => lines.push(line("Gem", AQUA)),
             Kind::Relic => lines.push(line("Treasure - Burrowby loves these", GOLD)),

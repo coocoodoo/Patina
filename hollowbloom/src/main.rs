@@ -26,13 +26,15 @@ OPTIONS:
     --mute          start without sound
     --shots DIR     render a tour of the game to PNG files in DIR (no window needed)
     --wardrobe FILE render the hero in every piece of gear to one PNG
+    --magic-shots DIR  render jelly slimes, sparks, grass, potions and spells
     --bench         measure rendering speed
     -h, --help      show this help
 
 CONTROLS:
     WASD / arrows        move            Space / Shift   dodge roll
-    J / Z / left click   use tool        E / right click interact, eat, place
-    1-0 / wheel / Q R    hotbar          Tab / I         bag      C  crafting
+    J / Z / left click   use tool        E / right click interact, eat, drink, place
+    1-0 / wheel / [ ]    hotbar          Q / R           cast your two spells
+    Tab / I              bag             C               crafting (and brewing)
     L                    quest journal   E near someone  talk, give gifts, take quests
     M                    minimap         Esc             pause    F11 fullscreen   F12 screenshot
 ";
@@ -62,6 +64,10 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--folk-shots") {
         headless::folk_shots(args.get(i + 1).map(String::as_str).unwrap_or("folk"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--magic-shots") {
+        headless::magic_shots(args.get(i + 1).map(String::as_str).unwrap_or("magic"));
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--town-shots") {

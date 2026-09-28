@@ -13,6 +13,7 @@ use crate::game::loot::{self, Fortune};
 use crate::game::menus::{self, Menu, Pick, ShopTab, Tab};
 use crate::game::play::{Play, Trans};
 use crate::game::player::{Act, ActKind};
+use crate::game::spells::Spell;
 use crate::game::world::{Floor, Obj, WATERED};
 use crate::game::{Game, Io, State};
 use crate::input::Input;
@@ -712,6 +713,321 @@ pub fn shots(dir: &str) {
     // The road to town, Bramblewick and its people.
     town_shots(dir.to_str().unwrap_or("shots"));
     folk_shots(dir.to_str().unwrap_or("shots"));
+    magic_shots(dir.to_str().unwrap_or("shots"));
+}
+
+/// Jelly, sparks, the breeze in the grass, spells and potions.
+pub fn magic_shots(dir: &str) {
+    let dir = Path::new(dir);
+    let _ = std::fs::create_dir_all(dir);
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(77);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+    }
+
+    // A wobbly gathering: a slime from every biome, and a ghost drifting through.
+    descend(&mut game, &input, &audio, 2, false);
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.drops.clear();
+        let w = &p.level.as_ref().unwrap().world;
+        let (px, pz) = p.player.tile();
+        let mut spots = Vec::new();
+        for dz in -3..=3 {
+            for dx in -4..=4 {
+                let (x, z) = (px + dx, pz + dz);
+                if (dx, dz) != (0, 0) && !w.blocked(x, z) && (dx + dz) % 2 == 0 {
+                    spots.push((x, z));
+                }
+            }
+        }
+        for (b, &(x, z)) in spots.iter().take(6).enumerate() {
+            let mut f = crate::game::foes::Enemy::new(
+                crate::game::dungeon::Foe::Slime,
+                x as f32 + 0.5,
+                z as f32 + 0.5,
+                2,
+                b,
+                false,
+                b as u32 * 7,
+            );
+            f.yaw = (p.player.pos.x - f.pos.x).atan2(p.player.pos.y - f.pos.y);
+            f.anim = b as f32 * 0.9;
+            p.foes.push(f);
+        }
+        if let Some(&(x, z)) = spots.get(7) {
+            let mut g = crate::game::foes::Enemy::new(
+                crate::game::dungeon::Foe::Ghost,
+                x as f32 + 0.5,
+                z as f32 + 0.5,
+                2,
+                2,
+                false,
+                99,
+            );
+            g.yaw = 0.4;
+            p.foes.push(g);
+        }
+        p.player.facing = Vec2::new(0.0, 1.0);
+    }
+    tick(&mut game, &input, &audio, 2);
+    {
+        let p = play(&mut game);
+        for f in p.foes.iter_mut() {
+            f.alert = false;
+        }
+    }
+    snap(&mut game, &mut r, &input, dir, "m01_jelly_slimes");
+
+    // Steel on stone: sparks fly and light up the dark.
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        let at = p.player.world_pos() + glam::Vec3::new(0.4, 0.5, 0.9);
+        for k in 0..3 {
+            p.fx.sparks(
+                at + glam::Vec3::new(k as f32 * 0.2, 0.0, 0.0),
+                glam::Vec3::new(-0.3, 0.0, -1.0),
+                12,
+            );
+        }
+    }
+    tick(&mut game, &input, &audio, 9);
+    snap(&mut game, &mut r, &input, dir, "m02_sparks");
+
+    // A breezy afternoon on the farm: tall grass, weeds and wild bushes.
+    {
+        let p = play(&mut game);
+        p.fade = None;
+        p.start_fade(Trans::Home);
+    }
+    tick(&mut game, &input, &audio, 60);
+    {
+        let p = play(&mut game);
+        p.clock.min = 14.0 * 60.0;
+        p.player.pos = Vec2::new(40.5, 30.5);
+        p.player.facing = Vec2::new(0.0, 1.0);
+        p.banner = None;
+    }
+    tick(&mut game, &input, &audio, 40);
+    snap(&mut game, &mut r, &input, dir, "m03_breezy_farm");
+
+    // Brewing: the Potions page of the crafting book.
+    {
+        let p = play(&mut game);
+        for (item, n) in [
+            (Item::Vial, 9),
+            (Item::Heartleaf, 5),
+            (Item::Blueberry, 6),
+            (Item::SlimeGel, 4),
+        ] {
+            p.player.inv.add(item, n);
+        }
+        let cat = 1 + crate::game::items::CATS
+            .iter()
+            .position(|c| *c == crate::game::items::Cat::Potions)
+            .unwrap();
+        p.menu = Menu::Inventory {
+            tab: Tab::Craft,
+            cursor: 0,
+            recipe: 1,
+            scroll: 0,
+            cat,
+        };
+    }
+    tick(&mut game, &input, &audio, 3);
+    snap(&mut game, &mut r, &input, dir, "m04_brewing_potions");
+
+    // The Starfall Spellery, in town.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.clock.min = 16.5 * 60.0;
+        p.ride_bus(true);
+        p.bus = None;
+        p.player.pos = Vec2::new(54.5, 42.6);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    }
+    tick(&mut game, &input, &audio, 30);
+    play(&mut game).banner = None;
+    snap(&mut game, &mut r, &input, dir, "m05_spellery_outside");
+    {
+        let p = play(&mut game);
+        p.enter_place(crate::game::town::Place::Spellery);
+    }
+    tick(&mut game, &input, &audio, 40);
+    {
+        let p = play(&mut game);
+        let (kx, kz) = p.room.as_ref().map_or((7, 1), |r| r.keeper);
+        p.player.pos = Vec2::new(kx as f32 + 0.5, kz as f32 + 2.6);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    }
+    tick(&mut game, &input, &audio, 10);
+    snap(&mut game, &mut r, &input, dir, "m06_spellery_inside");
+    // Meeting Hazel: a free Firebolt.
+    {
+        let p = play(&mut game);
+        if let Some(i) = p
+            .folk
+            .iter()
+            .position(|n| n.who == crate::game::folk::Villager::Hazel)
+        {
+            let mut io = Io {
+                dt: 1.0 / 60.0,
+                input: &input,
+                audio: &audio,
+                view: (W, H),
+                quit: false,
+                toggle_fullscreen: false,
+            };
+            p.talk_to(i, &mut io);
+        }
+    }
+    tick(&mut game, &input, &audio, 400);
+    snap(&mut game, &mut r, &input, dir, "m07_meet_hazel");
+    {
+        let p = play(&mut game);
+        p.money = 25_000;
+        p.deepest = 26;
+        for sp in [Spell::Mend, Spell::Bloom, Spell::ChainSpark] {
+            p.spells.learn(sp);
+        }
+        p.spells.get_mut(Spell::Firebolt).unwrap().practise(130);
+        p.spells.get_mut(Spell::Mend).unwrap().practise(30);
+        p.menu = Menu::Spells { tab: 0, sel: 5 };
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "m08_spells_learn");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Spells { tab: 1, sel: 3 };
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "m09_attuning_circle");
+
+    // Spells in the Hollow.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.leave_place();
+        p.spells.learn(Spell::Starfall);
+        p.spells.learn(Spell::Ward);
+        p.spells.learn(Spell::FrostNova);
+        p.player.base_mana = 400;
+        p.player.level = 14;
+        p.fade = None;
+        p.start_fade(Trans::Descend {
+            depth: 14,
+            via_waystone: false,
+        });
+    }
+    tick(&mut game, &input, &audio, 60);
+    let casts: [(&str, Spell, usize); 5] = [
+        ("m10_firebolt", Spell::Firebolt, 9),
+        ("m11_chain_spark", Spell::ChainSpark, 22),
+        ("m12_starfall", Spell::Starfall, 42),
+        ("m13_frost_nova", Spell::FrostNova, 26),
+        ("m14_ward", Spell::Ward, 30),
+    ];
+    for (name, spell, wait) in casts {
+        {
+            let p = play(&mut game);
+            p.banner = None;
+            p.player.mana = 400.0;
+            p.player.hp = p.player.max_hp();
+            p.spells.slots = [Some(spell), Some(Spell::Mend)];
+            p.spells.cool = [0.0; 2];
+            p.player.act = None;
+            // Bring a few foes close.
+            let pp = p.player.pos;
+            let mut k = 0;
+            for f in p.foes.iter_mut() {
+                if k < 4 && !f.boss {
+                    let a = k as f32 * 1.1 - 0.4;
+                    let target = pp + Vec2::new(a.cos(), a.sin() * 0.8 + 0.6) * 2.6;
+                    if !p
+                        .level
+                        .as_ref()
+                        .unwrap()
+                        .world
+                        .blocked(target.x as i32, target.y as i32)
+                    {
+                        f.pos = target;
+                        f.alert = true;
+                        f.hp = f.max_hp * 10;
+                        k += 1;
+                    }
+                }
+            }
+            p.player.facing = Vec2::new(0.4, 0.9).normalize();
+            p.aim = None;
+            let mut io = Io {
+                dt: 1.0 / 60.0,
+                input: &input,
+                audio: &audio,
+                view: (W, H),
+                quit: false,
+                toggle_fullscreen: false,
+            };
+            p.begin_cast(0, &mut io);
+        }
+        tick(&mut game, &input, &audio, wait);
+        snap(&mut game, &mut r, &input, dir, name);
+    }
+
+    // Bloom on the farm: water and a growth spurt.
+    {
+        let p = play(&mut game);
+        p.fade = None;
+        p.start_fade(Trans::Home);
+    }
+    tick(&mut game, &input, &audio, 60);
+    {
+        let p = play(&mut game);
+        p.clock.min = 11.0 * 60.0;
+        p.banner = None;
+        p.player.pos = Vec2::new(26.5, 14.5);
+        p.player.facing = Vec2::new(0.0, 1.0);
+        for z in 13..18 {
+            for x in 23..30 {
+                if p.farm.obj(x, z).is_none() {
+                    p.farm.set_floor(x, z, Floor::Tilled);
+                    p.farm.set_obj(
+                        x,
+                        z,
+                        Some(Obj::Crop {
+                            crop: Crop::Strawberry,
+                            days: 3,
+                            harvested: false,
+                        }),
+                    );
+                }
+            }
+        }
+        p.spells.slots = [Some(Spell::Bloom), Some(Spell::Mend)];
+        p.spells.get_mut(Spell::Bloom).unwrap().practise(400);
+        p.spells.cool = [0.0; 2];
+        p.player.mana = 300.0;
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &input,
+            audio: &audio,
+            view: (W, H),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        p.begin_cast(0, &mut io);
+    }
+    tick(&mut game, &input, &audio, 16);
+    snap(&mut game, &mut r, &input, dir, "m15_bloom");
 }
 
 /// Renders the hero in an outfit into a cell of a sheet.

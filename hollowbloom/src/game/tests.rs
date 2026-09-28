@@ -1563,3 +1563,251 @@ fn town_and_shops_render_in_palette() {
         }
     }
 }
+
+// ------------------------------------------------------------------------------------------
+// The wild farm, potions and spells
+// ------------------------------------------------------------------------------------------
+
+use super::spells::Spell;
+
+#[test]
+fn hoe_turns_paths_and_sand_too() {
+    let mut s = Sim::new();
+    // The path south of the house, and a patch of sand.
+    s.play.farm.set_floor(30, 16, Floor::Sand);
+    s.play.farm.set_obj(30, 16, None);
+    for (x, z) in [(29, 16), (30, 16)] {
+        s.stand(x, z - 1, Vec2::new(0.0, 1.0));
+        s.select(1);
+        s.tap(KeyCode::KeyJ, 40);
+        assert_eq!(s.play.farm.floor(x, z), Floor::Tilled, "tile {x},{z} tills");
+    }
+    // The road to town stays a road.
+    let (rx, rz) = (super::farm::ROAD_X, 20);
+    assert!(!super::farm::tillable(&s.play.farm, rx, rz));
+}
+
+#[test]
+fn nights_bring_weeds_and_wild_bushes() {
+    let mut s = Sim::new();
+    let count =
+        |p: &Play, f: &dyn Fn(&Obj) -> bool| p.farm.objs.iter().flatten().filter(|o| f(o)).count();
+    let weeds = count(&s.play, &|o| matches!(o, Obj::Weed { .. }));
+    let bushes = count(&s.play, &|o| matches!(o, Obj::Shrub { .. }));
+    for _ in 0..3 {
+        s.play.start_fade(Trans::Sleep { passed_out: false });
+        s.frames(60);
+        s.tap(KeyCode::KeyE, 2);
+    }
+    assert!(count(&s.play, &|o| matches!(o, Obj::Weed { .. })) > weeds + 10);
+    assert!(count(&s.play, &|o| matches!(o, Obj::Shrub { .. })) > bushes + 3);
+    // Only on open ground: never on paths, dug soil or the road.
+    let w = &s.play.farm;
+    for z in 0..w.h {
+        for x in 0..w.w {
+            if matches!(w.obj(x, z), Some(Obj::Shrub { .. })) {
+                assert!(
+                    matches!(w.floor(x, z), Floor::Grass | Floor::Soil),
+                    "bush on {x},{z}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn wild_bushes_come_out_with_an_axe() {
+    let mut s = Sim::new();
+    clear_farm_tile(&mut s.play, 36, 25);
+    clear_farm_tile(&mut s.play, 36, 26);
+    s.play
+        .farm
+        .set_obj(36, 26, Some(Obj::Shrub { var: 1, hp: 4 }));
+    s.stand(36, 25, Vec2::new(0.0, 1.0));
+    s.select(3);
+    for _ in 0..6 {
+        if s.play.farm.obj(36, 26).is_none() {
+            break;
+        }
+        s.tap(KeyCode::KeyJ, 40);
+    }
+    assert!(s.play.farm.obj(36, 26).is_none(), "the bush comes out");
+    s.frames(90);
+    assert!(
+        s.play.player.inv.count(Item::Blueberry) >= 2,
+        "a berry bush leaves berries"
+    );
+}
+
+#[test]
+fn potions_brew_up_in_three_sizes() {
+    let mut s = Sim::new();
+    let inv = &mut s.play.player.inv;
+    inv.slots[10..].fill(None);
+    inv.add(Item::Vial, 8);
+    inv.add(Item::Heartleaf, 4);
+    inv.add(Item::SlimeGel, 4);
+    inv.add(Item::Amber, 1);
+    let potions = 1 + super::items::CATS
+        .iter()
+        .position(|c| *c == super::items::Cat::Potions)
+        .unwrap();
+    let craft = |s: &mut Sim, recipe: usize, times: usize| {
+        for _ in 0..times {
+            s.play.menu = Menu::Inventory {
+                tab: super::menus::Tab::Craft,
+                cursor: 0,
+                recipe,
+                scroll: 0,
+                cat: potions,
+            };
+            s.tap(KeyCode::Enter, 1);
+        }
+        s.play.menu = Menu::None;
+    };
+    craft(&mut s, 1, 4);
+    assert_eq!(s.play.player.inv.count(Item::SmallHealthPotion), 8);
+    craft(&mut s, 2, 2);
+    assert_eq!(s.play.player.inv.count(Item::HealthPotion), 2);
+    craft(&mut s, 3, 1);
+    assert_eq!(s.play.player.inv.count(Item::LargeHealthPotion), 1);
+    assert_eq!(s.play.player.inv.count(Item::SmallHealthPotion), 4);
+    assert_eq!(s.play.stats.brewed, 8 + 2 + 1);
+    // And down it goes.
+    let slot = s
+        .play
+        .player
+        .inv
+        .slots
+        .iter()
+        .position(|x| x.is_some_and(|st| st.item == Item::LargeHealthPotion))
+        .unwrap();
+    s.play.player.inv.slots.swap(slot, 9);
+    s.play.player.hp = 5;
+    s.select(9);
+    s.tap(KeyCode::KeyJ, 5);
+    assert_eq!(s.play.player.hp, s.play.player.max_hp());
+    assert_eq!(s.play.player.inv.count(Item::LargeHealthPotion), 0);
+}
+
+#[test]
+fn spells_cost_mana_grow_with_practice_and_get_cheaper() {
+    let mut s = Sim::new();
+    s.play.spells.learn(Spell::Firebolt);
+    s.play.player.base_mana = 400;
+    s.play.player.mana = 400.0;
+    s.stand(30, 25, Vec2::new(1.0, 0.0));
+    let mana = s.play.player.mana;
+    let cost = s.play.spells.get(Spell::Firebolt).unwrap().cost();
+    s.tap(KeyCode::KeyQ, 1);
+    assert!(
+        s.play.player.mana <= mana - cost + 0.5,
+        "casting costs mana"
+    );
+    s.frames(20);
+    assert!(
+        s.play.stats.casts == 1,
+        "the spell goes off ({} casts)",
+        s.play.stats.casts
+    );
+    // Practice until it levels.
+    for _ in 0..40 {
+        s.play.player.mana = 400.0;
+        s.tap(KeyCode::KeyQ, 40);
+    }
+    let k = *s.play.spells.get(Spell::Firebolt).unwrap();
+    assert!(k.level >= 2, "practice levels it up");
+    assert!(k.cost() < cost, "and makes it cheaper");
+    // Nothing on R yet: nothing happens but a hint.
+    let before = s.play.player.mana;
+    s.tap(KeyCode::KeyR, 5);
+    assert!(s.play.player.mana >= before);
+}
+
+#[test]
+fn only_hazel_changes_your_spells() {
+    use super::talk::Say;
+    use super::town::Place;
+    let mut s = Sim::new();
+    s.play.clock.min = 700.0;
+    s.play.spells.learn(Spell::Firebolt);
+    s.play.spells.learn(Spell::Mend);
+    s.play.spells.learn(Spell::Bloom);
+    assert_eq!(
+        s.play.spells.slots,
+        [Some(Spell::Firebolt), Some(Spell::Mend)]
+    );
+    // Out in town, Hazel is just Hazel.
+    s.ride();
+    s.play.enter_place(Place::Spellery);
+    s.frames(30);
+    let i = s
+        .play
+        .folk
+        .iter()
+        .position(|n| n.who == Villager::Hazel)
+        .expect("Hazel minds the Spellery");
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.talk_to(i, &mut io);
+    let Menu::Talk { choices, .. } = &s.play.menu else {
+        panic!("talking to Hazel");
+    };
+    assert!(choices.iter().any(|(_, c)| *c == Say::Spells));
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.talk_choice(Villager::Hazel, Say::Spells, &mut io);
+    assert!(matches!(s.play.menu, Menu::Spells { .. }));
+    // The attuning circle: pick Bloom and put it on R.
+    let bloom = s
+        .play
+        .known_spells()
+        .iter()
+        .position(|x| *x == Spell::Bloom)
+        .unwrap();
+    s.play.menu = Menu::Spells { tab: 1, sel: bloom };
+    s.tap(KeyCode::KeyR, 2);
+    assert_eq!(
+        s.play.spells.slots,
+        [Some(Spell::Firebolt), Some(Spell::Bloom)]
+    );
+    // Everyone else just chats.
+    s.play.leave_place();
+    s.frames(10);
+    if let Some(j) = s.play.folk.iter().position(|n| n.who != Villager::Hazel) {
+        let mut io = frame_io(&s.input, &s.audio);
+        s.play.talk_to(j, &mut io);
+        if let Menu::Talk { choices, .. } = &s.play.menu {
+            assert!(!choices.iter().any(|(_, c)| *c == Say::Spells));
+        }
+    }
+}
+
+#[test]
+fn meeting_hazel_teaches_firebolt() {
+    let mut s = Sim::new();
+    s.play.clock.min = 700.0;
+    s.ride();
+    s.play.enter_place(super::town::Place::Spellery);
+    s.frames(30);
+    let i = s
+        .play
+        .folk
+        .iter()
+        .position(|n| n.who == Villager::Hazel)
+        .expect("Hazel minds the Spellery");
+    assert!(s.play.spells.known.is_empty());
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.talk_to(i, &mut io);
+    assert!(s.play.spells.knows(Spell::Firebolt));
+    assert_eq!(s.play.spells.slots[0], Some(Spell::Firebolt));
+}
+
+#[test]
+fn spells_and_ward_save_with_the_game() {
+    let mut p = Play::new(5);
+    p.spells.learn(Spell::Ward);
+    p.spells.get_mut(Spell::Ward).unwrap().practise(500);
+    let json = serde_json::to_string(&p.spells).unwrap();
+    let back: super::spells::Spellbook = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.known, p.spells.known);
+    assert_eq!(back.slots, p.spells.slots);
+}

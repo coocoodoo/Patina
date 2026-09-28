@@ -34,9 +34,11 @@ pub enum Place {
     Seeds,
     Bakery,
     Tavern,
+    /// The Starfall Spellery: spells and potions.
+    Spellery,
 }
 
-pub const PLACES: [Place; 11] = [
+pub const PLACES: [Place; 12] = [
     Place::Hall,
     Place::Guild,
     Place::Scrolls,
@@ -48,6 +50,7 @@ pub const PLACES: [Place; 11] = [
     Place::Seeds,
     Place::Bakery,
     Place::Tavern,
+    Place::Spellery,
 ];
 
 pub struct PlaceDef {
@@ -84,7 +87,7 @@ impl Place {
     }
 }
 
-pub static PLACE_DEFS: [PlaceDef; 11] = [
+pub static PLACE_DEFS: [PlaceDef; 12] = [
     PlaceDef {
         name: "Town Hall",
         trade: "Mayor's office",
@@ -305,6 +308,26 @@ pub static PLACE_DEFS: [PlaceDef; 11] = [
             "       D       ",
         ],
     },
+    PlaceDef {
+        name: "Starfall Spellery",
+        trade: "Spells and potions",
+        paper: 6,
+        floor: Floor::Carpet,
+        open: (600.0, 1320.0),
+        goods: 10,
+        layout: &[
+            "##W##L###L##W##",
+            "#B.u...K...u.B#",
+            "#....CCCCC....#",
+            "#.............#",
+            "#s...........s#",
+            "#.....___.....#",
+            "#p....___....p#",
+            "#s....___....s#",
+            "#.............#",
+            "       D       ",
+        ],
+    },
 ];
 
 /// Walls, roof and trim for a building.
@@ -403,7 +426,7 @@ const SLATE_ROOF: [u8; 3] = [SLATE, INDIGO, INK];
 const TEAL_ROOF: [u8; 3] = [AQUA, TEAL, DEEP_TEAL];
 const PINK_ROOF: [u8; 3] = [BLUSH, PINK, CRIMSON];
 
-pub static BUILDINGS: [Building; 19] = [
+pub static BUILDINGS: [Building; 20] = [
     Building {
         name: "The Lantern Guild",
         place: Some(Place::Guild),
@@ -679,6 +702,24 @@ pub static BUILDINGS: [Building; 19] = [
         look: Look {
             extra: Extra::Telescope,
             ..look(Facade::Plaster, SKY_PLASTER, PURPLE_ROOF, GOLD)
+        },
+    },
+    Building {
+        name: "Starfall Spellery",
+        place: Some(Place::Spellery),
+        x: 51,
+        z: 41,
+        w: 7,
+        d: 5,
+        door: 3,
+        look: Look {
+            sign: Some("spellbook"),
+            awning: Some((INDIGO, GOLD)),
+            tall: true,
+            gable: true,
+            extra: Extra::Turret,
+            door: GRAPE,
+            ..look(Facade::Stone, [LAVENDER, PURPLE, GRAPE], TEAL_ROOF, GOLD)
         },
     },
 ];

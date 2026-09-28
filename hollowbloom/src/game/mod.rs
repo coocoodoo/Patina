@@ -12,6 +12,7 @@ pub mod gear;
 pub mod hud;
 pub mod items;
 pub mod loot;
+pub mod magic;
 pub mod menus;
 pub mod play;
 pub mod player;
@@ -19,6 +20,8 @@ pub mod quests;
 pub mod save;
 pub mod scene;
 pub mod shops;
+pub mod spellery;
+pub mod spells;
 pub mod talk;
 #[cfg(test)]
 mod tests;
@@ -246,6 +249,8 @@ impl Game {
                     clear: DEEP_TEAL,
                     time: t.t,
                     night: 0.0,
+                    wind: 1.0,
+                    push: glam::Vec2::new(29.5, 11.5),
                 };
                 draw::draw_world(r, a, &mut t.farm, &env, &[]);
                 // The hero, idling by the house.

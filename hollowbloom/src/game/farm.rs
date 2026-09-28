@@ -34,6 +34,17 @@ pub const MARKS: Landmarks = Landmarks {
     stop: (57, 18),
 };
 
+/// Can the hoe turn this tile? Any open ground on the farm will do: lawn, bare soil, the
+/// paths and the sand by the pond. Not water, walls, laid floors or the road to town.
+pub fn tillable(w: &World, x: i32, z: i32) -> bool {
+    matches!(
+        w.floor(x, z),
+        Floor::Grass | Floor::Soil | Floor::Path | Floor::Sand
+    ) && w.wall(x, z) == Wall::None
+        && w.obj(x, z)
+            .is_none_or(|o| matches!(o, Obj::Weed { .. } | Obj::Flower { .. }))
+}
+
 fn reserved(x: i32, z: i32) -> bool {
     // Keep structures, paths and the starter field clear of clutter.
     let near = |cx: i32, cz: i32, rx: i32, rz: i32| (x - cx).abs() <= rx && (z - cz).abs() <= rz;
@@ -266,6 +277,10 @@ pub fn generate(seed: u64) -> World {
     place(&mut w, &mut r, 40, &|r| Obj::Flower {
         var: r.below(4) as u8,
     });
+    place(&mut w, &mut r, 14, &|r| Obj::Shrub {
+        var: [0, 0, 1, 2][r.below(4)],
+        hp: 4,
+    });
     w
 }
 
@@ -322,6 +337,8 @@ pub fn lay_road(w: &mut World) {
 pub struct Night {
     pub grown: u32,
     pub ready: u32,
+    /// Weeds, flowers and bushes that sprang up.
+    pub sprouted: u32,
 }
 
 /// Advances the farm by one day.
@@ -412,12 +429,55 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
             }
         }
     }
-    // A few new weeds and flowers keep the farm alive.
-    for _ in 0..6 {
-        let x = r.range(3, w.w - 3);
-        let z = r.range(4, w.h - 3);
-        if w.floor(x, z) == Floor::Grass && w.obj(x, z).is_none() && !reserved(x, z) {
-            let o = if r.chance(0.7) {
+    night.sprouted = grow_wild(w, &mut r);
+    night
+}
+
+/// Overnight the wild creeps back in: weeds, wildflowers and the odd bush spring up on empty
+/// ground. Never on paths, dug soil or right by the house, and it eases off once the farm is
+/// already overgrown. Returns how many things sprouted.
+pub fn grow_wild(w: &mut World, r: &mut Rng) -> u32 {
+    let wild = w
+        .objs
+        .iter()
+        .flatten()
+        .filter(|o| matches!(o, Obj::Weed { .. } | Obj::Shrub { .. }))
+        .count();
+    let (weeds, bushes) = if wild > 260 {
+        (2, 0)
+    } else if wild > 180 {
+        (5, 1)
+    } else {
+        (9 + r.below(6), 2 + r.below(3))
+    };
+    let mut sprouted = 0;
+    let mut place = |w: &mut World, r: &mut Rng, n: usize, bush: bool| {
+        let mut left = n;
+        for _ in 0..n * 25 {
+            if left == 0 {
+                break;
+            }
+            let x = r.range(3, w.w - 3);
+            let z = r.range(4, w.h - 3);
+            let open = matches!(w.floor(x, z), Floor::Grass | Floor::Soil)
+                && w.obj(x, z).is_none()
+                && w.wall(x, z) == Wall::None
+                && !reserved(x, z);
+            // Bushes keep a step back from paths so they never block the way.
+            let roomy = !bush
+                || [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|(dx, dz)| {
+                    !matches!(
+                        w.floor(x + dx, z + dz),
+                        Floor::Path | Floor::Planks | Floor::Cobble | Floor::Street
+                    )
+                });
+            if !open || !roomy {
+                continue;
+            }
+            let o = if bush {
+                let var = [0, 0, 0, 1, 1, 2][r.below(6)];
+                Obj::Shrub { var, hp: 4 }
+            } else if r.chance(0.82) {
                 Obj::Weed {
                     var: r.below(2) as u8,
                 }
@@ -427,7 +487,11 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
                 }
             };
             w.set_obj(x, z, Some(o));
+            left -= 1;
+            sprouted += 1;
         }
-    }
-    night
+    };
+    place(w, r, weeds, false);
+    place(w, r, bushes, true);
+    sprouted
 }

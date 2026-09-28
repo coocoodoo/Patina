@@ -25,10 +25,47 @@ pub struct Popup {
     pub big: bool,
 }
 
+/// A hot spark thrown off when metal strikes something hard. It streaks and bounces, cools
+/// from white through gold to a dull red, and lights up the ground around it as it goes.
+pub struct Spark {
+    pub pos: Vec3,
+    pub prev: Vec3,
+    pub vel: Vec3,
+    pub life: f32,
+    pub max: f32,
+    /// Shards of ice rather than hot metal.
+    pub cold: bool,
+}
+
+impl Spark {
+    /// 1 when it leaves the anvil, 0 when it goes out.
+    pub fn heat(&self) -> f32 {
+        (self.life / self.max).clamp(0.0, 1.0)
+    }
+
+    pub fn color(&self) -> u8 {
+        if self.cold {
+            return match self.heat() {
+                h if h > 0.6 => WHITE,
+                h if h > 0.3 => SKY,
+                _ => BLUE,
+            };
+        }
+        match self.heat() {
+            h if h > 0.72 => WHITE,
+            h if h > 0.5 => CREAM,
+            h if h > 0.3 => GOLD,
+            h if h > 0.14 => ORANGE,
+            _ => RUST,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Fx {
     pub parts: Vec<Particle>,
     pub pops: Vec<Popup>,
+    pub sparks: Vec<Spark>,
     pub rng: Option<Rng>,
 }
 
@@ -101,6 +138,56 @@ impl Fx {
         }
     }
 
+    /// A spray of `n` sparks from a hard hit at `pos`, flying off along `away` (the way out
+    /// of the surface that was struck) and upwards.
+    pub fn sparks(&mut self, pos: Vec3, away: Vec3, n: usize) {
+        let away = away.normalize_or_zero();
+        for _ in 0..n {
+            let r = self.rng();
+            let spray = Vec3::new(
+                r.range_f(-1.0, 1.0),
+                r.range_f(0.2, 1.3),
+                r.range_f(-1.0, 1.0),
+            );
+            let speed = r.range_f(3.5, 7.5);
+            let vel = (away * 1.1 + spray).normalize_or_zero() * speed;
+            let life = r.range_f(0.22, 0.6);
+            self.sparks.push(Spark {
+                pos,
+                prev: pos,
+                vel,
+                life,
+                max: life,
+                cold: false,
+            });
+        }
+        // Keep a lid on it when everything is being hit at once.
+        if self.sparks.len() > 90 {
+            let extra = self.sparks.len() - 90;
+            self.sparks.drain(..extra);
+        }
+    }
+
+    /// Shards of ice flung out in a ring along the ground (Frost Nova).
+    pub fn ice(&mut self, pos: Vec3, n: usize, speed: f32) {
+        for i in 0..n {
+            let r = self.rng();
+            let a = i as f32 / n as f32 * std::f32::consts::TAU + r.range_f(-0.1, 0.1);
+            let s = speed * r.range_f(0.8, 1.2);
+            let vel = Vec3::new(a.cos() * s, r.range_f(0.6, 2.0), a.sin() * s);
+            let life = r.range_f(0.35, 0.6);
+            let p = pos + Vec3::Y * 0.2;
+            self.sparks.push(Spark {
+                pos: p,
+                prev: p,
+                vel,
+                life,
+                max: life,
+                cold: true,
+            });
+        }
+    }
+
     pub fn popup(&mut self, pos: Vec3, text: impl Into<String>, color: u8) {
         self.pops.push(Popup {
             text: text.into(),
@@ -133,6 +220,21 @@ impl Fx {
             p.life -= dt;
         }
         self.parts.retain(|p| p.life > 0.0);
+        for s in &mut self.sparks {
+            s.prev = s.pos;
+            s.vel.y -= 11.0 * dt;
+            // A little drag, so they arc and settle.
+            s.vel *= (1.0 - dt * 1.5).max(0.0);
+            s.pos += s.vel * dt;
+            if s.pos.y < 0.02 {
+                s.pos.y = 0.02;
+                s.vel.y = s.vel.y.abs() * 0.45;
+                s.vel.x *= 0.6;
+                s.vel.z *= 0.6;
+            }
+            s.life -= dt;
+        }
+        self.sparks.retain(|s| s.life > 0.0);
         for p in &mut self.pops {
             p.t += dt;
         }
@@ -142,6 +244,42 @@ impl Fx {
     pub fn draw(&self, r: &mut Renderer) {
         for p in &self.parts {
             r.point(p.pos, p.size, p.color);
+        }
+        for s in &self.sparks {
+            let h = s.heat();
+            // A soft glow first, then the bright streak on top of it.
+            let glow = match (s.cold, h > 0.5) {
+                (true, _) => SKY,
+                (false, true) => GOLD,
+                (false, false) => ORANGE,
+            };
+            r.halo(s.pos, 0.06 + h * 0.12, glow, 0.25 + h * 0.5);
+            let c = s.color();
+            let tail = s.prev + (s.prev - s.pos) * 0.6;
+            let trail = if s.cold { SKY } else { GOLD };
+            for k in 0..3 {
+                r.point(
+                    tail.lerp(s.pos, k as f32 / 2.0),
+                    1,
+                    if k == 2 { c } else { trail },
+                );
+            }
+            if h > 0.75 {
+                r.point(s.pos, 2, WHITE);
+            }
+        }
+    }
+
+    /// The light the sparks throw on their surroundings, a few at a time.
+    pub fn spark_lights(&self, out: &mut Vec<crate::render::PointLight>) {
+        for s in self.sparks.iter().rev().step_by(3).take(12) {
+            let h = s.heat();
+            out.push(crate::render::PointLight {
+                pos: s.pos + Vec3::Y * 0.1,
+                radius: 1.4 + h * 1.4,
+                power: 0.25 + h * 0.5,
+                warmth: if s.cold { 1.0 } else { 7.0 },
+            });
         }
     }
 }

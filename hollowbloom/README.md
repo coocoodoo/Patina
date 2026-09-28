@@ -7,14 +7,16 @@ Your little farm sits right on top of *the Hollow*, a cave that goes down foreve
 dig your way through procedurally generated floors, bring home the strange seeds, ores and
 treasures you find, and grow them into a farm that helps you go deeper. Every tenth floor a
 guardian watches over a waystone that can take you home. Down the road, a bus runs to
-**Bramblewick**, where nineteen villagers have shops to keep, stories to tell and more than a
-hundred things they would love a hand with.
+**Bramblewick**, where twenty villagers have shops to keep, stories to tell and more than a
+hundred things they would love a hand with. Learn **spells** from the town's spellwright,
+**brew potions** in three sizes, and watch the grass ripple in the breeze.
 
 Everything you see is low-poly 3D with pixel-art textures, drawn by a small software renderer
 that **can only ever produce the 32 colours of the
 [Resurrect 32](https://lospec.com/palette-list/resurrect-32) palette** by Kerrie Lake:
 textures, lighting, shadows, dithering and UI are all palette indices, and the only RGB
-in the program is the palette itself, applied at the final blit.
+in the program is the palette itself, applied at the final blit. Even the see-through jelly of
+the slimes, the soap-bubble of a Ward spell and the glow of a spark are palette lookups.
 
 | | |
 | --- | --- |
@@ -28,6 +30,18 @@ in the program is the palette itself, applied at the final blit.
 | ![A guardian](docs/guardian.png) | ![Guardian loot](docs/loot.png) |
 | ![The waystone](docs/waystone.png) | ![Your stats](docs/stats.png) |
 | ![Crafting](docs/crafting.png) | ![The bus to town](docs/bus.png) |
+| ![Jelly slimes of every biome, and a ghost](docs/jelly-slimes.png) | ![Grass in the breeze, weeds and wild bushes](docs/breezy-farm.png) |
+| ![Sparks fly off stone](docs/sparks.png) | ![Brewing potions](docs/potions.png) |
+
+**Spells and potions**
+
+| | |
+| --- | --- |
+| ![The Starfall Spellery](docs/spellery.png) | ![Hazel, the spellwright](docs/hazel.png) |
+| ![Learning spells](docs/spells.png) | ![The attuning circle: two spells at a time](docs/attuning.png) |
+| ![Firebolt](docs/firebolt.png) | ![Chain Spark](docs/chain-spark.png) |
+| ![Starfall](docs/starfall.png) | ![Frost Nova](docs/frost-nova.png) |
+| ![Ward](docs/ward.png) | ![Bloom waters and quickens the crops](docs/bloom.png) |
 
 **Bramblewick**
 
@@ -54,10 +68,11 @@ install: it is a single executable.
 | | Keyboard | Mouse |
 | --- | --- | --- |
 | Move | WASD / arrows | |
-| Use tool, attack, cast | J or Z | left click (aims at the cursor) |
+| Use tool, attack, shoot | J or Z | left click (aims at the cursor) |
+| Cast your two spells | Q / R | (aims at the cursor) |
 | Interact, talk, harvest, eat, place, wear | E or K | right click |
 | Dodge roll | Space or Shift | |
-| Hotbar | 1-9, 0, Q / R | wheel |
+| Hotbar | 1-9, 0, [ / ] | wheel |
 | Bag, worn gear, stats / crafting | Tab or I / C | right click wears armour |
 | Quest journal, friends, records | L | |
 | Minimap (in the Hollow and in town) | M | |
@@ -66,8 +81,9 @@ install: it is a single executable.
 
 ### The farm (Stardew-style)
 
-* **Till** grass with the hoe, **plant** seeds, **water** every day with the can (refill it at
-  the pond), and **sleep** in your house to end the day. Crops grow one stage per watered day;
+* **Till** any open ground on your property with the hoe (lawn, bare soil, the paths, the
+  sand by the pond), **plant** seeds, **water** every day with the can (refill it at the
+  pond), and **sleep** in your house to end the day. Crops grow one stage per watered day;
   many (strawberries, tomatoes, corn, blueberries, Crystal Berries, Ember Peppers...) keep
   fruiting after the first harvest. **Sweep ripe crops with a sickle** to harvest a whole patch.
 * **38 crops**: turnips, potatoes, radishes, cabbages, tomatoes, strawberries, wheat, corn,
@@ -83,6 +99,13 @@ install: it is a single executable.
 * Tools cost **energy**; food restores health and energy. Stay up past 2am and you will
   collapse where you stand. Rainy days water everything for you.
 * Craft **sprinklers** from dungeon ores to automate watering (4, 8 or 24 tiles).
+* **The wild creeps back**: every night fresh weeds, wildflowers and **wild bushes** spring
+  up on empty ground. Pull weeds for fiber and the odd seed; cut bushes back with an axe,
+  sickle or sword for fiber, sticks, **heartleaf** (a potion herb) and, from berry bushes,
+  blueberries.
+* **3D grass** covers the lawns in tufts and tall meadow patches. Grass, weeds, flowers,
+  crops, bushes and trees all **sway in the wind**: gusts roll across the land in waves,
+  it blows harder in the rain, and the grass parts round your feet as you walk through it.
 * Glowcaps and Moonblooms glow at night; lamps, lit windows and fireflies keep the evenings
   cozy. There is a cat. You can pet the cat.
 
@@ -92,8 +115,8 @@ install: it is a single executable.
   it drives you to **Bramblewick**: streets and a plaza, nineteen storybook buildings, a
   stream with a park beyond it, and a bus back home whenever you like. Road corners are
   rounded, on the farm and in town.
-* **Eleven buildings you can walk into**, each a little diorama: the Town Hall, the Lantern
-  Guild, and **nine specialist shops**, each with its own shelves, **specials rolled fresh
+* **Twelve buildings you can walk into**, each a little diorama: the Town Hall, the Lantern
+  Guild, and **ten specialist shops**, each with its own shelves, **specials rolled fresh
   every morning**, and better prices for the things it deals in:
   * **Petalplate Armory** (Hilde): helmets, chest armour, leg armour, boots and shields.
   * **Sprig & Steel** (Garrick): swords, wands and staffs.
@@ -105,12 +128,13 @@ install: it is a single executable.
   * **Glimmer & Gold** (Opal): gems and curios, and 50% more for any you sell her.
   * **Cozy Nook** (Wren): lamps, benches, chests, paths and other furniture.
   * **The Lantern Guild** (Captain Rowan): delving supplies and guild spoils.
-* **Nineteen villagers** with their own looks, outfits, voices and **daily schedules**: they
+  * **Starfall Spellery** (Hazel): spells, the attuning circle, potions and potion herbs.
+* **Twenty villagers** with their own looks, outfits, voices and **daily schedules**: they
   open their shops, stroll their favourite corners of town, gather at the tavern in the
   evening and go home at night. Talk to them (they chatter in little blips, with their
   portrait in the talk box), **give gifts** (each has things they love, like and hate) and
   your **friendship** grows to ten hearts, with presents at three, six and nine.
-* **111 hand-written story quests**, five to eight from everyone in town, unlocking as you
+* **121 hand-written story quests**, five to ten from everyone in town, unlocking as you
   make friends and go deeper: find **keepsakes** lost in the Hollow (Albert's locket on floors
   2-5, Toby's mailbag, Quill's spectacles...), gather **quest drops** from creatures (slime
   hearts, bat fangs, glow oil from wisps, wishing leaves from the deep), slay, reach floors,
@@ -138,13 +162,50 @@ install: it is a single executable.
 * The biome changes every ten floors (Mossy Burrows, Crystal Grotto, Fungal Hollow, Ember
   Depths, Frost Caverns, Sunken Ruins) and then cycles, tougher each time. Each biome has its
   own creatures (slimes, bats, shroomlings, crystal crabs, wisps, beetles, imps, skeletons,
-  golems, ghosts), its own ores and its own **seeds**.
+  golems, ghosts), its own ores and its own **seeds**. Slimes are wobbly **see-through jelly**
+  with a nucleus and bubbles floating inside; ghosts are translucent too.
+* Steel on stone throws **sparks** that glow and light up the cave around them: mining rock
+  and ore, blades glancing off walls, hitting crabs, beetles, skeletons and golems, and
+  blocking with a shield.
 * **Every tenth floor** a guardian (King Slime, Crystal Matriarch, Old Capwood, Ember Lord,
   Frost Colossus, the Bone Warden) blocks the stairs and a **waystone**. Defeat it, touch the
   waystone, and you can go home. The Hollow's entrance on your farm then lets you start from
   any waystone you have attuned.
 * Fainting in the Hollow sends you home the next morning, a tenth of your money lighter. A
   Homeward Feather gets you out early.
+
+### Magic: spells and potions
+
+* **Hazel** keeps the **Starfall Spellery** at the south end of town. Meet her and she hands
+  you your first spell, **Firebolt**, for free; the others she teaches for coins once you've
+  been deep enough (or gives them away as quest rewards):
+  * **Firebolt**: a ball of fire that sets things burning. Splits in three at level 4, five
+    at level 8.
+  * **Mend**: heals you, more at every level, plus a share of your max HP from level 3.
+  * **Bloom**: waters every dug tile around you and gives the crops a chance of a growth
+    spurt. In the Hollow it bursts into vines that tangle and slow foes.
+  * **Frost Nova**: a ring of ice that hurts and slows everything near you; it freezes
+    foes solid from level 5.
+  * **Blink**: step through the air to a spot ahead, untouchable for a moment.
+  * **Chain Spark**: lightning that leaps from foe to foe, one more foe every two levels.
+  * **Ward**: a see-through bubble of light that soaks up damage, and throws some of it back
+    from level 6.
+  * **Starfall**: stars rain down on the foes around you.
+* Spells cost **mana** (it comes back on its own; Spirit gear speeds it up, Wisdom raises the
+  cap, Focus makes spells cheaper) and each has a short cooldown.
+* **Two spells at a time**, on **Q** and **R**. Which two is up to you, but you can only
+  change them at Hazel's **attuning circle**: plan your loadout before you head down.
+* **Spells grow with use.** Every cast is practice, and landing it on foes counts extra. Each
+  level (up to 10) makes a spell stronger and **5% cheaper to cast**, and some gain new tricks.
+  The HUD shows each spell's level and cooldown next to the hotbar.
+* **Potions** in three sizes, for **health**, **mana** and **energy**, brewed from the new
+  **Potions** page of the crafting book: glass vials plus heartleaf, blueberries or cave
+  carrots make two small potions; two smalls brew into a medium, two mediums into a large.
+  Potions work instantly (even mid-fight), turn up in pots and chests in the Hollow, and are
+  sold at the Spellery, the guild, the tavern and Burrowby's stall.
+* Hazel has **ten quests** of her own: cast spells, gather heartleaf, brew potions, train a
+  spell to level 4 and then to 10, calm the ghosts... with spells, big potions, wish stars
+  and her own wand as rewards.
 
 ### Loot, gear and enchanting
 
@@ -231,6 +292,7 @@ release when a `hollowbloom-v*` tag is pushed.
 hollowbloom --shots DIR           # render a tour of the game to PNGs, no display needed
 hollowbloom --town-shots DIR      # just the road to town, Bramblewick and every room
 hollowbloom --folk-shots DIR      # just villagers, talking, quests, boards and shops
+hollowbloom --magic-shots DIR     # jelly slimes, sparks, the breeze, potions, spells
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
 hollowbloom --bench               # rendering speed (about 4 ms per frame at 480x270)
 hollowbloom --palette-chart FILE  # the light maps: every colour at every light level
@@ -249,8 +311,18 @@ hollowbloom --mute                # no sound
   walls are all index operations too. Tests check that every rendered pixel is one of the 32.
 * **Lighting**: an ambient level and warmth (dawn, noon, sunset, moonlight, each biome's
   gloom) plus point lights (torches, lamps, campfires, glowing crystals and crops, the hero's
-  lantern, enemy magic) accumulated on a grid of tile corners with line-of-sight against
-  walls.
+  lantern, enemy magic, sparks, falling stars and lightning) accumulated on a grid of tile
+  corners with line-of-sight against walls.
+* **Translucency with 32 colours**: two more precomputed tables, one for *glass* (a colour
+  seen through tinted jelly: the light behind is filtered by the jelly's colour, then mixed
+  with it) and one for *glow* (light added on top), each at eight opacities. A translucent
+  surface dithers between opacities, thickening towards its silhouette (a Fresnel rim) and
+  catching a specular glint, so slimes look like gelatine and a Ward like a soap bubble.
+  Translucent things are drawn last, far to near. Soft glows round sparks and bolts are
+  dithered discs through the glow table.
+* **Wind**: grass is meshed per 8x8-tile block and bent per vertex by a wind field (a steady
+  breeze, gust fronts rolling downwind and a flutter), which also leans every plant and tree
+  and pushes grass aside round the hero's feet.
 * **Everything is procedural or written in code**: tile textures, the low-poly models
   (boxes and lathes, including a 3D look for every hat, boot, shield, weapon and tool), about
   390 item icons, crop sprites and stat symbols drawn as ASCII art, two bitmap fonts,

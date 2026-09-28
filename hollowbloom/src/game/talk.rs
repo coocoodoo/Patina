@@ -25,6 +25,8 @@ use crate::util::hash2;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Say {
     Shop,
+    /// Learn spells and choose the two you carry (Hazel only).
+    Spells,
     Chat,
     Gift,
     /// Ask about a story quest (index into `QUESTS`).
@@ -135,6 +137,11 @@ fn presents(v: Villager) -> [Reward; 3] {
             It(Item::QualitySprinkler, 3),
             Gear(Item::GoldHoe, Rarity::Epic),
         ],
+        Villager::Hazel => [
+            It(Item::LargeManaPotion, 5),
+            Reward::Spell(super::spells::Spell::Blink),
+            Gear(Item::MoonpetalWand, Rarity::Legendary),
+        ],
     }
 }
 
@@ -174,6 +181,11 @@ impl Play {
             self.friends.met[vi] = true;
             self.friends.add(who, 10);
             text = d.hello.to_string();
+            // Hazel starts every delver off with a spell.
+            if who == Villager::Hazel && self.spells.learn(super::spells::Spell::Firebolt) {
+                io.audio.play(Sfx::SpellUp);
+                self.toast_colored("Learned Firebolt! Press Q to cast it.", None, 0, GOLD);
+            }
         } else if let Some(qi) = self.quest_to_finish(who) {
             text = self.quests[qi]
                 .story()
@@ -239,6 +251,9 @@ impl Play {
         let mut v = Vec::new();
         if let (Some(p), Area::Inside(here)) = (who.def().keeps, self.area) {
             if p == here && p != town::Place::Hall {
+                if p == town::Place::Spellery {
+                    v.push(("Spells".to_string(), Say::Spells));
+                }
                 v.push(("Let's trade".to_string(), Say::Shop));
             }
         }
@@ -277,6 +292,10 @@ impl Play {
                 if let Some(p) = who.def().keeps {
                     self.menu = Menu::shop_at(p);
                 }
+                None
+            }
+            Say::Spells => {
+                self.menu = Menu::Spells { tab: 0, sel: 0 };
                 None
             }
             Say::Chat => Some((self.chat_line(who), self.talk_choices(who))),
@@ -521,6 +540,7 @@ impl Play {
                     Say::Offer(_) | Say::Accept(_) => CRIMSON,
                     Say::Gift => PLUM,
                     Say::Shop => TEAL,
+                    Say::Spells => PURPLE,
                     _ => INK,
                 };
                 let short: String = label.chars().take(17).collect();

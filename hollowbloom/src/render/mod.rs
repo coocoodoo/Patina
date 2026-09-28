@@ -13,10 +13,78 @@ pub use camera::Camera;
 pub use frame::Frame;
 pub use light::{LightGrid, PointLight, face_shade};
 pub use mesh::{BoxUv, Mesh, UvRect};
-pub use raster::{CVert, Mat, Mode, draw_tri};
+pub use raster::{CVert, Mat, Mode, draw_tri, opacity};
 pub use texture::{TexBank, TexId, Texture};
 
 use crate::palette::{FULL, LEVELS, NEUTRAL, Shading};
+
+/// Bends a mesh as it is drawn, in world space.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Warp {
+    #[default]
+    None,
+    /// Leans everything above `base` sideways, growing with the square of the height up to
+    /// `h`, where it has moved by `lean` (x, z): plants in the wind, wobbling jelly. A
+    /// negative `h` swings what hangs below `base` instead (a ghost's trailing sheet).
+    Bend { base: f32, h: f32, lean: Vec2 },
+    /// A field of grass in the breeze: every vertex leans by the `wind` where it stands,
+    /// times `amp`, growing with the square of its height above the ground up to `h`; and
+    /// blades near `push` are shoved aside by whoever is wading through them.
+    Wind {
+        t: f32,
+        amp: f32,
+        h: f32,
+        push: Vec2,
+    },
+}
+
+/// The breeze outside at a spot: which way and how hard it pushes, as a lean of about 1
+/// in a strong gust. A steady drift with gusts that roll across the land in bands, so a
+/// wave of bending grass runs downwind, and a flutter on top.
+pub fn wind(x: f32, z: f32, t: f32) -> Vec2 {
+    const DIR: Vec2 = Vec2::new(0.894, 0.447);
+    let along = x * DIR.x + z * DIR.y;
+    let across = z * DIR.x - x * DIR.y;
+    let band = (along * 0.42 - t * 2.3 + (across * 0.23).sin() * 1.8).sin() * 0.5 + 0.5;
+    let gust = band * band * band;
+    let flutter = (t * 6.1 + x * 2.3 + z * 1.7).sin() * 0.16 + (t * 3.7 - z * 1.3).sin() * 0.1;
+    DIR * (0.2 + gust * 0.95 + flutter) + Vec2::new(-DIR.y, DIR.x) * (flutter * 0.7)
+}
+
+impl Warp {
+    #[inline]
+    pub fn apply(&self, p: Vec3) -> Vec3 {
+        match *self {
+            Warp::None => p,
+            Warp::Bend { base, h, lean } => {
+                let k = ((p.y - base) / h).clamp(0.0, 1.0);
+                let k2 = k * k;
+                // Pull in a touch as it leans so stems keep their length.
+                let sink = lean.length_squared() * 0.5 * k2 / h.abs().max(0.01);
+                Vec3::new(
+                    p.x + lean.x * k2,
+                    p.y - sink * h.signum(),
+                    p.z + lean.y * k2,
+                )
+            }
+            Warp::Wind { t, amp, h, push } => {
+                if p.y <= 0.001 {
+                    return p;
+                }
+                let k = (p.y / h).clamp(0.0, 1.0);
+                let k2 = k * k;
+                let mut lean = wind(p.x, p.z, t) * amp;
+                let d = Vec2::new(p.x - push.x, p.z - push.y);
+                let dl = d.length();
+                if dl < 0.6 && dl > 1e-4 {
+                    lean += d / dl * (0.6 - dl) * 0.45;
+                }
+                let sink = (lean.length_squared() * 0.5 * k2 / h.max(0.01)).min(p.y * 0.7);
+                Vec3::new(p.x + lean.x * k2, p.y - sink, p.z + lean.y * k2)
+            }
+        }
+    }
+}
 
 /// Where a draw call takes its light from.
 #[derive(Clone, Copy, Debug)]
@@ -39,6 +107,10 @@ pub struct DrawOpts {
     pub light: Light,
     /// Lower bound on the light level (0..2), for things that glow a little.
     pub glow: f32,
+    /// Opacity (0..1) for `Mode::Glass` and `Mode::Glow`. Glass meshes thicken towards their
+    /// silhouettes and catch a specular glint, like jelly.
+    pub alpha: f32,
+    pub warp: Warp,
 }
 
 impl Default for DrawOpts {
@@ -51,6 +123,8 @@ impl Default for DrawOpts {
             screen_door: false,
             light: Light::Grid,
             glow: 0.0,
+            alpha: 1.0,
+            warp: Warp::None,
         }
     }
 }
@@ -76,6 +150,16 @@ impl DrawOpts {
     }
     pub fn with_glow(mut self, g: f32) -> Self {
         self.glow = g;
+        self
+    }
+    pub fn with_warp(mut self, w: Warp) -> Self {
+        self.warp = w;
+        self
+    }
+    /// See-through at the given opacity.
+    pub fn glass(mut self, alpha: f32) -> Self {
+        self.mode = Mode::Glass;
+        self.alpha = alpha;
         self
     }
 }
@@ -138,17 +222,32 @@ impl Renderer {
         let mut scratch = std::mem::take(&mut self.scratch);
         scratch.clear();
         let max_l = LEVELS as f32 - 0.01;
+        let glass = matches!(o.mode, Mode::Glass | Mode::Glow);
+        let flat = opacity(o.alpha);
         for v in &mesh.verts {
-            let wp = model.transform_point3(v.pos);
+            let wp = o.warp.apply(model.transform_point3(v.pos));
             let wn = (nm * v.n).normalize_or_zero();
             let (lv, wm) = fixed.unwrap_or_else(|| self.grid.sample(wp.x, wp.z));
-            let l = (lv * face_shade(wn) * v.ao).max(o.glow) * FULL;
+            let mut l = (lv * face_shade(wn) * v.ao).max(o.glow) * FULL;
+            let mut a = flat;
+            if glass {
+                // Thicker where the surface turns away (Fresnel), and a hot glint where it
+                // mirrors the key light into the eye.
+                let view = (self.cam.eye - wp).normalize_or_zero();
+                let facing = wn.dot(view).abs();
+                let rim = (1.0 - facing) * (1.0 - facing);
+                let half = (light::KEY + view).normalize_or_zero();
+                let spec = wn.dot(half).max(0.0).powi(32);
+                l += spec * 10.0 * lv.clamp(0.4, 1.2);
+                a = opacity(o.alpha + (1.0 - o.alpha) * rim * 0.9 + spec * 0.25);
+            }
             scratch.push(CVert {
                 p: self.cam.clip(wp),
                 u: v.uv.x,
                 v: v.uv.y,
                 l: l.clamp(0.0, max_l),
                 t: wm,
+                a,
             });
         }
         let remap = |t: TexId| {
@@ -187,12 +286,15 @@ impl Renderer {
         let up = self.cam.up * size.y;
         let (lv, wm) = self.light_at(base, o.light);
         let l = ((lv * 0.92).max(o.glow) * FULL).clamp(0.0, LEVELS as f32 - 0.01);
+        let a = opacity(o.alpha);
+        let warp = o.warp;
         let mk = |p: Vec3, u: f32, v: f32| CVert {
-            p: self.cam.clip(p),
+            p: self.cam.clip(warp.apply(p)),
             u,
             v,
             l,
             t: wm,
+            a,
         };
         let e = 0.02;
         let bl = mk(base - right, r.u0 + e, r.v1 - e);
@@ -215,6 +317,7 @@ impl Renderer {
     pub fn decal(&mut self, tex: &Texture, r: UvRect, center: Vec3, half: Vec2, o: &DrawOpts) {
         let (lv, wm) = self.light_at(center, o.light);
         let l = ((lv).max(o.glow) * FULL).clamp(0.0, LEVELS as f32 - 0.01);
+        let a = opacity(o.alpha);
         let mk = |x: f32, z: f32, u: f32, v: f32| CVert {
             p: self
                 .cam
@@ -223,6 +326,7 @@ impl Renderer {
             v,
             l,
             t: wm,
+            a,
         };
         let e = 0.02;
         let a = mk(-half.x, half.y, r.u0 + e, r.v1 - e);
@@ -264,5 +368,15 @@ impl Renderer {
         if let Some(s) = self.cam.project(p) {
             raster::draw_point(&mut self.fb, s.x, s.y, s.z, size, color);
         }
+    }
+
+    /// A soft glow of added light, `radius` world units across, centred on `p`.
+    pub fn halo(&mut self, p: Vec3, radius: f32, color: u8, strength: f32) {
+        let Some(s) = self.cam.project(p) else { return };
+        let Some(e) = self.cam.project(p + self.cam.right * radius) else {
+            return;
+        };
+        let px = (e.x - s.x).abs().max(1.0);
+        raster::draw_halo(&mut self.fb, &self.sh, s.x, s.y, s.z, px, color, strength);
     }
 }

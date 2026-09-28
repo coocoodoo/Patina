@@ -42,9 +42,10 @@ folk! {
     Clank,
     Mira,
     Olive,
+    Hazel,
 }
 
-pub const FOLK: usize = 19;
+pub const FOLK: usize = 20;
 
 /// Where someone is at a given time.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -131,6 +132,7 @@ const PIP_HOME: usize = 15;
 const TOBY_HOME: usize = 16;
 const CLANK_HOME: usize = 17;
 const MIRA_HOME: usize = 18;
+const SPELLERY: usize = 19;
 
 use Spot::{Inside, Town};
 
@@ -937,6 +939,61 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         close: &[
             "Your farm's the best-kept patch in the valley. Don't tell the mayor I said so.",
             "I planted a row of your favourites by my door. For you.",
+        ],
+    },
+    VillagerDef {
+        name: "Hazel",
+        title: "Spellwright",
+        look: Look {
+            eyes: GRAPE,
+            cheeks: BLUSH,
+            belt: GOLD,
+            boots: GRAPE,
+            ..look(
+                [MINT, AQUA, TEAL],
+                ROSY,
+                [LAVENDER, PURPLE, GRAPE],
+                GRAPE,
+                Hair::Long,
+                0.95,
+            )
+        },
+        wears: &[Item::WizardHat, Item::StarryLeggings],
+        holds: Some(Item::MoonpetalWand),
+        voice: 1.2,
+        keeps: Some(Place::Spellery),
+        home: SPELLERY,
+        hours: &[
+            (540.0, 600.0, Town),
+            (600.0, 1320.0, Inside(Place::Spellery)),
+            (1320.0, 1420.0, Town),
+        ],
+        haunts: &[(54, 44), (65, 26), (66, 22), (58, 44)],
+        loves: &[Item::Moonbloom, Item::WispDust, Item::LargeManaPotion],
+        likes: &[
+            Item::Heartleaf,
+            Item::Blueberry,
+            Item::Amethyst,
+            Item::MintTea,
+            Item::Glowcap,
+        ],
+        hates: &[Item::Garlic, Item::Bone],
+        hello: "Oh! Careful, that cauldron bites. Welcome to the Starfall Spellery! I'm Hazel. \
+                I teach spells - little pieces of starlight you carry with you. Every delver \
+                should have one, so here: Firebolt, on the house! Press Q to throw it. You can \
+                carry two spells at a time, and my attuning circle is the only place to swap \
+                them. Oh, and I brew potions, if you ever need a pick-me-up.",
+        chat: &[
+            "The more you cast a spell, the better it knows you. And the cheaper it gets!",
+            "Two spells at a time. Any more and they start arguing in your head.",
+            "Heartleaf grows in the wild bushes on farms. It's lovely in a health potion.",
+            "Two small potions brew into a medium one. Two medium into a large. Easy!",
+            "Mana comes back on its own, slowly. Potions are for when you can't wait.",
+            "Bloom is my favourite. Farmers love it. Crops love it more.",
+        ],
+        close: &[
+            "You cast like you were born to it. I'm a little jealous, honestly.",
+            "I named a star after you. It's a very small star, but it's yours.",
         ],
     },
 ];

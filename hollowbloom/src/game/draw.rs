@@ -9,7 +9,7 @@ use super::world::{Floor, Obj, World};
 use crate::assets::Assets;
 use crate::assets::models::{ARM_L, ARM_R, BODY, HEAD, Humanoid, LEG_L, LEG_R};
 use crate::palette::*;
-use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, TexId, UvRect};
+use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, TexId, UvRect, Warp};
 use crate::util::hash2;
 
 /// Lighting and mood for a frame.
@@ -22,6 +22,32 @@ pub struct Env {
     pub time: f32,
     /// 0 = day, 1 = full night (lamps and glowing things switch on).
     pub night: f32,
+    /// How hard the breeze blows (0 indoors and underground).
+    pub wind: f32,
+    /// Where the hero is wading through the grass.
+    pub push: Vec2,
+}
+
+impl Env {
+    /// How far a plant `flex` bends at a tile in the breeze right now.
+    pub fn lean(&self, x: f32, z: f32, flex: f32) -> Vec2 {
+        if self.wind <= 0.0 {
+            return Vec2::ZERO;
+        }
+        crate::render::wind(x, z, self.time) * (flex * self.wind)
+    }
+
+    /// Bends a plant `h` tall standing at `base` with the breeze.
+    pub fn sway(&self, base: Vec3, h: f32, flex: f32) -> Warp {
+        if self.wind <= 0.0 {
+            return Warp::None;
+        }
+        Warp::Bend {
+            base: base.y,
+            h,
+            lean: self.lean(base.x, base.z, flex),
+        }
+    }
 }
 
 pub fn full_uv(a: &Assets, id: crate::render::TexId) -> UvRect {
@@ -123,6 +149,21 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     for chunk in w.visible_chunks(rect) {
         r.mesh(&a.bank, chunk, &Mat4::IDENTITY, &opts);
     }
+    // Grass rippling in the breeze and parting round the hero's feet.
+    let grass = DrawOpts {
+        warp: Warp::Wind {
+            t: env.time,
+            amp: 0.15 * env.wind,
+            h: 0.4,
+            push: env.push,
+        },
+        ..DrawOpts::default().two_sided()
+    };
+    // Grass is short: only what can actually be on screen.
+    let near = r.cam.visible_tiles(0.5);
+    for tufts in w.visible_grass(near) {
+        r.mesh(&a.bank, tufts, &Mat4::IDENTITY, &grass);
+    }
     let (x0, z0, x1, z1) = rect;
     for z in z0.max(0)..=z1.min(w.h - 1) {
         for x in x0.max(0)..=x1.min(w.w - 1) {
@@ -155,9 +196,14 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
     match o {
         Obj::Tree { var, .. } => {
             r.shadow(a.tex(a.disk), base, 0.75);
-            let sway = (env.time * 1.3 + (x + z) as f32).sin() * 0.02;
-            let m = at * small_rot(x, z) * Mat4::from_rotation_z(sway);
-            r.mesh(&a.bank, &p.trees[*var as usize % p.trees.len()], &m, &lit);
+            // The trunk stands firm; the crown rides the breeze.
+            let warp = env.sway(base + Vec3::Y * 0.5, 1.4, 0.07);
+            r.mesh(
+                &a.bank,
+                &p.trees[*var as usize % p.trees.len()],
+                &(at * small_rot(x, z)),
+                &lit.with_warp(warp),
+            );
         }
         Obj::Pine { var, .. } => {
             r.shadow(a.tex(a.disk), base, 0.7);
@@ -165,7 +211,16 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 &a.bank,
                 &p.pines[*var as usize % p.pines.len()],
                 &(at * small_rot(x, z)),
-                &lit,
+                &lit.with_warp(env.sway(base + Vec3::Y * 0.3, 1.5, 0.05)),
+            );
+        }
+        Obj::Shrub { var, .. } => {
+            r.shadow(a.tex(a.disk), base, 0.42);
+            r.mesh(
+                &a.bank,
+                &p.shrubs[*var as usize % p.shrubs.len()],
+                &(at * small_rot(x, z)),
+                &lit.with_warp(env.sway(base, 0.6, 0.06)),
             );
         }
         Obj::Stump { .. } => r.mesh(&a.bank, &p.stump, &(at * small_rot(x, z)), &lit),
@@ -177,7 +232,12 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             &lit,
         ),
         Obj::Boulder { .. } => r.mesh(&a.bank, &p.boulder, &(at * small_rot(x, z)), &lit),
-        Obj::Weed { var } => bb(r, if *var == 0 { "tuft" } else { "tuft_dry" }, 0.9, &lit),
+        Obj::Weed { var } => r.mesh(
+            &a.bank,
+            &p.weeds[*var as usize % p.weeds.len()],
+            &(at * small_rot(x, z)),
+            &lit.two_sided().with_warp(env.sway(base, 0.5, 0.16)),
+        ),
         Obj::Flower { var } => {
             let n = [
                 "blossom_pink",
@@ -185,7 +245,7 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 "blossom_blue",
                 "blossom_gold",
             ][*var as usize % 4];
-            bb(r, n, 0.9, &lit);
+            bb(r, n, 0.9, &lit.with_warp(env.sway(base, 0.9, 0.12)));
         }
         Obj::Crystal { var, .. } => {
             let m = at * small_rot(x, z);
@@ -397,11 +457,11 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
         Obj::Board => r.mesh(&a.bank, &a.town.board, &at, &lit),
         Obj::WishTree { blooming } => {
             r.shadow(a.tex(a.disk), base, 1.3);
-            let sway = (env.time * 0.8).sin() * 0.015;
             let tree = if *blooming { &p.trees[2] } else { &p.trees[0] };
-            let m = at * Mat4::from_scale(Vec3::splat(1.9)) * Mat4::from_rotation_z(sway);
+            let m = at * Mat4::from_scale(Vec3::splat(1.9));
             let o = if *blooming { lit.with_glow(0.9) } else { lit };
-            r.mesh(&a.bank, tree, &m, &o);
+            let warp = env.sway(base + Vec3::Y * 1.0, 2.6, 0.08);
+            r.mesh(&a.bank, tree, &m, &o.with_warp(warp));
             if *blooming {
                 // Petals drifting down, and fireflies of light in the branches.
                 for i in 0..14 {
@@ -440,7 +500,12 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
         Obj::Bush { var } => {
             r.shadow(a.tex(a.disk), base, 0.45);
             let m = &a.town.bushes[*var as usize % a.town.bushes.len()];
-            r.mesh(&a.bank, m, &(at * small_rot(x, z)), &lit);
+            r.mesh(
+                &a.bank,
+                m,
+                &(at * small_rot(x, z)),
+                &lit.with_warp(env.sway(base, 0.62, 0.06)),
+            );
         }
         Obj::Well => r.mesh(&a.bank, &a.town.well, &at, &lit),
         Obj::Stand { var } => {
@@ -545,7 +610,7 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 lit
             };
             let size = if ready { 0.78 } else { 0.9 };
-            bb(r, name, size, &o);
+            bb(r, name, size, &o.with_warp(env.sway(base, size, 0.07)));
             if ready {
                 let s = (env.time * 3.0 + (x * 3 + z) as f32).sin();
                 if s > 0.6 {
@@ -650,6 +715,18 @@ pub fn shelf_goods(var: u8) -> &'static [&'static str] {
             "moon_pearl",
         ],
         7 => &["lamp", "flower_pot", "bench", "chest", "fence", "torch"],
+        10 => &[
+            "hp_potion_s",
+            "hp_potion_m",
+            "hp_potion_l",
+            "mp_potion_s",
+            "mp_potion_m",
+            "mp_potion_l",
+            "ep_potion_m",
+            "vial",
+            "heartleaf",
+            "spellbook",
+        ],
         8 => &[
             "fresh_bread",
             "blueberry_muffin",

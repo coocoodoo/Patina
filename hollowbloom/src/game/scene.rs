@@ -154,6 +154,16 @@ impl Play {
                 warmth: f.warmth,
             });
         }
+        self.fx.spark_lights(&mut lights);
+        self.spell_lights(&mut lights);
+        if self.player.ward_t > 0.0 {
+            lights.push(PointLight {
+                pos: ppos + Vec3::Y * 0.8,
+                radius: 2.2,
+                power: 0.3,
+                warmth: 2.0,
+            });
+        }
         // Treasure glows a little.
         for d in &self.drops {
             if d.stack.rarity().is_some_and(|r| r >= Rarity::Epic) {
@@ -243,11 +253,12 @@ impl Play {
 
         self.draw_drops(r, a);
 
-        for f in &self.foes {
+        for f in self.foes.iter().filter(|f| !f.translucent()) {
             f.draw(r, a);
         }
         for s in &self.shots {
             let c = shot_colors(s.color);
+            r.halo(s.world_pos(), 0.28, c[1], 0.7);
             r.point(s.world_pos(), 3, c[1]);
             r.point(s.world_pos(), 1, c[0]);
             let tail = s.world_pos() - Vec3::new(s.vel.x, 0.0, s.vel.y) * 0.05;
@@ -255,6 +266,7 @@ impl Play {
         }
         for b in &self.bolts {
             let p = b.world_pos();
+            r.halo(p, 0.32, b.colors[1], 0.85);
             let back = Vec3::new(b.vel.x, 0.0, b.vel.y).normalize_or_zero();
             r.point(p - back * 0.22, 1, b.colors[2]);
             r.point(p - back * 0.12, 2, b.colors[2]);
@@ -289,6 +301,14 @@ impl Play {
 
         self.draw_folk(r, a);
         self.draw_player(r, a);
+        // Jelly and ghosts go last, far to near, so whatever is behind them shows through.
+        let mut clear: Vec<_> = self.foes.iter().filter(|f| f.translucent()).collect();
+        clear.sort_by(|p, q| p.pos.y.total_cmp(&q.pos.y));
+        for f in clear {
+            f.draw(r, a);
+        }
+        self.draw_ward(r, a);
+        self.draw_spells(r);
         self.fx.draw(r);
         for f in &fireflies {
             let on = ((self.time * 3.0 + f.x).sin() * 0.5 + 0.5) > 0.3;
@@ -374,6 +394,34 @@ impl Play {
                 );
             }
         }
+    }
+
+    /// The Ward spell: a soap-bubble of light around the hero, thinning as it wears out.
+    fn draw_ward(&self, r: &mut Renderer, a: &Assets) {
+        let p = &self.player;
+        if p.ward_t <= 0.0 {
+            return;
+        }
+        let fading = p.ward_t < 1.5 && (self.time * 14.0).sin() > 0.0;
+        let wobble = 1.0 + (self.time * 5.0).sin() * 0.03;
+        let m = Mat4::from_translation(p.world_pos())
+            * Mat4::from_rotation_y(self.time * 0.6)
+            * Mat4::from_scale(Vec3::new(wobble, 1.0 / wobble, wobble));
+        let o = DrawOpts {
+            light: Light::Fixed(1.1, 2.5),
+            zwrite: false,
+            tag: 0,
+            ..DrawOpts::default()
+        };
+        let alpha = if fading { 0.02 } else { 0.08 };
+        r.mesh(&a.bank, &a.props.bubble, &m, &o.glass(alpha));
+        // A shimmer of added light on the rim.
+        let glow = DrawOpts {
+            mode: Mode::Glow,
+            alpha: 0.05,
+            ..o
+        };
+        r.mesh(&a.bank, &a.props.bubble, &m, &glow);
     }
 
     /// How dark it is outside (rooms still know whether it's night).
@@ -588,6 +636,25 @@ impl Play {
                     let yaw = act.dir.x.atan2(act.dir.y);
                     let reach = if act.kind == ActKind::Reap { 1.1 } else { 1.25 };
                     draw::slash_arc(r, p.world_pos(), yaw, act.progress(), reach, col);
+                }
+                ActKind::Cast => {
+                    // Starlight gathering in the hand.
+                    let cols = self
+                        .casting
+                        .map_or([WHITE, LAVENDER, BLUSH], |s| s.def().colors);
+                    let t = self.time * 10.0;
+                    let hand = p.world_pos() + Vec3::new(act.dir.x * 0.45, 0.85, act.dir.y * 0.45);
+                    r.halo(hand, 0.3, cols[1], 0.8);
+                    for i in 0..5 {
+                        let ang = t + i as f32 * 1.26;
+                        let q = hand
+                            + Vec3::new(
+                                ang.cos() * 0.22,
+                                (ang * 1.3).sin() * 0.12,
+                                ang.sin() * 0.22,
+                            );
+                        r.point(q, 1, cols[i % 3]);
+                    }
                 }
                 ActKind::Blast if act.progress() < 0.55 => {
                     // Gathering sparkles above the staff.

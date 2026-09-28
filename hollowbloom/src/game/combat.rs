@@ -303,13 +303,26 @@ impl Play {
             })
             .map(|(i, _)| i)
             .collect();
+        let mut clang = false;
         for &i in &targets {
             let hit = self.roll_hit(base, knock);
             self.strike(i, hit, p);
+            // Shells, stone and bone throw sparks.
+            let f = &self.foes[i];
+            if f.armored() {
+                let to = p - f.pos;
+                let out = Vec3::new(to.x, 0.0, to.y).normalize_or_zero();
+                let at = f.world_pos() + out * f.radius + Vec3::Y * (0.35 * f.scale());
+                self.fx.sparks(at, out, if hit.crit { 12 } else { 7 });
+                clang = true;
+            }
         }
         if !targets.is_empty() {
             io.audio.play(Sfx::Hit);
             io.audio.play_at(Sfx::EnemyHurt, 0.8, 1.0);
+            if clang {
+                io.audio.play_at(Sfx::Clang, 0.5, 1.0);
+            }
             self.shake = self.shake.max(0.35);
         }
         self.reap(io);
@@ -499,7 +512,11 @@ impl Play {
             self.fx.popup(head, "Block!", SKY);
             self.fx
                 .burst(head - Vec3::Y * 0.5, 8, &[WHITE, SKY, CREAM], 2.5, 1.0);
+            // The shield rings and spits sparks back at whatever hit it.
+            let back = Vec3::new(-dir.x, 0.0, -dir.y).normalize_or_zero();
+            self.fx.sparks(head - Vec3::Y * 0.45 + back * 0.3, back, 9);
             io.audio.play(Sfx::Block);
+            io.audio.play_at(Sfx::Clang, 0.35, 1.2);
             self.thorns(attacker);
             return false;
         }
@@ -509,7 +526,32 @@ impl Play {
         };
         let def = self.player.defense().max(0) as f32;
         let k = 12.0 + 3.0 * depth as f32;
-        let taken = ((dmg as f32) * k / (k + def)).round().max(1.0) as i32;
+        let mut taken = ((dmg as f32) * k / (k + def)).round().max(1.0) as i32;
+        // The Ward bubble soaks it up first, and at high levels throws some of it back.
+        if self.player.ward > 0.0 {
+            let soak = (taken as f32).min(self.player.ward);
+            self.player.ward -= soak;
+            taken -= soak.round() as i32;
+            self.fx.popup(head, "Ward!", MINT);
+            self.fx
+                .burst(head - Vec3::Y * 0.4, 8, &[WHITE, MINT, AQUA], 2.0, 1.0);
+            io.audio.play_at(Sfx::Block, 0.5, 1.5);
+            if self.player.ward <= 0.0 {
+                self.player.ward_t = 0.0;
+                self.fx
+                    .ring(self.player.world_pos(), 2.0, 16, &[WHITE, MINT, AQUA]);
+            }
+            if self.player.ward_lv >= 6 {
+                if let Some(i) = attacker.filter(|&i| i < self.foes.len()) {
+                    let from = self.player.pos;
+                    self.strike(i, Hit::plain((soak * 0.5).round() as i32), from);
+                }
+            }
+            if taken <= 0 {
+                self.player.hurt = 0.45;
+                return false;
+            }
+        }
         let p = &mut self.player;
         p.hp -= taken;
         p.hurt = 0.9;

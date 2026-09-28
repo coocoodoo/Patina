@@ -37,8 +37,8 @@ pub fn grass(seed: u64, flowers: bool) -> Texture {
     // A soft darker clump gives the lawn some depth.
     let (x, y) = (r.range(0, T), r.range(0, T));
     blob(&mut t, x, y, 2, 1, TEAL);
-    // Blades: a light tip with a dark root beside it.
-    for _ in 0..7 {
+    // Blades: a light tip with a dark root beside it (real 3D tufts grow on top).
+    for _ in 0..3 {
         let (x, y) = (r.range(0, T), r.range(0, T));
         t.set_wrap(x, y, LIME);
         t.set_wrap(x + 1, y + 1, TEAL);

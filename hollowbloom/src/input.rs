@@ -26,6 +26,9 @@ pub enum Action {
     Map,
     /// The quest journal.
     Quests,
+    /// Cast the first or second readied spell.
+    Spell1,
+    Spell2,
 }
 
 const USE_KEYS: &[KeyCode] = &[KeyCode::KeyJ, KeyCode::KeyZ];
@@ -56,6 +59,8 @@ const NEXT_KEYS: &[KeyCode] = &[KeyCode::BracketRight, KeyCode::KeyR];
 const PREV_KEYS: &[KeyCode] = &[KeyCode::BracketLeft, KeyCode::KeyQ];
 const MAP_KEYS: &[KeyCode] = &[KeyCode::KeyM];
 const QUEST_KEYS: &[KeyCode] = &[KeyCode::KeyL];
+const SPELL1_KEYS: &[KeyCode] = &[KeyCode::KeyQ];
+const SPELL2_KEYS: &[KeyCode] = &[KeyCode::KeyR];
 
 fn keys(a: Action) -> &'static [KeyCode] {
     match a {
@@ -75,6 +80,8 @@ fn keys(a: Action) -> &'static [KeyCode] {
         Action::PrevSlot => PREV_KEYS,
         Action::Map => MAP_KEYS,
         Action::Quests => QUEST_KEYS,
+        Action::Spell1 => SPELL1_KEYS,
+        Action::Spell2 => SPELL2_KEYS,
     }
 }
 

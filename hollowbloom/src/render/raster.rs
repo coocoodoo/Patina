@@ -5,7 +5,7 @@ use glam::Vec4;
 
 use super::frame::Frame;
 use super::texture::Texture;
-use crate::palette::{BAYER, CLEAR, LEVELS, Shading, WARMTHS};
+use crate::palette::{BAYER, BLENDS, CLEAR, LEVELS, Shading, WARMTHS};
 
 /// A vertex in clip space with its attributes.
 #[derive(Clone, Copy, Debug, Default)]
@@ -18,6 +18,8 @@ pub struct CVert {
     pub l: f32,
     /// Warmth step (0..WARMTHS-1).
     pub t: f32,
+    /// Opacity for glass and glow (0 clear .. `BLENDS + 1` solid).
+    pub a: f32,
 }
 
 impl CVert {
@@ -28,8 +30,14 @@ impl CVert {
             v: self.v + (o.v - self.v) * k,
             l: self.l + (o.l - self.l) * k,
             t: self.t + (o.t - self.t) * k,
+            a: self.a + (o.a - self.a) * k,
         }
     }
+}
+
+/// Converts an opacity in 0..1 to the vertex `a` scale.
+pub fn opacity(k: f32) -> f32 {
+    k.clamp(0.0, 1.0) * (BLENDS + 1) as f32
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -45,6 +53,11 @@ pub enum Mode {
     /// Only where the triangle is hidden, as a checkerboard of one colour (see-through
     /// silhouettes).
     Hidden(u8),
+    /// Lit texture colours laid over what is already drawn, like tinted jelly or glass,
+    /// with the vertex opacity dithered across the surface.
+    Glass,
+    /// Texture colours added to what is already drawn as light (glows, sparks, halos).
+    Glow,
 }
 
 #[derive(Clone, Copy)]
@@ -159,6 +172,7 @@ struct SVert {
     vw: f32,
     l: f32,
     t: f32,
+    a: f32,
 }
 
 #[inline]
@@ -175,6 +189,7 @@ fn to_screen(c: &CVert, w: f32, h: f32) -> SVert {
         vw: c.v * iw,
         l: c.l,
         t: c.t,
+        a: c.a,
     }
 }
 
@@ -183,6 +198,8 @@ const UNLIT: u8 = 1;
 const SOLID: u8 = 2;
 const DARKEN: u8 = 3;
 const HIDDEN: u8 = 4;
+const GLASS: u8 = 5;
+const GLOW: u8 = 6;
 
 fn raster(fb: &mut Frame, sh: &Shading, v0: &CVert, v1: &CVert, v2: &CVert, m: &Mat) {
     match m.mode {
@@ -191,6 +208,22 @@ fn raster(fb: &mut Frame, sh: &Shading, v0: &CVert, v1: &CVert, v2: &CVert, m: &
         Mode::Solid(c) => raster_mode::<SOLID>(fb, sh, v0, v1, v2, m, c),
         Mode::Darken(k) => raster_mode::<DARKEN>(fb, sh, v0, v1, v2, m, k.min(2)),
         Mode::Hidden(c) => raster_mode::<HIDDEN>(fb, sh, v0, v1, v2, m, c),
+        Mode::Glass => raster_mode::<GLASS>(fb, sh, v0, v1, v2, m, 0),
+        Mode::Glow => raster_mode::<GLOW>(fb, sh, v0, v1, v2, m, 0),
+    }
+}
+
+/// Looks up `src` over `dst` in a blend table at a dithered opacity `a` (vertex scale).
+/// `None` leaves the pixel as it is.
+#[inline]
+fn blend(table: &[u8], a: f32, th: f32, src: u8, dst: u8) -> Option<u8> {
+    let k = (a + th) as usize;
+    if k == 0 {
+        None
+    } else if k > BLENDS || dst >= 32 {
+        Some(src)
+    } else {
+        Some(table[((k - 1) * 32 + src as usize) * 32 + dst as usize])
     }
 }
 
@@ -263,6 +296,7 @@ fn raster_mode<const MODE: u8>(
     let gv = grad(s0.vw, s1.vw, s2.vw);
     let gl = grad(s0.l, s1.l, s2.l);
     let gt = grad(s0.t, s1.t, s2.t);
+    let ga = grad(s0.a, s1.a, s2.a);
 
     let tex = m.tex;
     let tdata = &tex.data[..];
@@ -271,6 +305,11 @@ fn raster_mode<const MODE: u8>(
     let wshift = tex.wshift;
     let map = &sh.map[..];
     let darken = &sh.darken[param.min(2) as usize];
+    let table = if MODE == GLOW {
+        &sh.glow[..]
+    } else {
+        &sh.glass[..]
+    };
     let fbw = fb.w;
     let zwrite = m.zwrite;
     let tag = m.tag;
@@ -289,6 +328,7 @@ fn raster_mode<const MODE: u8>(
         let mut vw = s0.vw + gv.0 * ox + gv.1 * oy;
         let mut l = s0.l + gl.0 * ox + gl.1 * oy;
         let mut t = s0.t + gt.0 * ox + gt.1 * oy;
+        let mut a = s0.a + ga.0 * ox + ga.1 * oy;
         let row = py as usize * fbw;
         let brow = ((py & 3) << 2) as usize;
         let brow2 = (((py + 2) & 3) << 2) as usize;
@@ -311,13 +351,28 @@ fn raster_mode<const MODE: u8>(
                         let tv = ((vw * z + 4096.0) as u32 & hmask) as usize;
                         let texel = tdata[(tv << wshift) | tu];
                         if texel != CLEAR {
+                            let mut drawn = true;
                             match MODE {
-                                LIT => {
+                                LIT | GLASS => {
                                     let th = BAYER[brow | (px & 3) as usize];
                                     let th2 = BAYER[brow2 | ((px + 1) & 3) as usize];
                                     let li = ((l + th) as usize).min(LEVELS - 1);
                                     let wi = ((t + th2) as usize).min(WARMTHS - 1);
-                                    fb.color[idx] = map[(wi * LEVELS + li) * 32 + texel as usize];
+                                    let c = map[(wi * LEVELS + li) * 32 + texel as usize];
+                                    if MODE == LIT {
+                                        fb.color[idx] = c;
+                                    } else if let Some(c) = blend(table, a, th, c, fb.color[idx]) {
+                                        fb.color[idx] = c;
+                                    } else {
+                                        drawn = false;
+                                    }
+                                }
+                                GLOW => {
+                                    let th = BAYER[brow | (px & 3) as usize];
+                                    match blend(table, a, th, texel, fb.color[idx]) {
+                                        Some(c) => fb.color[idx] = c,
+                                        None => drawn = false,
+                                    }
                                 }
                                 UNLIT => fb.color[idx] = texel,
                                 SOLID | HIDDEN => fb.color[idx] = param,
@@ -328,7 +383,7 @@ fn raster_mode<const MODE: u8>(
                                     }
                                 }
                             }
-                            if zwrite && MODE != DARKEN && MODE != HIDDEN {
+                            if drawn && zwrite && MODE != DARKEN && MODE != HIDDEN {
                                 fb.depth[idx] = iw;
                                 fb.tag[idx] = tag;
                             }
@@ -346,6 +401,7 @@ fn raster_mode<const MODE: u8>(
             vw += gv.0;
             l += gl.0;
             t += gt.0;
+            a += ga.0;
         }
     }
 }
@@ -364,6 +420,48 @@ pub fn draw_point(fb: &mut Frame, x: f32, y: f32, iw: f32, size: i32, color: u8)
     }
 }
 
+/// A soft disc of light added around a screen point (the glow round a spark or ember),
+/// strongest in the middle and dithered out to nothing at `radius` pixels. Anything in front
+/// of the point hides its glow.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_halo(
+    fb: &mut Frame,
+    sh: &Shading,
+    x: f32,
+    y: f32,
+    iw: f32,
+    radius: f32,
+    color: u8,
+    strength: f32,
+) {
+    let r = radius.max(0.5);
+    let x0 = ((x - r).floor() as i32).max(0);
+    let x1 = ((x + r).ceil() as i32).min(fb.w as i32 - 1);
+    let y0 = ((y - r).floor() as i32).max(0);
+    let y1 = ((y + r).ceil() as i32).min(fb.h as i32 - 1);
+    let c = color.min(31);
+    for yy in y0..=y1 {
+        for xx in x0..=x1 {
+            let dx = xx as f32 + 0.5 - x;
+            let dy = yy as f32 + 0.5 - y;
+            let d = (dx * dx + dy * dy).sqrt() / r;
+            if d >= 1.0 {
+                continue;
+            }
+            let i = yy as usize * fb.w + xx as usize;
+            // A little slack so the glow still washes over the surface a spark sits on.
+            if iw * 1.02 < fb.depth[i] {
+                continue;
+            }
+            let k = (1.0 - d) * (1.0 - d) * strength;
+            let th = BAYER[((yy as usize & 3) << 2) | (xx as usize & 3)];
+            if let Some(out) = blend(&sh.glow, opacity(k), th, c, fb.color[i]) {
+                fb.color[i] = out;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,7 +474,38 @@ mod tests {
             v: 0.0,
             l: 16.0,
             t: NEUTRAL,
+            a: 0.0,
         }
+    }
+
+    #[test]
+    fn glass_tints_what_is_behind_and_clear_glass_leaves_it() {
+        let sh = Shading::new();
+        let tex = Texture::new(1, 1, crate::palette::GREEN);
+        let mut fb = Frame::new(32, 32);
+        fb.clear(WHITE);
+        let mut m = Mat::lit(&tex);
+        m.mode = Mode::Glass;
+        let tri = |a: f32| {
+            let mut t = [v(-0.9, -0.9), v(0.9, -0.9), v(0.0, 0.9)];
+            for c in &mut t {
+                c.a = a;
+            }
+            t
+        };
+        // The left half of what's behind is dark, the right half light.
+        for y in 0..32 {
+            for x in 0..16 {
+                fb.color[y * 32 + x] = crate::palette::INK;
+            }
+        }
+        let before = fb.color.clone();
+        draw_tri(&mut fb, &sh, &tri(0.0), &m);
+        assert_eq!(fb.color, before, "clear glass drew");
+        draw_tri(&mut fb, &sh, &tri(opacity(0.5)), &m);
+        let (left, right) = (fb.color[16 * 32 + 12], fb.color[16 * 32 + 19]);
+        assert_ne!(left, crate::palette::INK, "glass left no tint");
+        assert_ne!(left, right, "glass hid what was behind it");
     }
 
     #[test]

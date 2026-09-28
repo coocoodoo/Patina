@@ -62,6 +62,12 @@ pub enum Goal {
     Cookbook(u16),
     /// Defeat this many different kinds of creature.
     Codex(u16),
+    /// Cast this many spells.
+    Cast(u16),
+    /// Brew this many potions.
+    Brew(u16),
+    /// Train any one spell up to this level.
+    Mastery(u8),
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -77,6 +83,8 @@ pub enum Reward {
     Restore(u32),
     /// Lantern Guild marks.
     Marks(u32),
+    /// Hazel teaches you a spell (or, if you know it, a lesson's worth of practice).
+    Spell(super::spells::Spell),
 }
 
 pub struct QuestDef {
@@ -1741,6 +1749,183 @@ pub static QUESTS: &[QuestDef] = &[
         hearts: 6,
         ..Q
     },
+    // ---------------------------------------------------------------- Hazel
+    QuestDef {
+        key: "hazel_spark",
+        giver: V::Hazel,
+        title: "A Spark to Start",
+        ask: "Magic is like a muscle - it wants stretching! Cast ten spells, anywhere at all. \
+              The Hollow's best, but the farm's fine too.",
+        thanks: "I could feel it from here, all fizzy! You're a natural. Take these - and a \
+                 second spell, so your other hand isn't bored.",
+        goal: Cast(10),
+        reward: &[
+            Coins(600),
+            item(Item::SmallManaPotion, 6),
+            Reward::Spell(super::spells::Spell::Mend),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_herbs",
+        giver: V::Hazel,
+        title: "Heartleaf Harvest",
+        ask: "I'm out of heartleaf! It grows in the wild bushes that spring up on farms - \
+              cut them back and you'll find it. Weeds hide some too. Eight sprigs, please.",
+        thanks: "Oh, they're lovely and fresh! Here - vials, a few potions, and my own recipe \
+                 book's worth of advice: two smalls brew into a medium!",
+        goal: Bring(Item::Heartleaf, 8),
+        reward: &[
+            Coins(900),
+            item(Item::Vial, 12),
+            item(Item::HealthPotion, 3),
+            Friend(V::Hazel, 60),
+        ],
+        after: "hazel_spark",
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_brew",
+        giver: V::Hazel,
+        title: "Bubble and Brew",
+        ask: "Every spellwright should know their way round a potion. Brew six - any kind, \
+              any size. The crafting book has a Potions page.",
+        thanks: "Six potions, and not one exploded! My proudest moment. Have some of my big \
+                 bottles, and Bloom - the spell every farmer wishes they'd learned sooner.",
+        goal: Brew(6),
+        reward: &[
+            Coins(1500),
+            item(Item::LargeHealthPotion, 2),
+            item(Item::LargeManaPotion, 2),
+            Reward::Spell(super::spells::Spell::Bloom),
+        ],
+        after: "hazel_herbs",
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_practice",
+        giver: V::Hazel,
+        title: "Practice Makes Perfect",
+        ask: "A spell grows with you: stronger every level, and cheaper to cast. Train any \
+              one of yours up to level four and I'll show you something special.",
+        thanks: "Level four! Listen to it hum. Here's a wish star to deepen your mana, and a \
+                 spell for getting out of trouble in a hurry.",
+        goal: Mastery(4),
+        reward: &[
+            Coins(3000),
+            item(Item::WishStar, 1),
+            Reward::Spell(super::spells::Spell::Blink),
+        ],
+        after: "hazel_brew",
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_wisps",
+        giver: V::Hazel,
+        title: "Bottled Starlight",
+        ask: "Wisp dust makes the finest mana potions in the valley. The wisps drift about \
+              the Crystal Grotto. Twelve pinches?",
+        thanks: "Glittering! I'll brew something wonderful. And for you: Chain Spark. \
+                 Lightning that doesn't know when to stop.",
+        goal: Bring(Item::WispDust, 12),
+        reward: &[
+            Coins(3500),
+            item(Item::ManaPotion, 5),
+            Reward::Spell(super::spells::Spell::ChainSpark),
+        ],
+        after: "hazel_practice",
+        depth: 11,
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_ghosts",
+        giver: V::Hazel,
+        title: "Something in the Walls",
+        ask: "Ghosts drift through walls down in the Fungal Hollow and below, and they've \
+              been curdling my potions from afar. Could you calm ten of them?",
+        thanks: "My cauldron's stopped sulking! Take Ward - a bubble of light for the scary \
+                 bits. It's saved my life more than once.",
+        goal: Slay(Some(Foe::Ghost), 10, 1),
+        reward: &[
+            Coins(6000),
+            item(Item::LargeHealthPotion, 3),
+            Reward::Spell(super::spells::Spell::Ward),
+        ],
+        after: "hazel_wisps",
+        depth: 20,
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_brewmaster",
+        giver: V::Hazel,
+        title: "Brewmaster",
+        ask: "You've the hands for it now. Brew forty potions and I'll hang your name on \
+              the Spellery wall, right next to mine.",
+        thanks: "Forty! The whole town smells of blueberries. Here's my finest wand - it \
+                 has chosen you, I think.",
+        goal: Brew(40),
+        reward: &[
+            Coins(9000),
+            gear(Item::MoonpetalWand, EPIC),
+            item(Item::LargeManaPotion, 5),
+        ],
+        after: "hazel_ghosts",
+        hearts: 4,
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_stars",
+        giver: V::Hazel,
+        title: "Where the Stars Fall",
+        ask: "They say that past floor thirty the Hollow is so deep it touches the sky from \
+              the other side. Go and see, and I'll teach you to call the stars down.",
+        thanks: "You've seen it! Then you're ready. Starfall - my greatest spell. Use it well.",
+        goal: Reach(30),
+        reward: &[
+            Coins(8000),
+            Reward::Spell(super::spells::Spell::Starfall),
+            item(Item::WishStar, 1),
+        ],
+        after: "hazel_ghosts",
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_frost",
+        giver: V::Hazel,
+        title: "A Cold Snap",
+        ask: "Frost opals from the Frost Caverns keep my potions fresh. Five, if you can \
+              brave the cold. You'll want Frost Nova down there - I'll teach it now.",
+        thanks: "Brr, they're perfect. Keep practising Frost Nova - at level five it freezes \
+                 things solid!",
+        goal: Bring(Item::FrostGem, 5),
+        reward: &[
+            Coins(7000),
+            Reward::Spell(super::spells::Spell::FrostNova),
+            item(Item::LargeEnergyPotion, 3),
+        ],
+        after: "hazel_wisps",
+        depth: 40,
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_archmage",
+        giver: V::Hazel,
+        title: "Archmage of Bramblewick",
+        ask: "There's one thing left to learn, and nobody can teach it: mastery. Take one \
+              spell all the way to level ten.",
+        thanks: "Level ten. I've only ever seen that once before - in a mirror. Archmage, \
+                 this is yours.",
+        goal: Mastery(10),
+        reward: &[
+            Coins(25000),
+            gear(Item::StarWand, LEGEND),
+            item(Item::WishStar, 2),
+            Friend(V::Hazel, 200),
+        ],
+        after: "hazel_practice",
+        hearts: 6,
+        ..Q
+    },
 ];
 
 pub fn quest_def(key: &str) -> Option<&'static QuestDef> {
@@ -1931,6 +2116,9 @@ pub fn goal_text(g: Goal) -> String {
         Goal::Curios(n) => format!("Find {n} different gems and relics"),
         Goal::Cookbook(n) => format!("Cook {n} different dishes"),
         Goal::Codex(n) => format!("Defeat {n} kinds of creature"),
+        Goal::Cast(n) => format!("Cast {n} spells (Q and R)"),
+        Goal::Brew(n) => format!("Brew {n} potions (crafting, Potions tab)"),
+        Goal::Mastery(l) => format!("Train a spell to level {l}"),
     }
 }
 
@@ -1964,6 +2152,7 @@ pub fn reward_text(r: &Reward) -> String {
         Reward::Friend(v, n) => format!("{} ♥{:+}", v.name(), n),
         Reward::Restore(bit) => format!("Bramblewick: {}", project_name(bit)),
         Reward::Marks(n) => format!("{n} guild marks"),
+        Reward::Spell(sp) => format!("Spell: {}", sp.def().name),
     }
 }
 
@@ -2001,9 +2190,12 @@ impl Play {
             Goal::Bring(i, n) => (inv(i).min(n as u64), n as u64),
             Goal::Find(i, _, _) => (inv(i).min(1), 1),
             Goal::Gather(i, n, _) => (inv(i).min(n as u64), n as u64),
-            Goal::Slay(_, n, _) | Goal::Harvest(_, n) | Goal::Enchant(n) => {
-                (q.n.min(n as u64), n as u64)
-            }
+            Goal::Slay(_, n, _)
+            | Goal::Harvest(_, n)
+            | Goal::Enchant(n)
+            | Goal::Cast(n)
+            | Goal::Brew(n) => (q.n.min(n as u64), n as u64),
+            Goal::Mastery(l) => (self.spells.best_level().min(l) as u64, l as u64),
             Goal::Ship(v) => (q.n.min(v), v),
             Goal::Reach(d) => (self.deepest.min(d) as u64, d as u64),
             Goal::Guardian(d) => (self.journal.guardians.contains(&d) as u64, 1),
@@ -2243,6 +2435,23 @@ impl Play {
                 self.add_marks(n, io);
                 Some((None, format!("{n} guild marks"), SKY))
             }
+            Reward::Spell(sp) => {
+                let def = sp.def();
+                if self.spells.learn(sp) {
+                    io.audio.play(Sfx::SpellUp);
+                    Some((None, format!("New spell: {}", def.name), def.colors[1]))
+                } else {
+                    // Already known: a lesson's worth of practice instead.
+                    let k = self.spells.get_mut(sp)?;
+                    let need = super::spells::xp_to_next(k.level);
+                    k.practise(need);
+                    Some((
+                        None,
+                        format!("{} lesson: now Lv {}", def.name, k.level),
+                        def.colors[1],
+                    ))
+                }
+            }
         }
     }
 
@@ -2347,6 +2556,25 @@ impl Play {
     pub fn on_craft(&mut self, item: Item) {
         if matches!(item.def().kind, Kind::Food { .. }) {
             note(&mut self.journal.dishes, item);
+        }
+    }
+
+    /// A spell cast (at some level).
+    pub fn on_cast(&mut self, _level: u8) {
+        for q in &mut self.quests {
+            if let Goal::Cast(_) = q.goal() {
+                q.n += 1;
+            }
+        }
+    }
+
+    /// Potions brewed.
+    pub fn on_brew(&mut self, n: u16) {
+        self.stats.brewed += n as u32;
+        for q in &mut self.quests {
+            if let Goal::Brew(_) = q.goal() {
+                q.n += n as u64;
+            }
         }
     }
 

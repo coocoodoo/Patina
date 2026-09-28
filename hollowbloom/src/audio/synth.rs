@@ -55,6 +55,16 @@ pub enum Sfx {
     /// Friendship growing.
     Heart,
     Bell,
+    /// Metal on something hard, with a crackle of sparks.
+    Clang,
+    /// Drinking a potion.
+    Gulp,
+    /// A potion bubbling up in the cauldron.
+    Brew,
+    /// A spell going off.
+    Spell,
+    /// A spell growing stronger.
+    SpellUp,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -103,6 +113,11 @@ pub const ALL: &[Sfx] = &[
     Sfx::Talk,
     Sfx::Heart,
     Sfx::Bell,
+    Sfx::Clang,
+    Sfx::Gulp,
+    Sfx::Brew,
+    Sfx::Spell,
+    Sfx::SpellUp,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -534,5 +549,82 @@ pub fn make(s: Sfx) -> Vec<f32> {
                     * (-t * 2.2).exp()
             })
         }
+        Sfx::Clang => {
+            // Inharmonic ringing partials over a sharp strike, then a spit of crackles.
+            let (mut a, mut c, mut d) = (0.0, 0.0, 0.0);
+            let mut rng = Rng::new(77);
+            render(0.32, |t, n| {
+                a += 2093.0 / RATE;
+                c += 2093.0 * 1.47 / RATE;
+                d += 2093.0 * 2.09 / RATE;
+                let ring = (sine(a) * 0.35 + sine(c) * 0.22 + sine(d) * 0.12) * (-t * 16.0).exp();
+                let strike = n * 0.5 * (-t * 90.0).exp();
+                let crackle = if t > 0.02 && rng.chance(0.004) {
+                    n.signum() * 0.35 * (-t * 8.0).exp()
+                } else {
+                    0.0
+                };
+                ring + strike + crackle
+            })
+        }
+        Sfx::Gulp => {
+            let mut b = Vec::new();
+            for k in 0..2 {
+                let mut phase = 0.0;
+                let base = 260.0 + k as f32 * 60.0;
+                let mut c = render(0.1, |t, n| {
+                    phase += (base + t * 900.0) / RATE;
+                    (sine(phase) * 0.6 + n * 0.1) * (-t * 22.0).exp()
+                });
+                lowpass(&mut c, 0.4);
+                b.extend(c);
+                b.extend(std::iter::repeat_n(0.0, (RATE * 0.05) as usize));
+            }
+            b.extend(arp(&[(note(84), 0.05), (note(91), 0.12)], 0.5, 14.0));
+            b
+        }
+        Sfx::Brew => {
+            // Bubbles popping at random pitches, then a bright chime.
+            let mut rng = Rng::new(5);
+            let mut phase = 0.0;
+            let mut f = 500.0;
+            let mut left = 0.0;
+            let mut b = render(0.55, |t, _| {
+                left -= 1.0 / RATE;
+                if left <= 0.0 {
+                    left = 0.04 + rng.f32() * 0.05;
+                    f = 350.0 + rng.f32() * 700.0;
+                }
+                phase += (f + (0.09 - left) * 3000.0) / RATE;
+                sine(phase) * 0.35 * (left * 25.0).min(1.0) * (1.0 - t / 0.55)
+            });
+            lowpass(&mut b, 0.5);
+            b.extend(arp(
+                &[(note(79), 0.06), (note(86), 0.06), (note(91), 0.2)],
+                0.25,
+                7.0,
+            ));
+            b
+        }
+        Sfx::Spell => {
+            let (mut a, mut c) = (0.0, 0.0);
+            let mut lp = 0.0;
+            render(0.38, |t, n| {
+                a += (500.0 + t * 1800.0) / RATE;
+                c += (757.0 + t * 2600.0) / RATE;
+                lp += (n - lp) * 0.2;
+                (sine(a) * 0.3 + square(c, 0.25) * 0.1 + lp * 0.35) * (-t * 7.0).exp()
+            })
+        }
+        Sfx::SpellUp => arp(
+            &[
+                (note(76), 0.06),
+                (note(83), 0.06),
+                (note(88), 0.06),
+                (note(95), 0.3),
+            ],
+            0.25,
+            5.0,
+        ),
     }
 }
