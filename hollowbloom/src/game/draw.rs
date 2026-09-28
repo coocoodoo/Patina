@@ -61,6 +61,50 @@ pub fn full_uv(a: &Assets, id: crate::render::TexId) -> UvRect {
     UvRect::new(0.0, 0.0, t.w as f32, t.h as f32)
 }
 
+/// Glints twinkling about an unopened chest, each popping up somewhere new over its front
+/// or lid, swelling to a star and fading. A gleaming chest throws a shower of bigger gold
+/// ones, a glow, and motes of gold drifting up.
+pub fn chest_sparkles(r: &mut Renderer, base: Vec3, time: f32, (x, z): (i32, i32), gleam: bool) {
+    let n = if gleam { 6 } else { 2 };
+    for k in 0..n {
+        let seed = (x * 73 + z * 151 + k * 37) as u32;
+        let period = if gleam { 0.8 } else { 1.7 } + (seed % 7) as f32 * 0.12;
+        let phase = time / period + (seed % 13) as f32 / 13.0;
+        let life = phase.fract();
+        // Each glint lives for the first half of its cycle.
+        if life > 0.5 {
+            continue;
+        }
+        let k2 = life / 0.5;
+        let h = crate::util::hash2(seed as i32, phase.floor() as i32, 17);
+        let (u, v) = ((h & 0xFF) as f32 / 255.0, ((h >> 8) & 0xFF) as f32 / 255.0);
+        // On the front face or just over the lid, never inside the chest.
+        let spot = if v < 0.65 {
+            Vec3::new(u * 0.72 - 0.36, 0.08 + v / 0.65 * 0.42, 0.31)
+        } else {
+            Vec3::new(u * 0.72 - 0.36, 0.52 + (v - 0.65) * 0.9, 0.1)
+        };
+        let peak = 1.0 - (k2 - 0.5).abs() * 2.0;
+        let arm = if gleam {
+            1 + (peak * 3.2) as i32
+        } else {
+            1 + (peak * 1.6) as i32
+        };
+        let edge = if gleam { GOLD } else { CREAM };
+        r.sparkle(base + spot, arm, WHITE, edge);
+    }
+    if gleam {
+        let pulse = (time * 3.0 + x as f32).sin() * 0.5 + 0.5;
+        r.halo(base + Vec3::Y * 0.45, 0.8, GOLD, 0.25 + pulse * 0.15);
+        for k in 0..4 {
+            let t = (time * 0.6 + k as f32 * 0.25).fract();
+            let a = k as f32 * 1.7 + time * 0.8;
+            let p = base + Vec3::new(a.cos() * 0.3, 0.5 + t * 0.9, 0.15 + a.sin() * 0.2);
+            r.point(p, 1, if t < 0.6 { GOLD } else { CREAM });
+        }
+    }
+}
+
 /// Gathers lights from objects around the visible area.
 pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut Vec<PointLight>) {
     let (x0, z0, x1, z1) = rect;
@@ -306,16 +350,21 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             r.mesh(&a.bank, &p.pot, &(at * small_rot(x, z)), &lit)
         }
         Obj::Crate { .. } => r.mesh(&a.bank, &p.crate_, &(at * Mat4::from_rotation_y(0.1)), &lit),
-        Obj::LootChest { opened } => {
-            let mesh = if *opened {
-                &p.chest_open
-            } else {
-                &p.loot_chest
+        Obj::LootChest { opened, gleam } => {
+            let mesh = match (*opened, *gleam) {
+                (true, _) => &p.chest_open,
+                (false, true) => &p.gleam_chest,
+                (false, false) => &p.loot_chest,
             };
-            r.mesh(&a.bank, mesh, &at, &lit);
+            let o = if *gleam && !*opened {
+                // A gleaming chest shines from within.
+                lit.with_glow(0.7 + 0.2 * (env.time * 3.0 + x as f32).sin())
+            } else {
+                lit
+            };
+            r.mesh(&a.bank, mesh, &at, &o);
             if !*opened {
-                let s = (env.time * 4.0 + x as f32).sin() * 0.5 + 0.5;
-                r.point(base + Vec3::new(0.2, 0.6 + s * 0.2, 0.2), 1, CREAM);
+                chest_sparkles(r, base, env.time, (x, z), *gleam);
             }
         }
         Obj::StairsDown => {
@@ -1030,6 +1079,10 @@ pub struct Pose {
     pub bob: f32,
     /// Extra squash on hit.
     pub squash: f32,
+    /// Both arms held straight out in front, 0..1: the way the walking dead go about.
+    pub reach: f32,
+    /// Drawn this much bigger than life (0 = life size, 1 = twice as big).
+    pub grow: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -1095,7 +1148,9 @@ fn draw_body(
     fit: &Outfit,
 ) {
     let held = fit.held;
-    let root = Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw);
+    let root = Mat4::from_translation(pos)
+        * Mat4::from_rotation_y(yaw)
+        * Mat4::from_scale(Vec3::splat(1.0 + pose.grow));
     let sw = pose.walk.sin() * pose.stride;
     let squash = 1.0 - pose.squash * 0.25;
     let widen = 1.0 + pose.squash * 0.2;
@@ -1125,8 +1180,12 @@ fn draw_body(
     let guard = fit.shield.is_some() && matches!(pose.swing, None | Some((_, Swing::Slash)));
     let left = root
         * Mat4::from_translation(Vec3::new(-h.shoulder_x, h.shoulder + bob, 0.0))
-        * Mat4::from_rotation_x(if guard { -0.5 - sw * 0.2 } else { -sw * 0.6 })
-        * Mat4::from_rotation_z(-0.12);
+        * Mat4::from_rotation_x(if guard {
+            -0.5 - sw * 0.2
+        } else {
+            -sw * 0.6 * (1.0 - pose.reach * 0.7) - pose.reach * 1.45
+        })
+        * Mat4::from_rotation_z(-0.12 * (1.0 - pose.reach));
     r.mesh(&a.bank, &h.parts[ARM_L], &left, o);
     if let Some(shield) = fit.shield {
         // Worn on the forearm, facing outwards and a little forwards.
@@ -1156,7 +1215,11 @@ fn draw_body(
         }
         Some((t, Swing::Fish)) => (-1.5 - t * 1.5, 0.0, 0.0),
         None if held.is_some() => (-0.95 + sw * 0.15, 0.1, 0.0),
-        None => (sw * 0.6, 0.12, 0.0),
+        None => (
+            sw * 0.6 * (1.0 - pose.reach * 0.7) - pose.reach * 1.45,
+            0.12 * (1.0 - pose.reach),
+            0.0,
+        ),
     };
     let right = root
         * Mat4::from_translation(Vec3::new(h.shoulder_x, h.shoulder + bob, 0.0))
@@ -1165,7 +1228,7 @@ fn draw_body(
         * Mat4::from_rotation_z(rz);
     r.mesh(&a.bank, &h.parts[ARM_R], &right, o);
     if let Some(tool) = held {
-        let hand = right * Mat4::from_translation(Vec3::new(0.0, -0.22, 0.02));
+        let hand = right * Mat4::from_translation(Vec3::new(0.0, -h.hand, 0.02));
         let orient = match pose.swing {
             Some((_, Swing::Pour)) => Mat4::from_rotation_x(0.9),
             _ => Mat4::IDENTITY,

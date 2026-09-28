@@ -630,6 +630,43 @@ impl Gear {
         g
     }
 
+    /// Finishes a piece off finely: fine quality, at least `min` affixes (topped up from what
+    /// its class can roll), and none of them rolled below `floor` (0..1 through its range).
+    pub fn polish(&mut self, class: Class, min: usize, floor: f32, rng: &mut Rng) {
+        self.quality = self.quality.max(85);
+        let level = self.level;
+        let lift = |stat: Stat, rng: &mut Rng| {
+            Stat::value_in(stat.range(level), floor + rng.f32() * (1.0 - floor) * 0.6)
+        };
+        for a in self.affixes.iter_mut().flatten() {
+            if Stat::norm_in(a.stat.range(level), a.val) < floor {
+                a.val = lift(a.stat, rng);
+            }
+        }
+        let mut pool: Vec<Stat> = class
+            .affix_pool()
+            .iter()
+            .copied()
+            .filter(|s| !self.affixes().any(|a| a.stat == *s))
+            .collect();
+        rng.shuffle(&mut pool);
+        let mut have = self.affixes().count();
+        for slot in self.affixes.iter_mut() {
+            if have >= min.min(AFFIXES) {
+                break;
+            }
+            if slot.is_none() {
+                let Some(stat) = pool.pop() else { break };
+                *slot = Some(Affix {
+                    stat,
+                    val: lift(stat, rng),
+                });
+                have += 1;
+            }
+        }
+        self.update_rarity();
+    }
+
     /// Puts an enchantment in a socket (replacing what was there).
     pub fn enchant(&mut self, socket: usize, a: Affix) {
         if socket < SOCKETS {

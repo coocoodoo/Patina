@@ -175,6 +175,9 @@ items! {
     ImpHorn = "imp_horn", "Imp Horn", "imp_horn", 99, 22, Material, "Warm, pointy and a little smug.";
     Ectoplasm = "ectoplasm", "Ectoplasm", "ectoplasm", 99, 24, Material, "Cold, wobbly and faintly giggling.";
     GolemHeart = "golem_heart", "Golem Heart", "golem_heart", 99, 40, Material, "A pebble that still beats.";
+    GraveDust = "grave_dust", "Grave Dust", "grave_dust", 99, 16, Material, "Shaken out of a zombie's pockets. Mostly zombie.";
+    GoblinTooth = "goblin_tooth", "Goblin Tooth", "goblin_tooth", 99, 20, Material, "A goblin lost this. It will want it back.";
+    Chitin = "chitin", "Bug Chitin", "chitin", 99, 12, Material, "A tough, glossy plate off a Hollow bug.";
 
     // Gems: scroll ink, and worth a pretty coin.
     Ruby = "ruby", "Ruby", "ruby", 99, 60, GemK, "Red as a winterberry. Scribes weapon scrolls.";

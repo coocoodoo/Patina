@@ -240,15 +240,6 @@ impl Mesh {
         }
     }
 
-    /// Bakes a transform into the mesh.
-    pub fn transform(&mut self, m: Mat4) {
-        let nm = Mat3::from_mat4(m).inverse().transpose();
-        for v in &mut self.verts {
-            v.pos = m.transform_point3(v.pos);
-            v.n = (nm * v.n).normalize_or_zero();
-        }
-    }
-
     pub fn append(&mut self, other: &Mesh, m: Mat4) {
         let nm = Mat3::from_mat4(m).inverse().transpose();
         let base = self.verts.len() as u32;

@@ -124,6 +124,32 @@ pub fn random_gear(depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
     roll_gear(item, level, f.luck + depth as f32 * 0.004, rng)
 }
 
+/// Gear rolled about as well as it can be: the best of three very lucky rolls a few levels
+/// up, and never shoddy. What gleaming chests and guardians' hoards are made of.
+pub fn fine_gear(depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
+    let mut best: Option<(f32, Stack)> = None;
+    // Weapons and armour: the pieces with room for the most (and best) enchantments.
+    let group = if rng.chance(0.5) {
+        Group::Weapon
+    } else {
+        Group::Armor
+    };
+    for _ in 0..3 {
+        let item = pick_base(depth + 3, Some(group), rng);
+        let level = (depth + 2 + rng.below(3) as u32) as u16;
+        let s = roll_gear(item, level, f.luck + 1.6 + depth as f32 * 0.004, rng);
+        let score = s.gear.map_or(0.0, |g| g.score());
+        if best.as_ref().is_none_or(|(b, _)| score > *b) {
+            best = Some((score, s));
+        }
+    }
+    let (_, mut s) = best.expect("three rolls");
+    if let (Some(g), Some(b)) = (s.gear.as_mut(), s.item.base()) {
+        g.polish(b.class, 3, 0.6, rng);
+    }
+    s
+}
+
 /// A fishing rod from the Hollow: mostly the colourful kinds you can't buy, with better
 /// rolls than anything on Garrick's shelf.
 pub fn random_rod(depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
@@ -241,15 +267,8 @@ fn roll(out: &mut Vec<Stack>, rng: &mut Rng, item: Item, p: f32, lo: u16, hi: u1
     }
 }
 
-/// Everything a defeated creature drops.
-pub fn foe_loot(
-    foe: Foe,
-    boss: bool,
-    biome: usize,
-    depth: u32,
-    f: Fortune,
-    rng: &mut Rng,
-) -> Vec<Stack> {
+/// The bits a creature carries (gel, wings, bones, teeth...), without the coins and treasure.
+fn foe_bits(foe: Foe, biome: usize, rng: &mut Rng) -> Vec<Stack> {
     let mut out = Vec::new();
     let o = &mut out;
     match foe {
@@ -305,7 +324,47 @@ pub fn foe_loot(
             roll(o, rng, Item::GeodePuffer, 0.1, 1, 1);
             roll(o, rng, Item::Crystal, 0.2, 1, 1);
         }
+        Foe::Zombie => {
+            roll(o, rng, Item::GraveDust, 0.55, 1, 2);
+            roll(o, rng, Item::Bone, 0.25, 1, 1);
+            // Whatever they had in their pockets when they went under.
+            roll(o, rng, Item::LostButton, 0.03, 1, 1);
+        }
+        Foe::Brute => {
+            roll(o, rng, Item::GoblinTooth, 0.5, 1, 2);
+            roll(o, rng, Item::IronOre, 0.2, 1, 2);
+        }
+        Foe::Sneak => {
+            roll(o, rng, Item::GoblinTooth, 0.35, 1, 1);
+            // They pinch shiny things.
+            roll(o, rng, Item::GlassMarble, 0.03, 1, 1);
+        }
+        Foe::Bug => {
+            roll(o, rng, Item::Chitin, 0.6, 1, 2);
+            let (extra, p) = [
+                (Item::Fiber, 0.4),
+                (Item::Crystal, 0.2),
+                (Item::Spore, 0.35),
+                (Item::EmberOre, 0.15),
+                (Item::FrostGem, 0.05),
+                (Item::GoldOre, 0.2),
+            ][biome % 6];
+            roll(o, rng, extra, p, 1, 1);
+        }
     }
+    out
+}
+
+/// Everything a defeated creature drops.
+pub fn foe_loot(
+    foe: Foe,
+    boss: bool,
+    biome: usize,
+    depth: u32,
+    f: Fortune,
+    rng: &mut Rng,
+) -> Vec<Stack> {
+    let mut out = foe_bits(foe, biome, rng);
     // The water folk hoard fishing rods, better ones than any shop sells.
     let watery = matches!(foe, Foe::Crab | Foe::Frog | Foe::Jelly | Foe::Puffer);
     if watery && rng.chance(if boss { 1.0 } else { 0.1 + f.luck * 0.1 }) {
@@ -317,6 +376,10 @@ pub fn foe_loot(
     if rng.chance(coin_p) {
         let base = 2.0 + d as f32 * 0.8;
         let mut c = base * rng.range_f(0.5, 1.5) * f.greed;
+        // Goblins hoard coins.
+        if matches!(foe, Foe::Brute | Foe::Sneak) {
+            c *= 2.0;
+        }
         if boss {
             c *= 30.0;
         }
@@ -329,19 +392,35 @@ pub fn foe_loot(
     let gear_p = 0.05 + f.luck * 0.08;
     let scroll_p = 0.03 + f.luck * 0.05;
     if boss {
+        // A guardian's hoard: a heap of gear (one piece always finely made), scrolls,
+        // gems, relics, potions and a pile of whatever its kind carries.
         let lucky = Fortune {
             luck: f.luck + 0.6,
             ..f
         };
-        for _ in 0..2 + rng.below(2) {
+        for _ in 0..3 + rng.below(3) {
             out.push(random_gear(d + 2, lucky, rng));
         }
-        out.push(random_scroll(d + 2, lucky, rng));
+        out.push(fine_gear(d, f, rng));
+        for _ in 0..2 {
+            out.push(random_scroll(d + 2, lucky, rng));
+        }
         out.push(Stack::new(Item::HeartCrystal, 1));
-        out.push(Stack::new(Item::Feather, 1));
-        out.push(Stack::new(random_gem(d, rng), 2));
+        out.push(Stack::new(Item::Feather, 2));
+        out.push(Stack::new(random_gem(d, rng), 2 + rng.below(3) as u16));
+        out.push(Stack::new(random_relic(d + 10, rng), 1));
         if rng.chance(0.5) {
             out.push(Stack::new(random_relic(d + 10, rng), 1));
+        }
+        let potion = if d >= 30 {
+            Item::LargeHealthPotion
+        } else {
+            Item::HealthPotion
+        };
+        out.push(Stack::new(potion, 2 + rng.below(2) as u16));
+        for _ in 0..4 {
+            // Its kind's own bits, by the handful.
+            out.extend(foe_bits(foe, biome, rng));
         }
     } else {
         if rng.chance(gear_p) {
@@ -360,10 +439,25 @@ pub fn foe_loot(
     out
 }
 
-/// The contents of a treasure chest in the Hollow.
-pub fn chest_loot(depth: u32, biome: usize, f: Fortune, rng: &mut Rng) -> Vec<Stack> {
+/// The contents of a treasure chest in the Hollow. A gleaming chest holds finely rolled gear,
+/// a lucky scroll, gems, a relic and a heap more coin besides.
+pub fn chest_loot(depth: u32, biome: usize, gleam: bool, f: Fortune, rng: &mut Rng) -> Vec<Stack> {
     let d = depth.max(1);
     let mut out = Vec::new();
+    if gleam {
+        let lucky = Fortune {
+            luck: f.luck + 1.2,
+            ..f
+        };
+        for _ in 0..2 {
+            out.push(fine_gear(d, f, rng));
+        }
+        out.push(random_scroll(d + 3, lucky, rng));
+        out.push(Stack::new(random_gem(d + 15, rng), 2));
+        out.push(Stack::new(random_relic(d + 15, rng), 1));
+        let c = (40.0 + d as f32 * 12.0) * rng.range_f(0.8, 1.3) * f.greed;
+        out.extend(coin_stacks(c.round() as u64));
+    }
     out.push(Stack::new(biome_seed(biome, rng), 2 + rng.below(3) as u16));
     let ores = [
         Item::CopperOre,
@@ -395,6 +489,10 @@ pub fn chest_loot(depth: u32, biome: usize, f: Fortune, rng: &mut Rng) -> Vec<St
         },
         rng,
     ));
+    // Now and then even a plain chest holds something finely made.
+    if !gleam && rng.chance(0.05 + f.luck * 0.05) {
+        out.push(fine_gear(d, f, rng));
+    }
     if rng.chance(0.45 + f.luck * 0.2) {
         out.push(random_scroll(d, f, rng));
     }

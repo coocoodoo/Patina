@@ -3,7 +3,6 @@
 use glam::Vec3;
 
 use super::fish::{self, Hooked, Phase};
-use super::foes::boss_name;
 use super::gear::Class;
 use super::home::charm_title;
 use super::items::{Kind, Placeable};
@@ -36,7 +35,7 @@ impl Play {
                 }
             }
         }
-        // Enemy health bars once they are hurt.
+        // Enemy health bars once they are hurt, named for a moment after each hit.
         for f in &self.foes {
             if f.hp < f.max_hp && !f.boss {
                 if let Some(s) = cam.project(f.world_pos() + Vec3::Y * (0.75 * f.scale() + 0.2)) {
@@ -51,6 +50,12 @@ impl Play {
                         SALMON,
                         INK,
                     );
+                    if f.named > 0.0 && (f.named > 0.4 || (f.named * 10.0).fract() < 0.5) {
+                        let name = f.name();
+                        let tw = c.text_width(name);
+                        let col = if f.moonlit { SALMON } else { CREAM };
+                        c.text_outline(s.x as i32 - tw / 2, s.y as i32 - 12, name, col, INK);
+                    }
                 }
             }
         }
@@ -217,9 +222,9 @@ impl Play {
             let bw = (w / 2).min(200);
             let bx = (w - bw) / 2;
             c.text_outline(
-                bx + (bw - c.text_width(boss_name(b.foe))) / 2,
+                bx + (bw - c.text_width(b.name())) / 2,
                 5,
-                boss_name(b.foe),
+                b.name(),
                 CREAM,
                 INK,
             );
@@ -586,7 +591,19 @@ impl Play {
                     (Wall::None, Some(Obj::StairsDown)) => GOLD,
                     (Wall::None, Some(Obj::Waystone)) => MINT,
                     (Wall::None, _) if wld.floor(x, z) == Floor::Lava => ORANGE,
-                    (Wall::None, Some(Obj::LootChest { opened: false })) => PINK,
+                    (
+                        Wall::None,
+                        Some(Obj::LootChest {
+                            opened: false,
+                            gleam,
+                        }),
+                    ) => {
+                        if *gleam {
+                            GOLD
+                        } else {
+                            PINK
+                        }
+                    }
                     (Wall::None, _) => KHAKI,
                     (Wall::Ore(_), _) => CLAY,
                     _ => continue,

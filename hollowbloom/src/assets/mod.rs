@@ -7,6 +7,7 @@ pub mod home_art;
 pub mod item_art;
 pub mod magic_art;
 pub mod models;
+pub mod monster_art;
 pub mod quest_art;
 pub mod sprites;
 pub mod tiles;
@@ -377,6 +378,8 @@ pub struct Assets {
     pub gear: GearArt,
     /// Furniture, rugs and pictures for the farmhouse.
     pub home: home_art::HomeArt,
+    /// Zombies, goblins, skeletons, ghosts and bugs, in a look for every biome.
+    pub monsters: monster_art::Monsters,
 }
 
 impl Assets {
@@ -525,6 +528,7 @@ impl Assets {
         let props = models::props(&mut bank);
         let town = town_art::build(&mut bank, &icons, water[0]);
         let foes = foe_skins(&mut bank, &critters);
+        let monsters = monster_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -570,6 +574,7 @@ impl Assets {
             props,
             gear,
             home,
+            monsters,
         }
     }
 

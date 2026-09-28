@@ -39,9 +39,23 @@ fn tick(game: &mut Game, input: &Input, audio: &Audio, frames: usize) {
 }
 
 fn snap(game: &mut Game, r: &mut Renderer, input: &Input, dir: &Path, name: &str) {
+    snap_on(game, r, input, dir, name, None);
+}
+
+/// Like `snap`, with the camera on `focus` instead of the hero.
+fn snap_on(
+    game: &mut Game,
+    r: &mut Renderer,
+    input: &Input,
+    dir: &Path,
+    name: &str,
+    focus: Option<glam::Vec3>,
+) {
     if let Some(p) = game.play_mut() {
         p.player.hurt = 0.0;
-        if p.area == crate::game::world::Area::Home {
+        if let Some(f) = focus {
+            p.cam_pos = f;
+        } else if p.area == crate::game::world::Area::Home {
             // The house is framed like a diorama, as in the game.
             let c = p.room_center();
             p.cam_pos = c + (p.player.world_pos() - c) * glam::Vec3::new(0.15, 0.0, 0.08);
@@ -2372,4 +2386,263 @@ pub fn light_shots(dir: &str) {
     }
     tick(&mut game, &input, &audio, 2);
     snap(&mut game, &mut r, &input, dir, "l11_nook");
+}
+
+/// Lines creatures up in a row across the clearest open strip of the floor, the hero just
+/// behind them, all turned a little towards the camera.
+fn lineup(p: &mut Play, foes: &[crate::game::dungeon::Foe], biome: usize, depth: u32) {
+    use crate::game::foes::Enemy;
+    p.foes.clear();
+    p.drops.clear();
+    p.shots.clear();
+    let w = &p.level.as_ref().unwrap().world;
+    let n = foes.len() as i32;
+    let span = n + 2;
+    let mut found = None;
+    'find: for z in 2..w.h - 3 {
+        for x in 2..w.w - span - 2 {
+            if (0..span).all(|dx| (-2..=1).all(|dz| !w.blocked(x + dx, z + dz))) {
+                found = Some((x, z));
+                break 'find;
+            }
+        }
+    }
+    let (x0, z0) = found.unwrap_or_else(|| p.player.tile());
+    let mid = x0 as f32 + span as f32 * 0.5;
+    p.player.pos = Vec2::new(mid, z0 as f32 - 0.9);
+    p.player.facing = Vec2::new(0.0, 1.0);
+    let gap = (span as f32 - 2.0) / n as f32;
+    for (i, &foe) in foes.iter().enumerate() {
+        let x = mid + (i as f32 - (n - 1) as f32 * 0.5) * gap;
+        let mut f = Enemy::new(
+            foe,
+            x,
+            z0 as f32 + 0.6,
+            depth,
+            biome,
+            false,
+            11 + i as u32 * 7,
+        );
+        f.yaw = 0.35 - i as f32 * 0.12;
+        f.anim = i as f32 * 0.7;
+        p.foes.push(f);
+    }
+}
+
+/// Holds everything still for a close-up, turned a little towards the camera: no wandering
+/// off between the tick and the snap.
+fn hold_still(p: &mut Play) {
+    for (i, f) in p.foes.iter_mut().enumerate() {
+        f.yaw = 0.35 - i as f32 * 0.12;
+        f.alert = false;
+        f.dir = Vec2::ZERO;
+        f.vel = Vec2::ZERO;
+        f.st = crate::game::foes::St::Idle;
+        f.t = 5.0;
+    }
+    p.shots.clear();
+    p.fx.pops.clear();
+}
+
+/// `--monster-shots DIR`: zombies, fat and skinny goblins, bugs, skeletons and ghosts in
+/// every biome's look, a pack gone wild under a full moon, and a brawl.
+pub fn monster_shots(dir: &str) {
+    use crate::game::dungeon::Foe;
+    use crate::game::foes::St;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261005);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+    }
+    let families = [
+        Foe::Zombie,
+        Foe::Brute,
+        Foe::Sneak,
+        Foe::Bug,
+        Foe::Skeleton,
+        Foe::Ghost,
+    ];
+    let names = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"];
+    for (biome, name) in names.iter().enumerate() {
+        let depth = biome as u32 * 10 + 4;
+        descend(&mut game, &input, &audio, depth, false);
+        lineup(play(&mut game), &families, biome, depth);
+        tick(&mut game, &input, &audio, 1);
+        {
+            let p = play(&mut game);
+            hold_still(p);
+            p.cam.dist = 9.5;
+        }
+        snap(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("f{:02}_{name}", biome + 1),
+        );
+    }
+    // Under a full moon they glow red.
+    descend(&mut game, &input, &audio, 24, false);
+    lineup(play(&mut game), &families, 2, 24);
+    {
+        let p = play(&mut game);
+        for f in p.foes.iter_mut() {
+            f.feel_the_moon(crate::game::sky::MoonPhase::Full);
+        }
+    }
+    tick(&mut game, &input, &audio, 1);
+    {
+        let p = play(&mut game);
+        hold_still(p);
+        p.cam.dist = 9.5;
+    }
+    snap(&mut game, &mut r, &input, dir, "f07_full_moon");
+    // A brawl: arms up, clubs raised, daggers out, a mantis about to strike.
+    descend(&mut game, &input, &audio, 14, false);
+    lineup(
+        play(&mut game),
+        &[Foe::Zombie, Foe::Brute, Foe::Sneak, Foe::Bug, Foe::Skeleton],
+        1,
+        14,
+    );
+    tick(&mut game, &input, &audio, 1);
+    {
+        let p = play(&mut game);
+        hold_still(p);
+        let states = [
+            (St::Windup, 0.3),
+            (St::Windup, 0.3),
+            (St::Dash, 0.14),
+            (St::Windup, 0.2),
+            (St::Windup, 0.2),
+        ];
+        // The hero squares up to them from the front.
+        p.player.pos.y += 2.4;
+        p.player.facing = Vec2::new(0.0, -1.0);
+        let ppos = p.player.pos;
+        for (f, (st, t)) in p.foes.iter_mut().zip(states) {
+            f.alert = true;
+            f.st = st;
+            f.t = t;
+            let to = ppos - f.pos;
+            f.yaw = to.x.atan2(to.y);
+            f.dir = to.normalize_or_zero();
+        }
+        p.cam.dist = 9.5;
+    }
+    snap(&mut game, &mut r, &input, dir, "f08_brawl");
+
+    // The tenth floors' guardians: oversized, and hoarding treasure.
+    for (depth, name) in [
+        (10u32, "f09_guardian_king_slime"),
+        (70, "f10_guardian_goblin_king"),
+    ] {
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            p.foes.retain(|f| f.boss);
+            let at = p.foes.first().expect("a guardian").pos;
+            let w = &p.level.as_ref().unwrap().world;
+            // The hero squares up from the open side of the arena.
+            let mut spot = w.nearest_open(at.x as i32, at.y as i32);
+            for (dx, dz) in [(0, 4), (-4, 1), (4, 1), (0, -4)] {
+                let (x, z) = (at.x as i32 + dx, at.y as i32 + dz);
+                if !w.blocked(x, z) && w.clear_line(at, Vec2::new(x as f32 + 0.5, z as f32 + 0.5)) {
+                    spot = (x, z);
+                    break;
+                }
+            }
+            p.player.pos = Vec2::new(spot.0 as f32 + 0.5, spot.1 as f32 + 0.5);
+            let to = at - p.player.pos;
+            p.player.facing = to.normalize_or_zero();
+        }
+        tick(&mut game, &input, &audio, 1);
+        {
+            let p = play(&mut game);
+            hold_still(p);
+            let ppos = p.player.pos;
+            for f in p.foes.iter_mut() {
+                f.alert = true;
+                let to = ppos - f.pos;
+                f.yaw = to.x.atan2(to.y);
+            }
+        }
+        let focus = {
+            let p = play(&mut game);
+            (p.player.world_pos() + p.foes[0].world_pos()) * 0.5
+        };
+        snap_on(&mut game, &mut r, &input, dir, name, Some(focus));
+    }
+    // Felled: a ring of treasure chests bursts up, one of them gleaming.
+    let at = play(&mut game).foes[0].pos;
+    let mut gilded = None;
+    {
+        let p = play(&mut game);
+        p.foes[0].hp = 0;
+        let io_input = Input::default();
+        let mut io = mk_io(&io_input, &audio);
+        p.reap(&mut io);
+        p.banner = None;
+        let w = &mut p.level.as_mut().unwrap().world;
+        let (cx, cz) = (at.x as i32, at.y as i32);
+        'gild: for z in cz - 6..=cz + 6 {
+            for x in cx - 6..=cx + 6 {
+                if let Some(Obj::LootChest { opened: false, .. }) = w.obj(x, z) {
+                    w.set_obj(
+                        x,
+                        z,
+                        Some(Obj::LootChest {
+                            opened: false,
+                            gleam: true,
+                        }),
+                    );
+                    gilded = Some((x, z));
+                    break 'gild;
+                }
+            }
+        }
+    }
+    tick(&mut game, &input, &audio, 45);
+    {
+        let p = play(&mut game);
+        p.toasts.clear();
+        p.banner = None;
+        p.player.pos = at + Vec2::new(0.0, 1.0);
+    }
+    snap(&mut game, &mut r, &input, dir, "f11_guardian_hoard");
+    // Up close: a gleaming chest's golden glints.
+    if let Some((x, z)) = gilded {
+        for (k, t) in [0.35f32, 0.9].into_iter().enumerate() {
+            {
+                let p = play(&mut game);
+                p.time += t;
+                p.cam.dist = 6.5;
+            }
+            let focus = glam::Vec3::new(x as f32 + 0.5, 0.3, z as f32 + 0.5);
+            snap_on(
+                &mut game,
+                &mut r,
+                &input,
+                dir,
+                &format!("f{}_gleaming_chest", 12 + k),
+                Some(focus),
+            );
+        }
+    }
 }

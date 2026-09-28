@@ -6,7 +6,7 @@ use super::combat::{Bolt, Flash};
 use super::draw::Env;
 use super::dungeon::{self, Level, biome_for, is_waystone_floor, ore_item};
 use super::farm::{self, MARKS, tillable};
-use super::foes::{Enemy, St, boss_name};
+use super::foes::{Enemy, St};
 use super::fx::{Drop, Fx, Shot};
 use super::gear::{Class, Rarity, Stat};
 use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack};
@@ -219,6 +219,11 @@ pub struct Stats {
     pub caught: u32,
     #[serde(default)]
     pub cooked: u32,
+    /// Guardians felled, and gleaming chests opened.
+    #[serde(default)]
+    pub guardians: u32,
+    #[serde(default)]
+    pub gleams: u32,
 }
 
 impl Play {
@@ -550,9 +555,9 @@ impl Play {
         let rematch = via_waystone && self.guardian_wanted(depth);
         if rematch {
             level.spawns.push(dungeon::Spawn {
-                foe: dungeon::boss_for(biome_for(depth)),
-                x: level.stairs.0 as f32 + 0.5,
-                z: level.stairs.1 as f32 + 2.5,
+                foe: dungeon::boss_for(depth),
+                x: level.lair.0,
+                z: level.lair.1,
                 boss: true,
             });
         }
@@ -565,6 +570,26 @@ impl Play {
         self.bolts.clear();
         let biome = biome_for(depth);
         let moon = self.moon();
+        if moon.full() {
+            // Under a full moon more of the Hollow's chests gleam.
+            let w = &mut level.world;
+            for z in 0..w.h {
+                for x in 0..w.w {
+                    if let Some(Obj::LootChest { opened: false, .. }) = w.obj(x, z) {
+                        if self.rng.chance(0.15) {
+                            w.set_obj(
+                                x,
+                                z,
+                                Some(Obj::LootChest {
+                                    opened: false,
+                                    gleam: true,
+                                }),
+                            );
+                        }
+                    }
+                }
+            }
+        }
         for (i, s) in level.spawns.iter().enumerate() {
             let mut f = Enemy::new(
                 s.foe,
@@ -1328,7 +1353,7 @@ impl Play {
             Obj::Hollow => "Enter the Hollow",
             Obj::Stall => "Shop",
             Obj::Chest { .. } => "Open chest",
-            Obj::LootChest { opened: false } => "Open",
+            Obj::LootChest { opened: false, .. } => "Open",
             Obj::Sign { .. } => "Read",
             Obj::StairsDown => "Descend",
             Obj::Waystone => "Touch the waystone",
@@ -1817,10 +1842,19 @@ impl Play {
                 };
                 self.menu = Menu::dialog(msg);
             }
-            Obj::LootChest { opened: false } => {
-                self.world_mut()
-                    .set_obj(ax, az, Some(Obj::LootChest { opened: true }));
-                self.open_loot(ax, az, io);
+            Obj::LootChest {
+                opened: false,
+                gleam,
+            } => {
+                self.world_mut().set_obj(
+                    ax,
+                    az,
+                    Some(Obj::LootChest {
+                        opened: true,
+                        gleam,
+                    }),
+                );
+                self.open_loot(ax, az, gleam, io);
                 io.audio.play(Sfx::Chest);
             }
             Obj::StairsDown => {
@@ -1941,14 +1975,22 @@ impl Play {
         );
     }
 
-    fn open_loot(&mut self, x: i32, z: i32, io: &mut Io) {
+    fn open_loot(&mut self, x: i32, z: i32, gleam: bool, io: &mut Io) {
         let depth = self.depth().max(1);
         let at = tile_center(x, z);
         let fortune = self.fortune();
-        let loot = loot::chest_loot(depth, biome_for(depth), fortune, &mut self.rng);
+        let loot = loot::chest_loot(depth, biome_for(depth), gleam, fortune, &mut self.rng);
         self.spill(loot, at, io);
         self.fx
             .motes(at + Vec3::Y * 0.4, 16, &[GOLD, CREAM, WHITE], 0.4);
+        if gleam {
+            // A gleaming chest: a fountain of gold and a fanfare.
+            self.fx
+                .motes(at + Vec3::Y * 0.5, 30, &[GOLD, CREAM, WHITE, ORANGE], 0.8);
+            self.fx.popup_big(at + Vec3::Y * 1.1, "Gleaming!", GOLD);
+            self.stats.gleams += 1;
+            io.audio.play(Sfx::Rare);
+        }
     }
 
     /// Throws loot out onto the floor, with a chime for anything rare.
@@ -2708,7 +2750,7 @@ impl Play {
             if !was_alert && f.alert {
                 io.audio.play_at(Sfx::Alert, 0.6, 1.0);
                 if f.boss {
-                    self.boss_seen = Some(boss_name(f.foe).to_string());
+                    self.boss_seen = Some(f.name().to_string());
                 }
             }
         }

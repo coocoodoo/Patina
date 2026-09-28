@@ -23,6 +23,15 @@ pub enum Foe {
     Frog,
     Jelly,
     Puffer,
+    /// The walking dead: slow, arms out, and a lunge when they get close.
+    Zombie,
+    /// A fat goblin with a club: tough, and slams the ground.
+    Brute,
+    /// A skinny goblin: quick, stabs and darts away, and throws daggers.
+    Sneak,
+    /// The biome's bug: moss mites, glass mantises, spore moths, fire ants, frost ticks
+    /// and scarabs.
+    Bug,
 }
 
 pub struct Spawn {
@@ -38,6 +47,8 @@ pub struct Level {
     pub stairs: (i32, i32),
     pub waystone: Option<(i32, i32)>,
     pub spawns: Vec<Spawn>,
+    /// Where a tenth floor's guardian waits: the most open ground of its arena.
+    pub lair: (f32, f32),
 }
 
 pub fn biome_for(depth: u32) -> usize {
@@ -48,50 +59,90 @@ pub fn is_waystone_floor(depth: u32) -> bool {
     depth > 0 && depth % 10 == 0
 }
 
-/// Enemies that live in a biome, with weights.
+/// Enemies that live in a biome, with weights. Zombies, goblins, bugs, skeletons and ghosts
+/// turn up everywhere, dressed for wherever they live.
 pub fn biome_foes(biome: usize) -> &'static [(Foe, f32)] {
     match biome {
         0 => &[
-            (Foe::Slime, 4.0),
-            (Foe::Bat, 2.0),
-            (Foe::Shroom, 2.5),
-            (Foe::Frog, 0.8),
+            (Foe::Slime, 3.0),
+            (Foe::Bat, 1.5),
+            (Foe::Shroom, 2.0),
+            (Foe::Frog, 0.6),
+            (Foe::Zombie, 1.2),
+            (Foe::Sneak, 1.2),
+            (Foe::Brute, 0.7),
+            (Foe::Bug, 1.6),
+            (Foe::Skeleton, 0.7),
+            (Foe::Ghost, 0.6),
         ],
         1 => &[
-            (Foe::Slime, 3.0),
-            (Foe::Crab, 2.5),
-            (Foe::Wisp, 1.5),
-            (Foe::Bat, 1.0),
-            (Foe::Puffer, 0.8),
+            (Foe::Slime, 2.2),
+            (Foe::Crab, 2.0),
+            (Foe::Wisp, 1.2),
+            (Foe::Bat, 0.8),
+            (Foe::Puffer, 0.6),
+            (Foe::Zombie, 1.2),
+            (Foe::Sneak, 1.2),
+            (Foe::Brute, 1.0),
+            (Foe::Bug, 1.6),
+            (Foe::Skeleton, 0.9),
+            (Foe::Ghost, 0.8),
         ],
         2 => &[
-            (Foe::Shroom, 3.0),
-            (Foe::Slime, 2.0),
-            (Foe::Beetle, 2.5),
-            (Foe::Bat, 1.0),
-            (Foe::Jelly, 0.8),
+            (Foe::Shroom, 2.4),
+            (Foe::Slime, 1.5),
+            (Foe::Beetle, 1.8),
+            (Foe::Bat, 0.8),
+            (Foe::Jelly, 0.6),
+            (Foe::Zombie, 1.2),
+            (Foe::Sneak, 1.2),
+            (Foe::Brute, 1.0),
+            (Foe::Bug, 1.8),
+            (Foe::Skeleton, 0.8),
+            (Foe::Ghost, 1.0),
         ],
         3 => &[
-            (Foe::Slime, 2.5),
-            (Foe::Imp, 2.5),
-            (Foe::Bat, 1.5),
-            (Foe::Beetle, 1.5),
+            (Foe::Slime, 1.8),
+            (Foe::Imp, 2.0),
+            (Foe::Bat, 1.0),
+            (Foe::Beetle, 1.0),
+            (Foe::Zombie, 1.2),
+            (Foe::Sneak, 1.2),
+            (Foe::Brute, 1.2),
+            (Foe::Bug, 1.8),
+            (Foe::Skeleton, 1.2),
+            (Foe::Ghost, 0.8),
         ],
         4 => &[
-            (Foe::Slime, 2.5),
-            (Foe::Crab, 2.0),
-            (Foe::Wisp, 2.0),
-            (Foe::Golem, 1.0),
-            (Foe::Jelly, 0.8),
+            (Foe::Slime, 1.8),
+            (Foe::Crab, 1.5),
+            (Foe::Wisp, 1.5),
+            (Foe::Golem, 0.8),
+            (Foe::Jelly, 0.6),
+            (Foe::Zombie, 1.2),
+            (Foe::Sneak, 1.0),
+            (Foe::Brute, 1.2),
+            (Foe::Bug, 1.6),
+            (Foe::Skeleton, 1.0),
+            (Foe::Ghost, 1.2),
         ],
         _ => &[
-            (Foe::Skeleton, 3.0),
-            (Foe::Ghost, 2.0),
-            (Foe::Golem, 1.5),
-            (Foe::Wisp, 1.0),
-            (Foe::Puffer, 0.8),
+            (Foe::Skeleton, 2.4),
+            (Foe::Ghost, 1.8),
+            (Foe::Golem, 1.2),
+            (Foe::Wisp, 0.8),
+            (Foe::Puffer, 0.6),
+            (Foe::Zombie, 1.6),
+            (Foe::Sneak, 1.0),
+            (Foe::Brute, 1.0),
+            (Foe::Bug, 1.6),
         ],
     }
+}
+
+/// The toughest creatures stay out of the first few floors.
+pub fn too_tough(foe: Foe, depth: u32) -> bool {
+    depth < 3 && matches!(foe, Foe::Brute | Foe::Skeleton)
 }
 
 /// Who lives around the underground ponds of a biome.
@@ -105,17 +156,34 @@ pub fn pond_foes(biome: usize) -> &'static [Foe] {
     }
 }
 
-/// The guardian of a biome's tenth floor.
-pub fn boss_for(biome: usize) -> Foe {
-    [
-        Foe::Slime,
-        Foe::Crab,
-        Foe::Shroom,
-        Foe::Imp,
-        Foe::Golem,
-        Foe::Skeleton,
-    ][biome % BIOMES]
+/// The guardian of a tenth floor: the classic six on the first trip down through the
+/// biomes, then giants of the Hollow's commoner folk the next time round, and so on.
+pub fn boss_for(depth: u32) -> Foe {
+    let biome = biome_for(depth);
+    let cycle = (depth.max(1) - 1) / (10 * BIOMES as u32);
+    if cycle % 2 == 0 {
+        [
+            Foe::Slime,
+            Foe::Crab,
+            Foe::Shroom,
+            Foe::Imp,
+            Foe::Golem,
+            Foe::Skeleton,
+        ][biome]
+    } else {
+        [
+            Foe::Brute,
+            Foe::Bug,
+            Foe::Zombie,
+            Foe::Sneak,
+            Foe::Ghost,
+            Foe::Zombie,
+        ][biome]
+    }
 }
+
+/// How often a treasure chest gleams: a rare one, full of well-rolled things.
+pub const GLEAM_CHANCE: f32 = 0.07;
 
 /// Seeds that turn up in a biome, weighted.
 pub fn biome_seeds(biome: usize) -> &'static [(Item, f32)] {
@@ -352,6 +420,18 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
     }
     let stairs_room = rooms[far.1];
     let stairs = stairs_room.center();
+    if is_waystone_floor(depth) {
+        // The guardian needs room to move: an arena around the stairs, opening out to the
+        // south where it waits.
+        let (aw, ah) = (13, 10);
+        let arena = Room {
+            x: (stairs.0 - aw / 2).clamp(3, w - aw - 3),
+            z: (stairs.1 - 3).clamp(3, h - ah - 3),
+            w: aw,
+            h: ah,
+        };
+        carve_room(&mut world, &arena, organic, &mut r);
+    }
     world.set_obj(stairs.0, stairs.1, Some(Obj::StairsDown));
     let waystone = if is_waystone_floor(depth) {
         let p = (stairs.0 - 2, stairs.1);
@@ -558,7 +638,14 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
             && touches_wall(&world, x, z)
             && !keep_clear(x, z)
         {
-            world.set_obj(x, z, Some(Obj::LootChest { opened: false }));
+            world.set_obj(
+                x,
+                z,
+                Some(Obj::LootChest {
+                    opened: false,
+                    gleam: r.chance(GLEAM_CHANCE),
+                }),
+            );
             placed += 1;
         }
     }
@@ -581,8 +668,12 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
                 let x = room.x + r.range(0, room.w);
                 let z = room.z + r.range(0, room.h);
                 if !world.blocked(x, z) && !keep_clear(x, z) {
+                    let mut foe = foes[r.weighted(&weights)].0;
+                    if too_tough(foe, depth) {
+                        foe = Foe::Sneak;
+                    }
                     spawns.push(Spawn {
-                        foe: foes[r.weighted(&weights)].0,
+                        foe,
                         x: x as f32 + 0.5,
                         z: z as f32 + 0.5,
                         boss: false,
@@ -614,11 +705,12 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
             }
         }
     }
+    let lair = lair(&world, stairs);
     if is_waystone_floor(depth) && !via_waystone {
         spawns.push(Spawn {
-            foe: boss_for(biome),
-            x: stairs.0 as f32 + 0.5,
-            z: stairs.1 as f32 + 2.5,
+            foe: boss_for(depth),
+            x: lair.0,
+            z: lair.1,
             boss: true,
         });
     }
@@ -635,7 +727,34 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
         stairs,
         waystone,
         spawns,
+        lair,
     }
+}
+
+/// The roomiest open ground a few steps from the stairs, where a giant has space to move.
+fn lair(world: &World, stairs: (i32, i32)) -> (f32, f32) {
+    let open = |x: i32, z: i32| world.wall(x, z) == Wall::None;
+    let mut best = (i32::MIN, stairs.0, stairs.1 + 2);
+    for z in stairs.1 - 6..=stairs.1 + 7 {
+        for x in stairs.0 - 7..=stairs.0 + 7 {
+            let d = ((x - stairs.0) as f32).hypot((z - stairs.1) as f32);
+            if !(2.5..=5.5).contains(&d) || !open(x, z) || world.obj(x, z).is_some() {
+                continue;
+            }
+            let mut room = 0;
+            for dz in -2..=2 {
+                for dx in -2..=2 {
+                    room += i32::from(open(x + dx, z + dz));
+                }
+            }
+            // Roomiest first; then south of the stairs (facing whoever comes to them).
+            let score = room * 8 + i32::from(z > stairs.1) * 3 - (d - 3.0).abs() as i32;
+            if score > best.0 {
+                best = (score, x, z);
+            }
+        }
+    }
+    (best.1 as f32 + 0.5, best.2 as f32 + 0.5)
 }
 
 fn pick(roll: f32, table: &[(f32, Obj)]) -> Option<Obj> {

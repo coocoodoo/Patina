@@ -464,6 +464,17 @@ impl Renderer {
         }
     }
 
+    /// A twinkle at a world position: a little four-pointed star, `arm` pixels out from a
+    /// bright `core`, its tips in `edge`.
+    pub fn sparkle(&mut self, p: Vec3, arm: i32, core: u8, edge: u8) {
+        if self.shadow_pass {
+            return;
+        }
+        if let Some(s) = self.cam.project(p) {
+            raster::draw_star(&mut self.fb, s.x, s.y, s.z, arm, core, edge);
+        }
+    }
+
     /// A soft glow of added light, `radius` world units across, centred on `p`.
     pub fn halo(&mut self, p: Vec3, radius: f32, color: u8, strength: f32) {
         if self.shadow_pass {

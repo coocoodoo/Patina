@@ -432,6 +432,30 @@ pub fn draw_point(fb: &mut Frame, x: f32, y: f32, iw: f32, size: i32, color: u8)
     }
 }
 
+/// A four-pointed star of light: a `core` pixel with arms `arm` pixels long, tipped with
+/// `edge`. It glows, so the shading passes that follow leave it be.
+pub fn draw_star(fb: &mut Frame, x: f32, y: f32, iw: f32, arm: i32, core: u8, edge: u8) {
+    let (cx, cy) = (x.round() as i32, y.round() as i32);
+    let mut put = |px: i32, py: i32, c: u8| {
+        if px < 0 || py < 0 || px >= fb.w as i32 || py >= fb.h as i32 {
+            return;
+        }
+        let i = py as usize * fb.w + px as usize;
+        if iw >= fb.depth[i] {
+            fb.color[i] = c;
+            fb.glow[i] = true;
+        }
+    };
+    put(cx, cy, core);
+    for k in 1..=arm {
+        let c = if k < arm { core } else { edge };
+        put(cx + k, cy, c);
+        put(cx - k, cy, c);
+        put(cx, cy + k, c);
+        put(cx, cy - k, c);
+    }
+}
+
 /// A soft disc of light added around a screen point (the glow round a spark or ember),
 /// strongest in the middle and dithered out to nothing at `radius` pixels. Anything in front
 /// of the point hides its glow.

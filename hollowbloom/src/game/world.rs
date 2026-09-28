@@ -119,6 +119,9 @@ pub enum Obj {
     },
     LootChest {
         opened: bool,
+        /// A rare gleaming chest, sparkling gold, with well-rolled treasure inside.
+        #[serde(default)]
+        gleam: bool,
     },
     StairsDown,
     Waystone,
@@ -253,6 +256,10 @@ impl Obj {
             Obj::WishTree { blooming: true } => Some((1.6, 6.0, 0.7, 2.0)),
             Obj::Hearth => Some((0.5, 4.2, 0.42, 6.5)),
             Obj::Furniture { f, .. } => f.def().light,
+            Obj::LootChest {
+                opened: false,
+                gleam: true,
+            } => Some((0.5, 2.6, 0.45, 6.5)),
             _ => None,
         }
     }

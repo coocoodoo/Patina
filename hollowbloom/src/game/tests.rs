@@ -998,7 +998,7 @@ fn soak_many_floors() {
         let mut chests = Vec::new();
         for z in 0..w.h {
             for x in 0..w.w {
-                if matches!(w.obj(x, z), Some(Obj::LootChest { opened: false })) {
+                if matches!(w.obj(x, z), Some(Obj::LootChest { opened: false, .. })) {
                     chests.push((x, z));
                 }
             }
@@ -2128,4 +2128,213 @@ fn the_full_moon_riles_up_the_hollow() {
     });
     s.frames(60);
     assert!(s.play.foes.iter().all(|f| !f.moonlit));
+}
+
+#[test]
+fn zombies_goblins_and_bugs_live_in_every_biome() {
+    use super::dungeon::{Foe, biome_foes, too_tough};
+    use super::foes::kind_name;
+    for biome in 0..6 {
+        let here: Vec<Foe> = biome_foes(biome).iter().map(|f| f.0).collect();
+        for f in [
+            Foe::Zombie,
+            Foe::Brute,
+            Foe::Sneak,
+            Foe::Bug,
+            Foe::Skeleton,
+            Foe::Ghost,
+        ] {
+            assert!(here.contains(&f), "{f:?} missing from biome {biome}");
+        }
+    }
+    // Every family goes by a different name in each biome.
+    for f in [
+        Foe::Zombie,
+        Foe::Brute,
+        Foe::Sneak,
+        Foe::Bug,
+        Foe::Skeleton,
+        Foe::Ghost,
+    ] {
+        let names: std::collections::HashSet<_> = (0..6).map(|b| kind_name(f, b)).collect();
+        assert_eq!(names.len(), 6, "{f:?}");
+    }
+    // The first floors are spared the brutes.
+    assert!(too_tough(Foe::Brute, 1) && !too_tough(Foe::Brute, 3));
+    for depth in [1u32, 2] {
+        for seed in 0..6 {
+            let level = super::dungeon::generate(seed, depth, false);
+            assert!(level.spawns.iter().all(|s| !too_tough(s.foe, depth)));
+        }
+    }
+}
+
+#[test]
+fn the_new_families_drop_their_bits() {
+    use super::dungeon::Foe;
+    use super::loot::{Fortune, foe_loot};
+    let mut rng = crate::util::Rng::new(5);
+    for (foe, bit) in [
+        (Foe::Zombie, Item::GraveDust),
+        (Foe::Brute, Item::GoblinTooth),
+        (Foe::Sneak, Item::GoblinTooth),
+        (Foe::Bug, Item::Chitin),
+    ] {
+        let mut got = 0;
+        for k in 0..200 {
+            let loot = foe_loot(foe, false, k % 6, 12, Fortune::plain(), &mut rng);
+            got += loot.iter().filter(|s| s.item == bit).count();
+        }
+        assert!(got > 40, "{foe:?} dropped {got} {bit:?}");
+    }
+}
+
+#[test]
+fn every_new_family_fights_back() {
+    use super::dungeon::Foe;
+    for foe in [Foe::Zombie, Foe::Brute, Foe::Sneak, Foe::Bug] {
+        for biome in 0..6usize {
+            let depth = biome as u32 * 10 + 4;
+            let mut s = Sim::new();
+            s.play.start_fade(Trans::Descend {
+                depth,
+                via_waystone: false,
+            });
+            s.frames(60);
+            // Clear the floor and set one creature loose a few steps from the hero.
+            let (px, pz) = s.play.player.tile();
+            let w = &s.play.level.as_ref().unwrap().world;
+            let (fx, fz) = w.nearest_open(px + 2, pz);
+            s.play.foes.clear();
+            s.play.foes.push(super::foes::Enemy::new(
+                foe,
+                fx as f32 + 0.5,
+                fz as f32 + 0.5,
+                depth,
+                biome,
+                false,
+                3,
+            ));
+            s.play.player.hurt = 0.0;
+            let start = s.play.player.hp;
+            let mut hit = false;
+            for _ in 0..900 {
+                s.frames(1);
+                if s.play.player.hp < start {
+                    hit = true;
+                    break;
+                }
+                // Keep the hero standing still and alive.
+                s.play.player.hp = start;
+                s.play.player.hurt = 0.0;
+                if s.play.foes.is_empty() {
+                    break;
+                }
+            }
+            assert!(hit, "{foe:?} in biome {biome} never landed a blow");
+        }
+    }
+}
+
+#[test]
+fn guardians_are_giants_that_leave_a_hoard_of_chests() {
+    use super::dungeon::{Foe, boss_for};
+    use super::foes::{BOSS_SCALE, Enemy};
+    // The classic six on the first trip down, giant goblins, bugs and dead on the next.
+    assert_eq!(boss_for(10), Foe::Slime);
+    assert_eq!(boss_for(60), Foe::Skeleton);
+    assert_eq!(boss_for(70), Foe::Brute);
+    assert_eq!(boss_for(80), Foe::Bug);
+    assert_eq!(boss_for(130), Foe::Slime);
+    let small = Enemy::new(Foe::Slime, 0.0, 0.0, 10, 0, false, 1);
+    let big = Enemy::new(Foe::Slime, 0.0, 0.0, 10, 0, true, 1);
+    assert!(big.scale() >= 2.5 && BOSS_SCALE == big.scale());
+    assert!(big.max_hp >= small.max_hp * 12 && big.dmg > small.dmg);
+    for depth in [10u32, 70] {
+        let mut s = Sim::new();
+        s.play.fade = None;
+        s.play.start_fade(Trans::Descend {
+            depth,
+            via_waystone: false,
+        });
+        s.frames(60);
+        let i = s.play.foes.iter().position(|f| f.boss).expect("a guardian");
+        assert_eq!(s.play.foes[i].foe, boss_for(depth));
+        let name = s.play.foes[i].name();
+        assert!(!name.is_empty() && name != "Guardian", "{name}");
+        let chests = |p: &Play| {
+            let w = &p.level.as_ref().unwrap().world;
+            let mut n = 0;
+            for z in 0..w.h {
+                for x in 0..w.w {
+                    if matches!(w.obj(x, z), Some(Obj::LootChest { opened: false, .. })) {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let before = chests(&s.play);
+        s.play.foes[i].hp = 0;
+        let mut io = frame_io(&s.input, &s.audio);
+        s.play.reap(&mut io);
+        let hoard = chests(&s.play) - before;
+        assert!((4..=8).contains(&hoard), "floor {depth}: {hoard} chests");
+        // A heap of loot on the floor too, finely made gear among it.
+        assert!(s.play.drops.len() >= 12, "{} drops", s.play.drops.len());
+        assert!(
+            s.play
+                .drops
+                .iter()
+                .any(|d| d.stack.rarity().is_some_and(|r| r >= Rarity::Rare))
+        );
+        assert_eq!(s.play.stats.guardians, 1);
+    }
+}
+
+#[test]
+fn gleaming_chests_hold_finely_rolled_gear() {
+    use super::loot::{Fortune, chest_loot};
+    let mut rng = crate::util::Rng::new(77);
+    let best = |loot: &[Stack]| {
+        loot.iter()
+            .filter_map(|s| s.gear.filter(|_| s.item.base().is_some()))
+            .map(|g| g.score())
+            .fold(0.0f32, f32::max)
+    };
+    let (mut plain, mut gleaming) = (0.0, 0.0);
+    for _ in 0..60 {
+        let a = chest_loot(20, 1, false, Fortune::plain(), &mut rng);
+        let b = chest_loot(20, 1, true, Fortune::plain(), &mut rng);
+        plain += best(&a);
+        gleaming += best(&b);
+        // Every gleaming chest has at least two pieces of rare-or-better gear.
+        let fine = b
+            .iter()
+            .filter(|s| s.item.base().is_some() && s.rarity().is_some_and(|r| r >= Rarity::Rare))
+            .count();
+        assert!(fine >= 2, "{fine} fine pieces");
+    }
+    assert!(
+        gleaming > plain * 1.5,
+        "gleaming {gleaming} vs plain {plain}"
+    );
+    // Most chests are plain; now and then one gleams.
+    let (mut total, mut gleams) = (0, 0);
+    for seed in 0..40 {
+        let level = super::dungeon::generate(seed, 13, false);
+        let w = &level.world;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if let Some(Obj::LootChest { gleam, .. }) = w.obj(x, z) {
+                    total += 1;
+                    gleams += usize::from(*gleam);
+                }
+            }
+        }
+    }
+    assert!(
+        gleams > 0 && gleams * 5 < total,
+        "{gleams} of {total} gleam"
+    );
 }

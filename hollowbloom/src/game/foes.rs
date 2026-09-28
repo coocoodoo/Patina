@@ -2,7 +2,9 @@
 
 use glam::{Mat4, Vec2, Vec3};
 
-use super::draw::{Pose, draw_humanoid};
+use std::f32::consts::PI;
+
+use super::draw::{Outfit, Pose, draw_humanoid};
 use super::dungeon::Foe;
 use super::fx::{Fx, Shot};
 use super::world::World;
@@ -57,10 +59,27 @@ pub struct Enemy {
     pub fury: f32,
     /// Under a full moon: glowing red, tougher, and carrying better loot.
     pub moonlit: bool,
+    /// Seconds its name stays shown over its health bar after you hit it.
+    pub named: f32,
+    /// Seconds until a guardian next calls for help.
+    pub summon: f32,
 }
 
 /// The outline tag for creatures maddened by the full moon (outlined in red).
 pub const MOONLIT_TAG: u8 = 6;
+
+/// Goblin colours by biome (light, mid, dark): their skin, and the dust their clubs raise.
+const GOBLIN_DUST: [[u8; 3]; 6] = [
+    [LIME, GREEN, TEAL],
+    [MINT, AQUA, TEAL],
+    [BLUSH, PINK, PLUM],
+    [ORANGE, RED, MAROON],
+    [WHITE, SKY, BLUE],
+    [GOLD, CLAY, RUST],
+];
+
+/// The glint of a thrown goblin dagger, by biome.
+const DAGGERS: [u8; 6] = [WHITE, AQUA, BLUSH, ORANGE, SKY, GOLD];
 
 pub struct Base {
     pub hp: i32,
@@ -92,6 +111,87 @@ pub fn base(f: Foe) -> Base {
         Foe::Frog => b(16, 7, 2.6, 0.3, 6, "Bog Frog"),
         Foe::Jelly => b(14, 8, 1.2, 0.3, 7, "Drift Jelly"),
         Foe::Puffer => b(20, 9, 1.4, 0.32, 8, "Puffer"),
+        Foe::Zombie => b(30, 9, 1.25, 0.3, 8, "Zombie"),
+        Foe::Brute => b(44, 13, 1.5, 0.4, 12, "Goblin Brute"),
+        Foe::Sneak => b(15, 7, 3.0, 0.26, 7, "Goblin Sneak"),
+        Foe::Bug => b(11, 6, 3.0, 0.26, 5, "Bug"),
+    }
+}
+
+/// The Fungal Hollow's bugs are spore moths: they fly.
+pub const MOTHS: usize = 2;
+
+/// Creatures that float or fly rather than walk.
+pub fn flies(foe: Foe, biome: usize) -> bool {
+    matches!(
+        foe,
+        Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer
+    ) || (foe == Foe::Bug && biome % 6 == MOTHS)
+}
+
+/// What a creature is called where it lives: every family has its own kind in each biome.
+pub fn kind_name(f: Foe, biome: usize) -> &'static str {
+    let b = biome % 6;
+    match f {
+        Foe::Zombie => [
+            "Mossy Zombie",
+            "Crystal Zombie",
+            "Sporeling Zombie",
+            "Charred Zombie",
+            "Frozen Zombie",
+            "Mummy",
+        ][b],
+        Foe::Brute => [
+            "Mossback Brute",
+            "Geode Brute",
+            "Toadstool Brute",
+            "Cinder Brute",
+            "Snowgut Brute",
+            "Tomb Brute",
+        ][b],
+        Foe::Sneak => [
+            "Moss Sneak",
+            "Glint Sneak",
+            "Spore Sneak",
+            "Ash Sneak",
+            "Frost Sneak",
+            "Dune Sneak",
+        ][b],
+        Foe::Bug => [
+            "Moss Mite",
+            "Glass Mantis",
+            "Spore Moth",
+            "Fire Ant",
+            "Frost Tick",
+            "Scarab",
+        ][b],
+        Foe::Skeleton => [
+            "Mossbones",
+            "Crystal Skeleton",
+            "Shroomskull",
+            "Charred Skeleton",
+            "Frostbones",
+            "Pharaoh's Guard",
+        ][b],
+        Foe::Ghost => [
+            "Willow Ghost",
+            "Glimmer Ghost",
+            "Puffball Ghost",
+            "Ember Ghost",
+            "Snow Ghost",
+            "Tomb Ghost",
+        ][b],
+        Foe::Slime => "Slime",
+        Foe::Bat => "Bat",
+        Foe::Shroom => "Shroomling",
+        Foe::Crab => "Crystal Crab",
+        Foe::Wisp => "Wisp",
+        Foe::Beetle => "Beetle",
+        Foe::Imp => "Imp",
+        Foe::Golem => "Golem",
+        Foe::Frog => "Bog Frog",
+        Foe::Jelly => "Drift Jelly",
+        Foe::Puffer => "Puffer",
     }
 }
 
@@ -107,19 +207,52 @@ pub fn boss_name(f: Foe) -> &'static str {
     }
 }
 
+/// A guardian's name where it stands: the classic six, and the giants that guard the tenth
+/// floors on later trips down.
+pub fn guardian_name(f: Foe, biome: usize) -> &'static str {
+    match (f, biome % 6) {
+        (Foe::Brute, 0) => "Grub the Goblin King",
+        (Foe::Bug, 1) => "The Glass Queen",
+        (Foe::Zombie, 2) => "The Rotting Gardener",
+        (Foe::Sneak, 3) => "Ashfang the Quick",
+        (Foe::Ghost, 4) => "The Frost Wraith",
+        (Foe::Zombie, 5) => "The Mummy King",
+        _ => boss_name(f),
+    }
+}
+
+/// How much bigger than life a guardian is.
+pub const BOSS_SCALE: f32 = 2.8;
+
 impl Enemy {
     pub fn new(foe: Foe, x: f32, z: f32, depth: u32, biome: usize, boss: bool, seed: u32) -> Enemy {
-        let b = base(foe);
+        let mut b = base(foe);
+        if foe == Foe::Bug {
+            // Each biome's bug fights its own way: glass mantises cut deep, fire ants are
+            // quick, frost ticks and scarabs are hard to crack.
+            let (h, d, sp) = [
+                (1.0, 1.0, 1.0),
+                (0.9, 1.35, 0.9),
+                (0.8, 0.9, 0.75),
+                (1.0, 1.1, 1.25),
+                (1.5, 1.0, 0.85),
+                (1.4, 1.1, 0.95),
+            ][biome % 6];
+            b.hp = (b.hp as f32 * h) as i32;
+            b.dmg = (b.dmg as f32 * d) as i32;
+            b.speed *= sp;
+        }
         let d = depth.max(1) as f32 - 1.0;
         let mut hp = (b.hp as f32 * (1.0 + 0.14 * d)) as i32;
         let mut dmg = (b.dmg as f32 * (1.0 + 0.08 * d)) as i32;
         let mut xp = (b.xp as f32 * (1.0 + 0.1 * d)) as u32;
         let mut radius = b.radius;
         if boss {
-            hp *= 9;
-            dmg = dmg * 3 / 2;
-            xp *= 12;
-            radius *= 1.9;
+            // Oversized, and strong with it.
+            hp *= 14;
+            dmg = dmg * 17 / 10;
+            xp *= 15;
+            radius *= 2.4;
         }
         Enemy {
             foe,
@@ -127,14 +260,7 @@ impl Enemy {
             biome,
             pos: Vec2::new(x, z),
             vel: Vec2::ZERO,
-            y: if matches!(
-                foe,
-                Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer
-            ) {
-                0.55
-            } else {
-                0.0
-            },
+            y: if flies(foe, biome) { 0.55 } else { 0.0 },
             vy: 0.0,
             hp,
             max_hp: hp,
@@ -159,7 +285,23 @@ impl Enemy {
             chill: 0.0,
             fury: 1.0,
             moonlit: false,
+            named: 0.0,
+            summon: 6.0,
         }
+    }
+
+    /// Its name, as shown over its health bar and in the guardian's banner.
+    pub fn name(&self) -> &'static str {
+        if self.boss {
+            guardian_name(self.foe, self.biome)
+        } else {
+            kind_name(self.foe, self.biome)
+        }
+    }
+
+    /// Floats or flies rather than walks.
+    pub fn flying(&self) -> bool {
+        flies(self.foe, self.biome)
     }
 
     /// Tonight's moon stirs them up (or calms them down). A full moon makes them glow red,
@@ -177,7 +319,12 @@ impl Enemy {
     }
 
     pub fn scale(&self) -> f32 {
-        if self.boss { 2.0 } else { 1.0 }
+        if self.boss { BOSS_SCALE } else { 1.0 }
+    }
+
+    /// How far its attacks reach compared with one of normal size.
+    fn reach(&self) -> f32 {
+        self.scale().sqrt()
     }
 
     pub fn world_pos(&self) -> Vec3 {
@@ -194,7 +341,12 @@ impl Enemy {
         matches!(
             self.foe,
             Foe::Crab | Foe::Beetle | Foe::Golem | Foe::Skeleton
-        )
+        ) || (self.foe == Foe::Bug && self.biome % 6 != MOTHS)
+    }
+
+    /// Too heavy to be knocked about much.
+    pub fn heavy(&self) -> bool {
+        self.boss || matches!(self.foe, Foe::Golem | Foe::Brute)
     }
 
     /// Does this enemy touch the ground (and so can bump the player)?
@@ -234,6 +386,7 @@ impl Enemy {
         depth: u32,
     ) {
         self.anim += dt;
+        self.named = (self.named - dt).max(0.0);
         self.flash = (self.flash - dt).max(0.0);
         self.hurt_cd = (self.hurt_cd - dt).max(0.0);
         self.squash = approach(self.squash, 0.0, dt * 3.0);
@@ -263,6 +416,35 @@ impl Enemy {
         }
         // A bigger moon, a shorter fuse.
         self.t -= dt * self.fury;
+        if self.boss && matches!(self.foe, Foe::Brute | Foe::Sneak | Foe::Bug) {
+            // Goblin kings whistle up their sneaks; bug queens call their brood.
+            self.summon -= dt;
+            if self.summon <= 0.0 {
+                self.summon = 7.0;
+                let help = if self.foe == Foe::Bug {
+                    Foe::Bug
+                } else {
+                    Foe::Sneak
+                };
+                for k in 0..2u32 {
+                    let a = k as f32 * std::f32::consts::PI + self.anim;
+                    let p = self.pos + Vec2::new(a.cos(), a.sin()) * 1.6;
+                    if !world.blocked(p.x as i32, p.y as i32) {
+                        let mut e =
+                            Enemy::new(help, p.x, p.y, depth, self.biome, false, self.seed + k);
+                        e.alert = true;
+                        spawns.push(e);
+                    }
+                }
+                fx.burst(
+                    self.world_pos(),
+                    12,
+                    &[WHITE, CREAM, self.color()],
+                    3.0,
+                    2.0,
+                );
+            }
+        }
         match self.foe {
             Foe::Slime => self.slime(dt, world, dirp, dist, spawns, rng, depth),
             Foe::Bat => {
@@ -280,7 +462,7 @@ impl Enemy {
                 self.dir = dir;
                 self.step(world, dir * self.speed * dt);
             }
-            Foe::Shroom | Foe::Skeleton | Foe::Ghost => {
+            Foe::Shroom | Foe::Skeleton | Foe::Ghost | Foe::Zombie => {
                 if self.foe == Foe::Ghost {
                     self.y = 0.5 + (self.anim * 2.0).sin() * 0.12;
                 }
@@ -306,9 +488,17 @@ impl Enemy {
                     }
                     _ => {
                         self.dir = dirp;
-                        if self.foe == Foe::Skeleton && dist < 1.6 {
+                        if self.foe == Foe::Skeleton && dist < 1.6 * self.reach() {
                             self.st = St::Windup;
                             self.t = 0.35;
+                        } else if self.foe == Foe::Zombie && dist < 1.5 * self.reach() {
+                            // Arms up, a groan, and a grab.
+                            self.st = St::Windup;
+                            self.t = 0.55;
+                        } else if self.foe == Foe::Zombie {
+                            // A lurching shamble: a drag of the foot, then a lunge of a step.
+                            let lurch = 0.45 + 0.9 * (self.anim * 4.0).sin().abs();
+                            self.step(world, dirp * self.speed * lurch * dt);
                         } else {
                             self.step(world, dirp * self.speed * dt);
                         }
@@ -338,6 +528,9 @@ impl Enemy {
             Foe::Wisp | Foe::Imp => self.shooter(dt, world, dirp, dist, shots, rng),
             Foe::Frog => self.frog(dt, world, dirp, dist, shots, rng),
             Foe::Jelly | Foe::Puffer => self.floater(dt, world, dirp, dist, shots, fx, rng),
+            Foe::Brute => self.brute(dt, world, dirp, dist, shots, fx),
+            Foe::Sneak => self.sneak(dt, world, dirp, dist, shots, rng),
+            Foe::Bug => self.bug(dt, world, dirp, dist, shots, rng),
         }
         if dist > 0.01 && self.st != St::Dash {
             self.yaw = dirp.x.atan2(dirp.y);
@@ -357,7 +550,7 @@ impl Enemy {
                 Vec2::ZERO
             };
         }
-        if matches!(self.foe, Foe::Bat | Foe::Wisp | Foe::Jelly | Foe::Puffer) {
+        if self.flying() && self.foe != Foe::Ghost {
             self.y = 0.55 + (self.anim * 4.0).sin() * 0.1;
         }
         if !matches!(self.foe, Foe::Slime | Foe::Frog) {
@@ -480,7 +673,7 @@ impl Enemy {
             }
             _ => {
                 self.dir = dirp;
-                let trigger = if golem { 2.0 } else { 4.2 };
+                let trigger = if golem { 2.0 * self.reach() } else { 4.2 };
                 if dist < trigger && world.clear_line(self.pos, self.pos + dirp * dist) {
                     self.st = St::Windup;
                     self.t = if golem { 0.7 } else { 0.5 };
@@ -678,6 +871,216 @@ impl Enemy {
         }
     }
 
+    /// A fat goblin: plods up, raises its club and slams the ground, sending a shockwave
+    /// out in front (all round, for a guardian).
+    #[allow(clippy::too_many_arguments)]
+    fn brute(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        fx: &mut Fx,
+    ) {
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    let hit = self.pos + self.dir * 0.7 * self.scale();
+                    let skin = GOBLIN_DUST[self.biome % 6];
+                    fx.burst(Vec3::new(hit.x, 0.05, hit.y), 16, &skin, 3.5, 2.0);
+                    let fan: Vec<f32> = if self.boss {
+                        (0..14)
+                            .map(|k| k as f32 / 14.0 * std::f32::consts::TAU)
+                            .collect()
+                    } else {
+                        vec![-0.7, -0.35, 0.0, 0.35, 0.7]
+                    };
+                    for a in fan {
+                        let d = Vec2::from_angle(a).rotate(self.dir);
+                        shots.push(Shot {
+                            pos: hit,
+                            vel: d * 3.8,
+                            dmg: self.dmg * 2 / 3,
+                            life: if self.boss { 0.9 } else { 0.4 },
+                            color: skin[0],
+                            radius: 0.2,
+                        });
+                    }
+                    self.st = St::Rest;
+                    self.t = 0.9;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                }
+            }
+            _ => {
+                self.dir = dirp;
+                let reach = 1.9 * self.reach();
+                if dist < reach && world.clear_line(self.pos, self.pos + dirp * dist) {
+                    self.st = St::Windup;
+                    self.t = 0.65;
+                } else {
+                    self.step(world, dirp * self.speed * dt);
+                }
+            }
+        }
+    }
+
+    /// A skinny goblin: circles just out of reach, darts in to stab and away again, and
+    /// throws daggers from further off.
+    fn sneak(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    self.t = 0.28;
+                }
+            }
+            St::Dash => {
+                let d = self.dir * self.speed * 2.4 * dt;
+                self.step(world, d);
+                if self.t <= 0.0 {
+                    self.st = St::Rest;
+                    self.t = 0.7;
+                }
+            }
+            St::Rest => {
+                // Skip back out of reach.
+                self.step(world, -dirp * self.speed * 0.8 * dt);
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(0.4, 1.2);
+                }
+            }
+            _ => {
+                let turn = if self.seed % 2 == 0 { 1.0 } else { -1.0 };
+                let circle = Vec2::new(-dirp.y, dirp.x) * turn;
+                let want = if dist > 3.2 {
+                    dirp
+                } else if dist < 2.0 {
+                    (circle - dirp).normalize_or_zero()
+                } else {
+                    circle
+                };
+                self.dir = dirp;
+                self.step(world, want * self.speed * 0.8 * dt);
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && sees {
+                    if dist < 3.4 * self.reach() {
+                        self.st = St::Windup;
+                        self.t = 0.22;
+                    } else if dist < 8.0 {
+                        // A thrown dagger.
+                        let spread: &[f32] = if self.boss { &[-0.2, 0.0, 0.2] } else { &[0.0] };
+                        for a in spread {
+                            let d = Vec2::from_angle(*a).rotate(dirp);
+                            shots.push(Shot {
+                                pos: self.pos + d * 0.3,
+                                vel: d * 6.0,
+                                dmg: (self.dmg * 4 / 5).max(1),
+                                life: 1.6,
+                                color: DAGGERS[self.biome % 6],
+                                radius: 0.12,
+                            });
+                        }
+                        self.t = rng.range_f(1.8, 2.8);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Bugs skitter in stop-and-go zigzags and pounce; spore moths flutter about instead
+    /// and puff spores at you.
+    fn bug(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        let side = Vec2::new(-dirp.y, dirp.x);
+        if self.flying() {
+            self.y = 0.55 + (self.anim * 5.0).sin() * 0.12;
+            let flutter = side * (self.anim * 2.3 + self.seed as f32).sin() * 1.2
+                + Vec2::new((self.anim * 3.7).sin(), (self.anim * 2.9).cos()) * 0.4;
+            let want = if dist > 2.2 { dirp } else { -dirp * 0.3 };
+            let d = (want + flutter).normalize_or_zero();
+            self.dir = d;
+            self.step(world, d * self.speed * dt);
+            if self.t <= 0.0 {
+                if dist < 6.0 && world.clear_line(self.pos, self.pos + dirp * dist) {
+                    let n = if self.boss { 6 } else { 1 };
+                    for k in 0..n {
+                        let a = (k as f32 - (n - 1) as f32 * 0.5) * 0.35;
+                        let v = Vec2::from_angle(a).rotate(dirp);
+                        shots.push(Shot {
+                            pos: self.pos + v * 0.2,
+                            vel: v * 2.4,
+                            dmg: self.dmg,
+                            life: 2.4,
+                            color: PINK,
+                            radius: 0.2,
+                        });
+                    }
+                }
+                self.t = rng.range_f(2.0, 3.2);
+            }
+            return;
+        }
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    self.t = 0.22;
+                }
+            }
+            St::Dash => {
+                let d = self.dir * 7.0 * dt;
+                self.step(world, d);
+                if self.t <= 0.0 {
+                    self.st = St::Rest;
+                    self.t = 0.6;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                }
+            }
+            _ => {
+                if dist < 1.8 * self.reach() && self.t <= 0.0 {
+                    self.dir = dirp;
+                    self.st = St::Windup;
+                    self.t = if self.biome % 6 == 1 { 0.4 } else { 0.3 };
+                    return;
+                }
+                let zig = side * (self.anim * 6.0 + self.seed as f32).sin() * 0.9;
+                let d = (dirp + zig).normalize_or_zero();
+                // Stop, start, stop: the way bugs go.
+                let go = (0.3 + 1.1 * (self.anim * 3.1 + self.seed as f32).sin()).max(0.0);
+                self.dir = d;
+                self.step(world, d * self.speed * go * dt);
+                if self.t <= 0.0 {
+                    self.t = rng.range_f(0.2, 0.5);
+                }
+            }
+        }
+    }
+
     pub fn color(&self) -> u8 {
         match (self.foe, self.biome) {
             (Foe::Slime, 0) => GREEN,
@@ -692,13 +1095,16 @@ impl Enemy {
             (Foe::Wisp, _) => MINT,
             (Foe::Beetle, _) => LAVENDER,
             (Foe::Imp, _) => RED,
-            (Foe::Skeleton, _) => SAND,
+            (Foe::Skeleton, b) => [KHAKI, SKY, SAND, SHADOW, SKY, GOLD][b % 6],
             (Foe::Golem, _) => KHAKI,
-            (Foe::Ghost, _) => BLUSH,
+            (Foe::Ghost, b) => [LIME, SKY, PINK, GOLD, WHITE, BLUSH][b % 6],
             (Foe::Frog, 2) => PURPLE,
             (Foe::Frog, _) => GREEN,
             (Foe::Jelly, _) => LAVENDER,
             (Foe::Puffer, _) => GOLD,
+            (Foe::Zombie, b) => [GREEN, BLUE, PURPLE, SHADOW, SKY, SAND][b % 6],
+            (Foe::Brute | Foe::Sneak, b) => GOBLIN_DUST[b % 6][1],
+            (Foe::Bug, b) => [GREEN, AQUA, LAVENDER, RED, SKY, GOLD][b % 6],
         }
     }
 
@@ -729,6 +1135,13 @@ impl Enemy {
                 radius: 3.0,
                 power: 0.45,
                 warmth: 2.2,
+            }),
+            // Fire ants' tails glow like coals.
+            Foe::Bug if self.biome % 6 == 3 => Some(PointLight {
+                pos: self.world_pos() + Vec3::Y * 0.2,
+                radius: 1.8 * self.scale(),
+                power: 0.3,
+                warmth: 7.0,
             }),
             _ => None,
         }
@@ -942,13 +1355,15 @@ impl Enemy {
                     h: -0.4 * s,
                     lean: tail * s,
                 };
-                r.mesh(&a.bank, &a.critters.ghost_face, &m, &o);
+                let looks = &a.monsters;
+                r.mesh(&a.bank, &looks.ghost_face, &m, &o);
+                r.mesh(&a.bank, &looks.ghost_hat[b], &m, &o);
                 let sheet = if self.flash > 0.0 {
                     o
                 } else {
                     o.glass(0.28).with_glow(o.glow.max(0.8))
                 };
-                r.mesh(&a.bank, &a.critters.ghost, &m, &sheet.with_warp(warp));
+                r.mesh(&a.bank, &looks.ghost[b], &m, &sheet.with_warp(warp));
             }
             Foe::Frog => {
                 let (sx, sy) = if self.st == St::Hop {
@@ -1016,62 +1431,162 @@ impl Enemy {
                     r.mesh(&a.bank, &a.critters.puffer_fin, &fin, &o.two_sided());
                 }
             }
-            Foe::Imp | Foe::Skeleton => {
-                let h = if self.foe == Foe::Imp {
-                    &a.critters.imp
-                } else {
-                    &a.critters.skeleton
+            Foe::Bug => self.draw_bug(r, a, &o, b),
+            Foe::Imp | Foe::Skeleton | Foe::Zombie | Foe::Brute | Foe::Sneak => {
+                let looks = &a.monsters;
+                let h = match self.foe {
+                    Foe::Imp => &a.critters.imp,
+                    Foe::Skeleton => &looks.skeleton[b],
+                    Foe::Zombie => &looks.zombie[b],
+                    Foe::Brute => &looks.brute[b],
+                    _ => &looks.sneak[b],
                 };
-                let moving = self.alert && self.st != St::Windup;
+                let held = match self.foe {
+                    Foe::Brute => Some(&looks.club[b]),
+                    Foe::Sneak => Some(&looks.dagger[b]),
+                    _ => None,
+                };
+                let moving = if self.alert {
+                    !(self.st == St::Windup || (self.foe == Foe::Brute && self.st == St::Rest))
+                } else {
+                    self.dir.length_squared() > 0.0
+                };
+                let pace = match self.foe {
+                    Foe::Zombie => 6.0,
+                    Foe::Brute => 7.5,
+                    Foe::Sneak => 13.0,
+                    _ => 10.0,
+                };
+                let swing = match (self.foe, self.st) {
+                    (Foe::Zombie, _) => None,
+                    // The club goes up, and comes down hard.
+                    (Foe::Brute, St::Windup) => Some((0.0, super::draw::Swing::Chop)),
+                    (Foe::Brute, St::Rest) if self.t > 0.3 => Some((
+                        ((0.9 - self.t) / 0.15).clamp(0.0, 1.0),
+                        super::draw::Swing::Chop,
+                    )),
+                    (Foe::Brute, _) => None,
+                    (Foe::Sneak, St::Windup) => Some((0.0, super::draw::Swing::Slash)),
+                    (Foe::Sneak, St::Dash) => Some((
+                        1.0 - self.t.clamp(0.0, 0.28) / 0.28,
+                        super::draw::Swing::Slash,
+                    )),
+                    (_, St::Windup | St::Dash) => Some((
+                        1.0 - self.t.clamp(0.0, 0.4) / 0.4,
+                        super::draw::Swing::Slash,
+                    )),
+                    _ => None,
+                };
+                let reach = match (self.foe, self.st) {
+                    (Foe::Zombie, St::Windup) => 1.2 + (self.anim * 30.0).sin() * 0.06,
+                    (Foe::Zombie, _) if self.alert => 1.0,
+                    (Foe::Zombie, _) => 0.85,
+                    _ => 0.0,
+                };
+                let stride = if moving { 0.8 } else { 0.0 };
                 let pose = Pose {
-                    walk: self.anim * 10.0,
-                    stride: if moving { 0.8 } else { 0.0 },
-                    swing: if self.st == St::Windup || self.st == St::Dash {
-                        Some((
-                            1.0 - self.t.clamp(0.0, 0.4) / 0.4,
-                            super::draw::Swing::Slash,
-                        ))
+                    walk: self.anim * pace,
+                    stride,
+                    swing,
+                    bob: if self.foe == Foe::Brute {
+                        (self.anim * pace).sin().abs() * 0.03 * stride
                     } else {
-                        None
+                        0.0
                     },
-                    ..Default::default()
+                    squash: self.flash * 2.0,
+                    reach,
+                    grow: s - 1.0,
                 };
                 let mut ho = o;
                 if self.boss {
-                    ho.glow = 0.2;
+                    ho.glow = ho.glow.max(0.2);
                 }
-                let root = Vec3::new(self.pos.x, 0.0, self.pos.y);
-                if self.boss {
-                    // Bosses are drawn at double size.
-                    draw_humanoid_scaled(r, a, h, root, self.yaw, &pose, &ho, s);
+                // The dead lurch from side to side as they go.
+                let lurch = if self.foe == Foe::Zombie {
+                    (self.anim * pace * 0.5).sin() * 0.14
                 } else {
-                    draw_humanoid(r, a, h, root, self.yaw, &pose, &ho, &Default::default());
-                }
+                    0.0
+                };
+                let root = Vec3::new(self.pos.x, 0.0, self.pos.y);
+                let fit = Outfit {
+                    held,
+                    ..Default::default()
+                };
+                draw_humanoid(r, a, h, root, self.yaw + lurch, &pose, &ho, &fit);
             }
         }
     }
-}
 
-#[allow(clippy::too_many_arguments)]
-fn draw_humanoid_scaled(
-    r: &mut Renderer,
-    a: &Assets,
-    h: &crate::assets::models::Humanoid,
-    pos: Vec3,
-    yaw: f32,
-    pose: &Pose,
-    o: &DrawOpts,
-    s: f32,
-) {
-    // Scale the parts by baking a scaled copy of each pivot offset.
-    let mut big = h.clone();
-    for p in big.parts.iter_mut() {
-        p.transform(Mat4::from_scale(Vec3::splat(s)));
+    /// A bug: its body, a leg at every hip on both sides skittering in a ripple, and wings
+    /// or claws for those that have them.
+    fn draw_bug(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts, b: usize) {
+        let s = self.scale();
+        let bug = &a.monsters.bug[b];
+        let moving = self.alert || self.dir.length_squared() > 0.0;
+        let pace = if self.st == St::Dash { 30.0 } else { 18.0 };
+        let bob = if bug.flies {
+            0.0
+        } else {
+            (self.anim * pace).sin().abs() * 0.012 * s
+        };
+        let shake = if self.st == St::Windup {
+            (self.anim * 40.0).sin() * 0.03
+        } else {
+            0.0
+        };
+        let m = Mat4::from_translation(Vec3::new(self.pos.x, self.y + bob, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_translation(Vec3::new(shake, 0.0, 0.0))
+            * Mat4::from_scale(Vec3::splat(s));
+        r.mesh(&a.bank, &bug.body, &m, o);
+        let limbs = o.two_sided();
+        // Legs splay down so their tips just reach the floor (or dangle, for fliers).
+        let droop = if bug.flies {
+            1.2
+        } else {
+            (bug.hip_y / bug.leg_len.max(0.01)).clamp(0.0, 1.0).asin()
+        };
+        for (k, &z) in bug.hips.iter().enumerate() {
+            for side in [-1.0f32, 1.0] {
+                let ph = self.anim * pace + k as f32 * PI + if side < 0.0 { PI } else { 0.0 };
+                let (fore, lift) = if bug.flies {
+                    (0.3, (self.anim * 3.0 + k as f32).sin() * 0.1)
+                } else if moving {
+                    (ph.sin() * 0.45, ph.cos().max(0.0) * 0.3)
+                } else {
+                    (0.0, 0.0)
+                };
+                let leg = m
+                    * Mat4::from_translation(Vec3::new(side * bug.hip_x, bug.hip_y, z))
+                    * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
+                    * Mat4::from_rotation_y(fore)
+                    * Mat4::from_rotation_z(lift - droop);
+                r.mesh(&a.bank, &bug.leg, &leg, &limbs);
+            }
+        }
+        if let Some(w) = &bug.wing {
+            let flap = (self.anim * 22.0).sin() * 0.9;
+            for side in [-1.0f32, 1.0] {
+                let wm = m
+                    * Mat4::from_translation(Vec3::new(side * 0.05, 0.12, 0.0))
+                    * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
+                    * Mat4::from_rotation_z(0.25 + flap);
+                r.mesh(&a.bank, w, &wm, &limbs);
+            }
+        }
+        if let Some(c) = &bug.claw {
+            // Folded in prayer, raised to strike, then brought down.
+            let strike = match self.st {
+                St::Windup => -0.8,
+                St::Dash => 1.1,
+                _ => 0.5 + (self.anim * 2.0).sin() * 0.1,
+            };
+            for side in [-1.0f32, 1.0] {
+                let cm = m
+                    * Mat4::from_translation(Vec3::new(side * 0.07, 0.34, 0.12))
+                    * Mat4::from_rotation_x(strike);
+                r.mesh(&a.bank, c, &cm, o);
+            }
+        }
     }
-    big.hip *= s;
-    big.shoulder *= s;
-    big.neck *= s;
-    big.shoulder_x *= s;
-    big.hip_x *= s;
-    draw_humanoid(r, a, &big, pos, yaw, pose, o, &Default::default());
 }

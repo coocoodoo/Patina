@@ -5,14 +5,14 @@
 use glam::{Vec2, Vec3};
 
 use super::Io;
-use super::dungeon::{Foe, biome_for};
-use super::foes::{St, boss_name};
+use super::dungeon::biome_for;
+use super::foes::St;
 use super::fx::Drop;
 use super::gear::Stat;
 use super::items::Item;
 use super::loot;
 use super::play::{Banner, Play};
-use super::world::Area;
+use super::world::{Area, Floor, Obj, Wall};
 use crate::audio::Sfx;
 use crate::palette::*;
 
@@ -121,11 +121,8 @@ impl Play {
         f.hp -= hit.dmg;
         f.flash = 0.12;
         f.hurt_cd = 0.22;
-        let heavy = if f.boss || f.foe == Foe::Golem {
-            0.3
-        } else {
-            1.0
-        };
+        f.named = 2.5;
+        let heavy = if f.heavy() { 0.3 } else { 1.0 };
         f.vel = (f.pos - from).normalize_or_zero() * hit.knock * heavy;
         if f.st == St::Windup && !f.boss {
             f.st = St::Rest;
@@ -204,6 +201,65 @@ impl Play {
     }
 
     /// Clears away defeated foes: experience, loot and fanfare.
+    /// A fallen guardian's hoard: four to eight treasure chests burst up out of the floor
+    /// in a ring round where it fell, now and then a gleaming one among them. Returns how
+    /// many there were.
+    pub fn guardian_hoard(&mut self, at: Vec2) -> usize {
+        let want = 4 + self.rng.below(5);
+        let ppos = self.player.tile();
+        let Some(level) = self.level.as_mut() else {
+            return 0;
+        };
+        let w = &mut level.world;
+        let (cx, cz) = (at.x.floor() as i32, at.y.floor() as i32);
+        // Open floor round the spot, nearest to a ring a few steps out first.
+        let mut spots: Vec<(f32, i32, i32)> = Vec::new();
+        for z in cz - 5..=cz + 5 {
+            for x in cx - 5..=cx + 5 {
+                let d = ((x - cx) as f32).hypot((z - cz) as f32);
+                if !(1.4..=5.2).contains(&d)
+                    || (x, z) == ppos
+                    || w.wall(x, z) != Wall::None
+                    || w.obj(x, z).is_some()
+                    || w.floor(x, z) != Floor::Cave
+                {
+                    continue;
+                }
+                let jitter = self.rng.f32() * 0.4;
+                spots.push(((d - 2.6).abs() + jitter, x, z));
+            }
+        }
+        spots.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut placed: Vec<(i32, i32)> = Vec::new();
+        for &(_, x, z) in &spots {
+            if placed.len() >= want {
+                break;
+            }
+            // Keep them a step apart so every one can be reached and opened.
+            if placed
+                .iter()
+                .any(|&(px, pz)| (px - x).abs() <= 1 && (pz - z).abs() <= 1)
+            {
+                continue;
+            }
+            w.set_obj(
+                x,
+                z,
+                Some(Obj::LootChest {
+                    opened: false,
+                    gleam: self.rng.chance(0.25),
+                }),
+            );
+            placed.push((x, z));
+        }
+        for &(x, z) in &placed {
+            let c = Vec3::new(x as f32 + 0.5, 0.2, z as f32 + 0.5);
+            self.fx.burst(c, 14, &[GOLD, CREAM, WHITE], 2.5, 3.0);
+            self.fx.motes(c + Vec3::Y * 0.3, 8, &[GOLD, CREAM], 0.4);
+        }
+        placed.len()
+    }
+
     pub fn reap(&mut self, io: &mut Io) {
         let mut xp = 0;
         let mut i = 0;
@@ -259,12 +315,14 @@ impl Play {
             self.stats.kills += 1;
             self.on_kill(f.foe, f.boss, depth, at);
             if f.boss {
-                self.toast(format!("{} defeated!", boss_name(f.foe)), None, 0);
+                self.toast(format!("{} defeated!", f.name()), None, 0);
+                let chests = self.guardian_hoard(f.pos);
                 self.banner = Some(Banner {
                     title: "Guardian defeated".into(),
-                    sub: "The waystone awakens".into(),
+                    sub: format!("{chests} treasure chests! The waystone awakens"),
                     t: 0.0,
                 });
+                self.stats.guardians += 1;
                 self.shake = 1.2;
             }
         }

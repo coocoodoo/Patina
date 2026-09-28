@@ -2426,6 +2426,96 @@ pub static QUESTS: &[QuestDef] = &[
         charm: 25,
         ..Q
     },
+    // The Hollow's newer residents: the walking dead, goblins fat and skinny, and bugs.
+    QuestDef {
+        key: "rowan_zombies",
+        giver: V::Rowan,
+        title: "Restless Dead",
+        ask: "Zombies. Shambling about the Hollow with their arms out like they're looking \
+              for a hug. Don't give them one. Put fifteen of them back to sleep.",
+        thanks: "Fifteen fewer shufflers. Good work, delver - you've earned these.",
+        goal: Slay(Some(Foe::Zombie), 15, 1),
+        reward: &[Coins(1500), Marks(35), item(Item::HealthPotion, 3)],
+        after: "rowan_slimes",
+        ..Q
+    },
+    QuestDef {
+        key: "clank_goblins",
+        giver: V::Clank,
+        title: "Goblin Brutes",
+        ask: "In my day we'd face a goblin brute with nothing but a pot lid and a stern \
+              look. Those big fellows swing a mean club. Ten of them, from floor 3 down - \
+              and mind the shockwave when the club comes down!",
+        thanks: "Ten brutes! Splendid! Have my old shield - it's seen off more goblins than \
+                 I've had hot dinners.",
+        goal: Slay(Some(Foe::Brute), 10, 3),
+        reward: &[
+            Coins(2400),
+            gear(Item::IronShield, RARE),
+            Friend(V::Clank, 40),
+        ],
+        depth: 3,
+        ..Q
+    },
+    QuestDef {
+        key: "pip_sneaks",
+        giver: V::Pip,
+        title: "Sneaky Goblins",
+        ask: "The skinny goblins throw DAGGERS! And they run away! That's cheating! Beat \
+              twelve of them for me. Pleeease?",
+        thanks: "Twelve! You're the best adventurer EVER. Here, a feather - it floats you \
+                 home if they get too sneaky.",
+        goal: Slay(Some(Foe::Sneak), 12, 1),
+        reward: &[Coins(1200), item(Item::Feather, 2)],
+        after: "pip_slime",
+        ..Q
+    },
+    QuestDef {
+        key: "hilde_teeth",
+        giver: V::Hilde,
+        title: "Goblin Teeth",
+        ask: "Goblin teeth make the finest rivets - hard as iron and they never rust. Bring \
+              me twelve and I'll make it worth your while.",
+        thanks: "Lovely set of teeth. Here, a helm riveted with the last lot.",
+        goal: Bring(Item::GoblinTooth, 12),
+        reward: &[Coins(1800), gear(Item::IronHelm, RARE)],
+        depth: 3,
+        ..Q
+    },
+    QuestDef {
+        key: "olive_bugs",
+        giver: V::Olive,
+        title: "Bug Hunt",
+        ask: "Bugs from the Hollow keep crawling up and nibbling my roses! Squash twenty \
+              of them down there before they get any ideas.",
+        thanks: "Twenty bugs! My roses thank you. Plant these - they're the hardy kind.",
+        goal: Slay(Some(Foe::Bug), 20, 1),
+        reward: &[Coins(1400), item(Item::RoseSeeds, 6), Friend(V::Olive, 40)],
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_dust",
+        giver: V::Hazel,
+        title: "Grave Matters",
+        ask: "Grave dust! A pinch keeps a spell from wandering off. Zombies carry it in \
+              their pockets, don't ask me why. Ten pinches, please.",
+        thanks: "Perfectly dusty. My spells will behave themselves now. Take these for your \
+                 trouble.",
+        goal: Bring(Item::GraveDust, 10),
+        reward: &[Coins(1600), item(Item::ManaPotion, 3), Friend(V::Hazel, 40)],
+        ..Q
+    },
+    QuestDef {
+        key: "nix_chitin",
+        giver: V::Nix,
+        title: "Tough Plates",
+        ask: "Bug chitin! Light as paper, tough as tin. Fifteen plates and I can finish my \
+              clockwork beetle. It will definitely not bite anyone.",
+        thanks: "It bit me. Worth it! Here's your pay.",
+        goal: Bring(Item::Chitin, 15),
+        reward: &[Coins(1500), Friend(V::Nix, 40)],
+        ..Q
+    },
 ];
 
 pub fn quest_def(key: &str) -> Option<&'static QuestDef> {
@@ -2648,6 +2738,10 @@ pub fn foe_name(f: Foe) -> &'static str {
         Foe::Frog => "bog frog",
         Foe::Jelly => "drift jelly",
         Foe::Puffer => "puffer",
+        Foe::Zombie => "zombie",
+        Foe::Brute => "fat goblin",
+        Foe::Sneak => "skinny goblin",
+        Foe::Bug => "bug",
     }
 }
 
@@ -3166,7 +3260,7 @@ impl Play {
         if !super::dungeon::is_waystone_floor(depth) {
             return false;
         }
-        let boss = super::dungeon::boss_for(biome_for(depth));
+        let boss = super::dungeon::boss_for(depth);
         self.quests.iter().any(|q| match q.goal() {
             Goal::Gather(item, n, Source::Boss(f)) => {
                 f == boss && self.player.inv.count(item) < n as u32

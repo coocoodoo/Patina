@@ -93,6 +93,8 @@ pub struct Humanoid {
     pub neck: f32,
     pub shoulder_x: f32,
     pub hip_x: f32,
+    /// How far down the arm from the shoulder the hand grips.
+    pub hand: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -332,6 +334,7 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
         neck: 0.43 * s,
         shoulder_x: SHOULDER_X * s,
         hip_x: 0.08 * s,
+        hand: 0.22 * s,
     }
 }
 
@@ -496,10 +499,7 @@ pub struct Critters {
     pub wisp: Mesh,
     pub beetle: Mesh,
     pub golem: Mesh,
-    pub ghost: Mesh,
-    pub ghost_face: Mesh,
     pub imp: Humanoid,
-    pub skeleton: Humanoid,
     pub mole: Mesh,
     pub cat: Mesh,
     pub cat_tail: Mesh,
@@ -526,7 +526,7 @@ pub struct Critters {
     pub golem_tex: TexId,
 }
 
-fn slime_skin(pal: [u8; 3]) -> Texture {
+pub fn slime_skin(pal: [u8; 3]) -> Texture {
     let [hi, mid, lo] = pal;
     let mut t = Texture::new(16, 16, mid);
     for y in 0..16 {
@@ -901,27 +901,6 @@ pub fn critters(bank: &mut TexBank) -> Critters {
     );
     eyes(&mut golem, glow, 0.98, 0.2, 0.09, 0.08);
 
-    // Ghost: a soft teardrop.
-    let sheet = bank.add(slime_skin([WHITE, BLUSH, LAVENDER]));
-    let mut ghost = Mesh::new();
-    lathe(
-        &mut ghost,
-        Vec3::ZERO,
-        &[
-            (0.3, 0.0),
-            (0.34, 0.2),
-            (0.3, 0.45),
-            (0.18, 0.62),
-            (0.0, 0.68),
-        ],
-        8,
-        0.39,
-        sheet,
-        true,
-    );
-    let mut ghost_face = Mesh::new();
-    eyes(&mut ghost_face, eye, 0.42, 0.305, 0.1, 0.1);
-
     let imp = humanoid(
         bank,
         &Look {
@@ -936,22 +915,6 @@ pub fn critters(bank: &mut TexBank) -> Critters {
             style: Hair::Bald,
             beard: false,
             scale: 0.85,
-        },
-    );
-    let skeleton = humanoid(
-        bank,
-        &Look {
-            hair: [WHITE, SAND, KHAKI],
-            skin: [WHITE, SAND, KHAKI],
-            eyes: INK,
-            cheeks: SAND,
-            shirt: [SAND, KHAKI, ROSEWOOD],
-            belt: RUST,
-            pants: KHAKI,
-            boots: ROSEWOOD,
-            style: Hair::Bald,
-            beard: false,
-            scale: 0.95,
         },
     );
 
@@ -1314,10 +1277,7 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         wisp,
         beetle,
         golem,
-        ghost,
-        ghost_face,
         imp,
-        skeleton,
         mole,
         cat,
         cat_tail,
@@ -1353,6 +1313,8 @@ pub struct Props {
     pub chest: Mesh,
     pub chest_open: Mesh,
     pub loot_chest: Mesh,
+    /// A rare gleaming treasure chest: gold planks and silver bands.
+    pub gleam_chest: Mesh,
     pub stairs: Mesh,
     pub waystone: Mesh,
     pub waystone_rune: Mesh,
@@ -2021,6 +1983,9 @@ pub fn props(bank: &mut TexBank) -> Props {
         metal,
         &w4,
     );
+    let gleam_chest = loot_chest
+        .retexture(gold_trim, bank.add(tiles::planks(GOLD, CREAM, CLAY, 9)))
+        .retexture(metal, bank.add(tiles::solid(WHITE)));
 
     // Stairs down: steps sinking into a pit.
     let step = bank.add(tiles::cobbles(KHAKI, SAND, SHADOW, 9));
@@ -2545,6 +2510,7 @@ pub fn props(bank: &mut TexBank) -> Props {
         crate_,
         chest,
         chest_open,
+        gleam_chest,
         loot_chest,
         stairs,
         waystone,

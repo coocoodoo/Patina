@@ -336,6 +336,54 @@ const HORN: &[&str] = &[
     "...KKKK.........",
 ];
 
+const GRAVE_DUST: &[&str] = &[
+    "................",
+    "................",
+    "..........KKK...",
+    ".........KwwnK..",
+    "......KK.KnwK...",
+    ".....KwwK.KK....",
+    "......KK........",
+    ".......KKKKK....",
+    ".....KKLDLLLKK..",
+    "....KLLwDLDLLLK.",
+    "...KLDLLLLDLLDLK",
+    "...KDDLDDDLDDDDK",
+    "....KKKKKKKKKKK.",
+];
+
+const TOOTH: &[&str] = &[
+    "................",
+    "................",
+    "......KKKK......",
+    ".....KwwwyK.....",
+    "....KwwwwynK....",
+    "....KwwwyynK....",
+    "....KwwyynnK....",
+    ".....KwyynK.....",
+    ".....KwyynK.....",
+    "......KyynK.....",
+    "......KynK......",
+    ".......KnK......",
+    "........K.......",
+];
+
+const CHITIN: &[&str] = &[
+    "................",
+    "................",
+    "....KKKKKKK.....",
+    "...K0w00001K....",
+    "..K00011111K....",
+    "..KKKKKKKKKKK...",
+    "..K0w0011112K...",
+    ".K00011111122K..",
+    ".KKKKKKKKKKKKK..",
+    ".K0000111122K...",
+    "..K011112222K...",
+    "...KKKKKKKKK....",
+    "................",
+];
+
 // ------------------------------------------------------------------------------------------
 // Crops
 // ------------------------------------------------------------------------------------------
@@ -1123,6 +1171,9 @@ pub fn build(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
         "golem_heart",
         art(HEART_GEM, [CLEAR, SAND, KHAKI, ROSEWOOD]),
     );
+    add("grave_dust", art(GRAVE_DUST, NO));
+    add("goblin_tooth", art(TOOTH, NO));
+    add("chitin", art(CHITIN, [LIME, GREEN, TEAL, CLEAR]));
 
     // Seeds.
     let packets: [(&'static str, [u8; 3]); 29] = [
@@ -1324,6 +1375,9 @@ pub fn all_templates() -> Vec<(&'static str, &'static [&'static str], usize)> {
         ("carapace", CARAPACE, 16),
         ("dust", DUST, 16),
         ("horn", HORN, 16),
+        ("grave_dust", GRAVE_DUST, 16),
+        ("tooth", TOOTH, 16),
+        ("chitin", CHITIN, 16),
         ("round_fruit", ROUND_FRUIT, 16),
         ("root", ROOT, 16),
         ("ears_root", EARS_ROOT, 16),
