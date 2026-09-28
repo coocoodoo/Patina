@@ -242,6 +242,7 @@ impl Play {
                 io.audio.play(Sfx::Rare);
             }
             self.stats.kills += 1;
+            self.on_kill(f.foe, f.boss, depth, at);
             if f.boss {
                 self.toast(format!("{} defeated!", boss_name(f.foe)), None, 0);
                 self.banner = Some(Banner {

@@ -229,7 +229,7 @@ impl Obj {
             Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
             Obj::EnchantTable => Some((0.9, 3.4, 0.5, 1.4)),
             Obj::StreetLamp { lit: true } => Some((1.7, 6.0, 0.9, 5.8)),
-            Obj::Hearth => Some((0.5, 5.0, 0.6, 7.0)),
+            Obj::Hearth => Some((0.5, 4.2, 0.42, 6.5)),
             _ => None,
         }
     }

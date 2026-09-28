@@ -5,12 +5,14 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use super::folk::Friends;
 use super::items::Stack;
 use super::play::{Play, Stats};
 use super::player::{Player, PlayerSave};
+use super::quests::{Journal, Quest};
 use super::world::{Floor, Obj, Wall, World};
 
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize)]
 pub struct FarmSave {
@@ -40,6 +42,23 @@ pub struct SaveData {
     /// Burrowby's specials bought on the saved day.
     #[serde(default)]
     pub bought: Vec<usize>,
+    /// Bramblewick: town projects, friendships, quests and records (version 3).
+    #[serde(default)]
+    pub restored: u32,
+    #[serde(default)]
+    pub friends: Friends,
+    #[serde(default)]
+    pub quests: Vec<Quest>,
+    #[serde(default)]
+    pub done: Vec<String>,
+    #[serde(default)]
+    pub journal: Journal,
+    #[serde(default)]
+    pub taken: Vec<u32>,
+    #[serde(default)]
+    pub marks: u32,
+    #[serde(default)]
+    pub rank: u8,
 }
 
 const FLOORS: [(Floor, char); 15] = [
@@ -191,6 +210,14 @@ pub fn write(p: &Play) -> Result<(), String> {
         rain: p.rain,
         stats: p.stats.clone(),
         bought: p.bought.clone(),
+        restored: p.restored,
+        friends: p.friends.clone(),
+        quests: p.quests.clone(),
+        done: p.done.clone(),
+        journal: p.journal.clone(),
+        taken: p.taken.clone(),
+        marks: p.marks,
+        rank: p.rank,
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let path = path().ok_or("no data directory")?;
@@ -225,6 +252,25 @@ pub fn read() -> Result<Play, String> {
     if !has_table && p.farm.obj(ex, ez).is_none() && p.farm.wall(ex, ez) == Wall::None {
         p.farm.set_obj(ex, ez, Some(Obj::EnchantTable));
     }
+    // Farms from before the bus get the road to town.
+    if !p.farm.objs.iter().any(|o| matches!(o, Some(Obj::BusStop))) {
+        super::farm::lay_road(&mut p.farm);
+    }
+    p.restored = d.restored;
+    p.friends = d.friends;
+    p.friends.fix();
+    // Quests whose story no longer exists are dropped quietly.
+    p.quests = d
+        .quests
+        .into_iter()
+        .filter(|q| q.request().is_some() || q.story().is_some())
+        .collect();
+    p.done = d.done;
+    p.journal = d.journal;
+    p.taken = d.taken;
+    p.marks = d.marks;
+    p.rank = d.rank.min(super::quests::RANKS.len() as u8 - 1);
+    p.town = super::town::generate(p.restored);
     let (dx, dz) = super::farm::MARKS.door;
     let pos = glam::Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);
     p.player = Player::load(d.player, pos);

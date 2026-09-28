@@ -15,8 +15,11 @@ pub mod loot;
 pub mod menus;
 pub mod play;
 pub mod player;
+pub mod quests;
 pub mod save;
 pub mod scene;
+pub mod shops;
+pub mod talk;
 #[cfg(test)]
 mod tests;
 pub mod tips;
@@ -84,6 +87,8 @@ pub struct Game {
     pub assets: Assets,
     pub state: State,
     pub settings: Settings,
+    /// A little renderer for faces in the talk box.
+    portrait: Renderer,
 }
 
 impl Game {
@@ -92,6 +97,7 @@ impl Game {
             assets: Assets::new(),
             state: State::Title(Box::new(Self::title())),
             settings: save::load_settings(),
+            portrait: Renderer::new(talk::PORTRAIT as usize, talk::PORTRAIT as usize),
         }
     }
 
@@ -280,6 +286,16 @@ impl Game {
                 };
                 p.draw_hud(&mut c, a, &cam);
                 p.draw_menu(&mut c, a, &self.settings, input.mouse);
+                let (vw, vh) = (c.w(), c.h());
+                if let Some((who, x, y)) = talk::portrait_rect(vw, vh, &p.menu) {
+                    draw_portrait(&mut self.portrait, a, who, p.time);
+                    let pf = &self.portrait.fb;
+                    for yy in 0..pf.h as i32 {
+                        for xx in 0..pf.w as i32 {
+                            c.px(x + xx, y + yy, pf.color[(yy as usize) * pf.w + xx as usize]);
+                        }
+                    }
+                }
                 if let Some(f) = &p.fade {
                     let amt = if f.t < 1.0 { f.t } else { 2.0 - f.t };
                     c.fade(amt.clamp(0.0, 1.0) * 1.07, INK);
@@ -363,6 +379,52 @@ fn draw_title(c: &mut Canvas, t: &Title) {
     }
     let credit = "Palette: Resurrect 32 by Kerrie Lake";
     c.text_outline(w - c.text_width(credit) - 4, 4, credit, KHAKI, INK);
+}
+
+/// A villager's face and shoulders, for the talk box.
+fn draw_portrait(r: &mut Renderer, a: &Assets, who: folk::Villager, time: f32) {
+    use crate::render::{Light, Mode};
+    let d = who.def();
+    let s = d.look.scale;
+    let (w, h) = (r.width(), r.height());
+    r.cam.target = Vec3::new(0.0, 0.64 * s, 0.0);
+    r.cam.pitch = 10f32.to_radians();
+    r.cam.dist = 2.5 * s;
+    r.cam.update(w, h);
+    r.fb.clear(d.look.shirt[0]);
+    r.remap.clear();
+    // A soft band behind the head.
+    for y in 0..h {
+        for x in 0..w {
+            if (x + y) % 7 == 0 {
+                r.fb.color[y * w + x] = d.look.shirt[1];
+            }
+        }
+    }
+    let o = DrawOpts {
+        light: Light::Fixed(1.05, crate::palette::NEUTRAL),
+        mode: Mode::Lit,
+        tag: 1,
+        ..Default::default()
+    };
+    let (dressed, remap) = scene::villager_dress(a, who);
+    let pose = draw::Pose {
+        bob: (time * 2.0).sin() * 0.01,
+        ..Default::default()
+    };
+    let mut fit = dressed.outfit_with(&remap);
+    fit.held = None;
+    draw::draw_humanoid(
+        r,
+        a,
+        &a.folk[who as usize],
+        Vec3::ZERO,
+        0.35,
+        &pose,
+        &o,
+        &fit,
+    );
+    r.fb.outline(INK);
 }
 
 fn draw_cursor(c: &mut Canvas, a: &Assets, input: &Input) {

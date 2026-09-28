@@ -117,6 +117,20 @@ pub struct Play {
     pub door_push: f32,
     /// Cool-down for gentle reminders.
     pub nag: f32,
+    /// Townsfolk where you can see them.
+    pub folk: Vec<super::folk::Npc>,
+    pub friends: super::folk::Friends,
+    /// Quests you've taken on, and the story quests you've finished.
+    pub quests: Vec<super::quests::Quest>,
+    pub done: Vec<String>,
+    pub journal: super::quests::Journal,
+    /// Notices already taken from the boards.
+    pub taken: Vec<u32>,
+    /// Lantern Guild marks and rank.
+    pub marks: u32,
+    pub rank: u8,
+    /// A quest just finished, to celebrate.
+    pub cheer: Option<super::quests::Cheer>,
     pub level: Option<Level>,
     pub area: Area,
     pub player: Player,
@@ -169,6 +183,8 @@ pub struct Stats {
     pub harvested: u32,
     pub earned: u64,
     pub floors: u32,
+    #[serde(default)]
+    pub quests: u32,
 }
 
 impl Play {
@@ -185,6 +201,15 @@ impl Play {
             bus: None,
             door_push: 0.0,
             nag: 0.0,
+            folk: Vec::new(),
+            friends: super::folk::Friends::default(),
+            quests: Vec::new(),
+            done: Vec::new(),
+            journal: super::quests::Journal::default(),
+            taken: Vec::new(),
+            marks: 0,
+            rank: 0,
+            cheer: None,
             level: None,
             area: Area::Farm,
             player,
@@ -428,7 +453,20 @@ impl Play {
     // --------------------------------------------------------------------------------------
 
     fn enter_hollow(&mut self, depth: u32, via_waystone: bool) {
-        let level = dungeon::generate(self.seed, depth, via_waystone);
+        let mut level = dungeon::generate(self.seed, depth, via_waystone);
+        // A guardian comes back to its floor while someone needs something it carries.
+        let rematch = via_waystone && self.guardian_wanted(depth);
+        if rematch {
+            level.spawns.push(dungeon::Spawn {
+                foe: dungeon::boss_for(biome_for(depth)),
+                x: level.stairs.0 as f32 + 0.5,
+                z: level.stairs.1 as f32 + 2.5,
+                boss: true,
+            });
+        }
+        self.room = None;
+        self.bus = None;
+        self.folk.clear();
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
@@ -458,9 +496,45 @@ impl Play {
         self.boss_seen = None;
         self.banner = Some(Banner {
             title: format!("Floor {depth}"),
-            sub: BIOME_STYLES[biome].name.to_string(),
+            sub: if rematch {
+                "The guardian has returned!".to_string()
+            } else {
+                BIOME_STYLES[biome].name.to_string()
+            },
             t: 0.0,
         });
+        self.hide_keepsakes(depth);
+    }
+
+    /// Puts the keepsakes someone asked you to find somewhere out of the way on this floor.
+    fn hide_keepsakes(&mut self, depth: u32) {
+        let items = self.keepsakes_here(depth);
+        if items.is_empty() {
+            return;
+        }
+        let Some(level) = &self.level else { return };
+        let w = &level.world;
+        let (sx, sz) = level.start;
+        let mut rng = Rng::new(self.seed ^ depth as u64 * 7717 ^ self.clock.day as u64);
+        let mut spots = Vec::new();
+        for z in 1..w.h - 1 {
+            for x in 1..w.w - 1 {
+                let far = (x - sx).abs() + (z - sz).abs() > 14;
+                if far && !w.blocked(x, z) && w.obj(x, z).is_none() {
+                    spots.push((x, z));
+                }
+            }
+        }
+        for item in items {
+            if spots.is_empty() {
+                break;
+            }
+            let (x, z) = spots.swap_remove(rng.below(spots.len()));
+            let mut d = Drop::new(Stack::new(item, 1), tile_center(x, z), &mut self.rng);
+            d.vel = Vec3::ZERO;
+            d.pos = tile_center(x, z) + Vec3::Y * 0.3;
+            self.drops.push(d);
+        }
     }
 
     fn go_home(&mut self) {
@@ -494,6 +568,10 @@ impl Play {
         self.money += earned;
         self.bought.clear();
         self.stats.earned += earned;
+        self.on_ship(earned);
+        self.friends.new_day();
+        let today = (day + 1) * 16;
+        self.taken.retain(|id| *id >= today);
         let night = farm::new_day(&mut self.farm, day + 1, false);
         self.rain = Rng::new(self.seed ^ ((day as u64 + 1) * 31)).chance(0.18);
         if self.rain {
@@ -647,6 +725,11 @@ impl Play {
         }
         if input.pressed(Action::Map) {
             self.show_map = !self.show_map;
+        }
+        if input.pressed(Action::Quests) {
+            self.menu = Menu::Journal { tab: 0, sel: 0 };
+            io.audio.play(Sfx::UiSelect);
+            return;
         }
 
         // Time.
@@ -1046,6 +1129,16 @@ impl Play {
     }
 
     fn interact_hint(&self, (x, z): (i32, i32)) -> Option<String> {
+        if let Some(i) = self.npc_near() {
+            let n = &self.folk[i];
+            let v = n.who;
+            let keeper = n.fixed && v.def().keeps.is_some_and(|p| p != super::town::Place::Hall);
+            return Some(if keeper {
+                format!("Talk to {} / shop", v.def().name)
+            } else {
+                super::talk::near_text(v)
+            });
+        }
         let w = self.world();
         let (ax, az) = w.anchor(x, z);
         let o = w.obj(ax, az)?;
@@ -1334,6 +1427,11 @@ impl Play {
     }
 
     fn interact(&mut self, io: &mut Io) {
+        if let Some(i) = self.npc_near() {
+            io.audio.play(Sfx::UiSelect);
+            self.talk_to(i, io);
+            return;
+        }
         let Some((tx, tz)) = self.target else { return };
         // Check the target tile, then the tile we stand on, then anything adjacent.
         let mut cands = vec![(tx, tz)];
@@ -1405,6 +1503,15 @@ impl Play {
             }
             Obj::Workbench => self.menu = Menu::inventory(true),
             Obj::EnchantTable => self.menu = Menu::enchant(),
+            Obj::Counter | Obj::Fixture { var: 7 } => {
+                // Whoever minds the counter.
+                if let Some(i) = self.folk.iter().position(|n| n.fixed) {
+                    self.talk_to(i, io);
+                } else {
+                    self.toast("Nobody's minding the counter.", None, 0);
+                }
+                return true;
+            }
             Obj::BusStop => {
                 let text = if self.area == Area::Farm {
                     "The little bus to Bramblewick stops here all day long. Wave it down?"
@@ -1555,6 +1662,7 @@ impl Play {
             self.farm.set_obj(x, z, None);
         }
         self.stats.harvested += n as u32;
+        self.on_harvest(crop, n);
         io.audio.play(Sfx::Harvest);
         self.fx.motes(
             tile_center(x, z) + Vec3::Y * 0.3,
@@ -2283,6 +2391,7 @@ impl Play {
             let left = self.player.inv.add_stack(d.stack);
             let got = d.stack.n - left;
             if got > 0 {
+                self.on_pickup(item);
                 let name = d.stack.name();
                 let color = d.stack.rarity().map_or(CREAM, |r| r.color());
                 self.toast_colored(name, Some(item), got as u32, color);

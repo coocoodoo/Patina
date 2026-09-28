@@ -24,6 +24,8 @@ pub enum Action {
     NextSlot,
     PrevSlot,
     Map,
+    /// The quest journal.
+    Quests,
 }
 
 const USE_KEYS: &[KeyCode] = &[KeyCode::KeyJ, KeyCode::KeyZ];
@@ -53,6 +55,7 @@ const RIGHT_KEYS: &[KeyCode] = &[KeyCode::KeyD, KeyCode::ArrowRight];
 const NEXT_KEYS: &[KeyCode] = &[KeyCode::BracketRight, KeyCode::KeyR];
 const PREV_KEYS: &[KeyCode] = &[KeyCode::BracketLeft, KeyCode::KeyQ];
 const MAP_KEYS: &[KeyCode] = &[KeyCode::KeyM];
+const QUEST_KEYS: &[KeyCode] = &[KeyCode::KeyL];
 
 fn keys(a: Action) -> &'static [KeyCode] {
     match a {
@@ -71,6 +74,7 @@ fn keys(a: Action) -> &'static [KeyCode] {
         Action::NextSlot => NEXT_KEYS,
         Action::PrevSlot => PREV_KEYS,
         Action::Map => MAP_KEYS,
+        Action::Quests => QUEST_KEYS,
     }
 }
 

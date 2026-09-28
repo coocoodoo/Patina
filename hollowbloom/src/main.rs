@@ -59,6 +59,10 @@ fn main() {
         );
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--folk-shots") {
+        headless::folk_shots(args.get(i + 1).map(String::as_str).unwrap_or("folk"));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--town-shots") {
         headless::town_shots(args.get(i + 1).map(String::as_str).unwrap_or("town"));
         return;

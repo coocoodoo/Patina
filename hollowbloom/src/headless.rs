@@ -359,6 +359,7 @@ pub fn shots(dir: &str) {
         let p = play(&mut game);
         p.deepest = 34;
         p.menu = Menu::Shop {
+            at: None,
             tab: ShopTab::Specials,
             cursor: 0,
             scroll: 0,
@@ -1163,4 +1164,194 @@ pub fn town_shots(dir: &str) {
         println!("wrote {}", path.display());
         play(&mut game).leave_place();
     }
+}
+
+/// A frame's worth of input and audio, for poking the game directly.
+fn mk_io<'a>(input: &'a Input, audio: &'a Audio) -> Io<'a> {
+    Io {
+        dt: 1.0 / 60.0,
+        input,
+        audio,
+        view: (W, H),
+        quit: false,
+        toggle_fullscreen: false,
+    }
+}
+
+/// `--folk-shots DIR`: villagers about town, a chat, a quest offer and hand-in, the boards,
+/// the journal and a shop with its keeper.
+pub fn folk_shots(dir: &str) {
+    use crate::game::folk::Villager;
+    use crate::game::quests::QuestId;
+    use crate::game::talk::Say;
+    use crate::game::town::{self, Place};
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20260928);
+    tick(&mut game, &input, &audio, 5);
+    let io = mk_io;
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.min = 600.0;
+        p.deepest = 12;
+        p.restored = town::FOUNTAIN | town::GARDENS;
+        p.ride_bus(true);
+        p.bus = None;
+        p.banner = None;
+        p.player.pos = Vec2::new(35.5, 29.6);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        p.arrive_folk();
+    }
+    tick(&mut game, &input, &audio, 240);
+    snap(&mut game, &mut r, &input, dir, "f01_townsfolk");
+    // Find Pip and have a chat.
+    {
+        let p = play(&mut game);
+        if let Some(i) = p.folk.iter().position(|n| n.who == Villager::Pip) {
+            let at = p.folk[i].pos;
+            p.player.pos = at + Vec2::new(0.0, 1.0);
+            p.player.facing = Vec2::new(0.0, -1.0);
+            let mut io = io(&input, &audio);
+            p.talk_to(i, &mut io);
+            if let Menu::Talk { shown, text, .. } = &mut p.menu {
+                *shown = text.chars().count() as f32;
+            }
+        }
+    }
+    snap(&mut game, &mut r, &input, dir, "f02_meet_pip");
+    {
+        let p = play(&mut game);
+        let mut io = io(&input, &audio);
+        if let Menu::Talk { who, choices, .. } = &p.menu {
+            let who = *who;
+            if let Some((_, say)) = choices.iter().find(|(_, s)| matches!(s, Say::Offer(_))) {
+                let say = *say;
+                if let Some((text, choices)) = p.talk_choice(who, say, &mut io) {
+                    let n = text.chars().count() as f32;
+                    p.menu = Menu::Talk {
+                        who,
+                        text,
+                        shown: n,
+                        choices,
+                        sel: 0,
+                        blip: 0.0,
+                    };
+                }
+            }
+        }
+    }
+    snap(&mut game, &mut r, &input, dir, "f03_quest_offer");
+    // Take a handful of quests, and finish one.
+    {
+        let p = play(&mut game);
+        let mut io = io(&input, &audio);
+        p.menu = Menu::None;
+        for n in &mut p.folk {
+            n.talking = false;
+        }
+        for k in [
+            "pip_teddy",
+            "thistle_hello",
+            "rowan_slimes",
+            "posy_turnips",
+            "fern_locket",
+        ] {
+            p.accept(QuestId::Story(k.to_string()), &mut io);
+        }
+        p.player.inv.add(Item::Turnip, 6);
+        if let Some(q) = p.quests.iter_mut().find(|q| q.key() == "rowan_slimes") {
+            q.n = 7;
+        }
+        p.toasts.clear();
+    }
+    snap(&mut game, &mut r, &input, dir, "f04_quest_tracker");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Journal { tab: 0, sel: 2 };
+    }
+    snap(&mut game, &mut r, &input, dir, "f05_journal");
+    {
+        let p = play(&mut game);
+        p.friends.met.fill(true);
+        for (i, v) in crate::game::folk::VILLAGERS.iter().enumerate() {
+            p.friends.add(*v, (i as i32 * 57) % 900);
+        }
+        p.menu = Menu::Journal { tab: 1, sel: 0 };
+    }
+    snap(&mut game, &mut r, &input, dir, "f06_friends");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Board {
+            guild: false,
+            sel: 0,
+        };
+    }
+    snap(&mut game, &mut r, &input, dir, "f07_request_board");
+    {
+        let p = play(&mut game);
+        let mut io = io(&input, &audio);
+        p.player.inv.add(Item::Teddy, 1);
+        if let Some(i) = p.quests.iter().position(|q| q.key() == "pip_teddy") {
+            p.finish_quest(i, &mut io);
+        }
+        p.menu = Menu::Cheer;
+    }
+    tick(&mut game, &input, &audio, 50);
+    snap(&mut game, &mut r, &input, dir, "f08_quest_complete");
+    // A shop with its keeper behind the counter.
+    for (name, place) in [
+        ("f09_bakery", Place::Bakery),
+        ("f10_armory", Place::Armory),
+        ("f11_smithy", Place::Smithy),
+        ("f12_tavern_evening", Place::Tavern),
+    ] {
+        {
+            let p = play(&mut game);
+            p.menu = Menu::None;
+            p.cheer = None;
+            p.clock.min = if place == Place::Tavern {
+                1230.0
+            } else {
+                700.0
+            };
+            p.enter_place(place);
+            let (ex, ez) = p.room.as_ref().unwrap().exit;
+            p.player.pos = Vec2::new(ex as f32 + 0.5, ez as f32 - 4.5);
+            p.player.facing = Vec2::new(0.0, -1.0);
+        }
+        tick(&mut game, &input, &audio, 30);
+        snap(&mut game, &mut r, &input, dir, name);
+        play(&mut game).leave_place();
+    }
+    {
+        let p = play(&mut game);
+        p.clock.min = 700.0;
+        p.enter_place(Place::Armory);
+        p.menu = Menu::shop_at(Place::Armory);
+        p.menu = match std::mem::replace(&mut p.menu, Menu::None) {
+            Menu::Shop {
+                at, cursor, scroll, ..
+            } => Menu::Shop {
+                at,
+                tab: crate::game::menus::ShopTab::Specials,
+                cursor,
+                scroll,
+            },
+            m => m,
+        };
+    }
+    snap(&mut game, &mut r, &input, dir, "f13_armory_shop");
 }

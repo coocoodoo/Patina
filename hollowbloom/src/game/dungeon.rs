@@ -7,7 +7,7 @@ use super::world::{Area, Floor, Obj, Wall, World};
 use crate::assets::BIOMES;
 use crate::util::Rng;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Foe {
     Slime,
     Bat,

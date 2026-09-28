@@ -51,7 +51,13 @@ impl Play {
                 }
             }
         }
-        if !matches!(self.menu, Menu::None | Menu::Dialog { .. }) {
+        if matches!(self.menu, Menu::None) {
+            self.draw_folk_hud(c, cam);
+        }
+        if !matches!(
+            self.menu,
+            Menu::None | Menu::Dialog { .. } | Menu::Talk { .. }
+        ) {
             return;
         }
 
@@ -121,6 +127,10 @@ impl Play {
             }
             bx += 16;
         }
+
+        // The quest tracker, under any food buffs.
+        let ty0 = if p.buffs.is_empty() { 40 } else { 56 };
+        self.draw_tracker(c, a, ty0);
 
         // Clock, date and money.
         let pw = 86;
@@ -302,6 +312,19 @@ impl Play {
                     _ => continue,
                 };
                 c.px(x0 + half + dx, y0 + half + dz, col);
+            }
+        }
+        // Keepsakes glint on the map so they're easy to find.
+        if (self.time * 3.0).fract() < 0.6 {
+            for d in &self.drops {
+                if d.stack.item.def().kind != super::items::Kind::Keepsake {
+                    continue;
+                }
+                let (dx, dz) = (d.pos.x as i32 - px, d.pos.z as i32 - pz);
+                if dx.abs() < half - 1 && dz.abs() < half - 1 {
+                    c.px(x0 + half + dx, y0 + half + dz, GOLD);
+                    c.px(x0 + half + dx + 1, y0 + half + dz, CREAM);
+                }
             }
         }
         for f in &self.foes {

@@ -27,6 +27,18 @@ pub struct Dressed<'a> {
 }
 
 impl<'a> Dressed<'a> {
+    /// The outfit with a different set of texture swaps.
+    pub fn outfit_with(&'a self, remap: &'a [(TexId, TexId)]) -> Outfit<'a> {
+        Outfit {
+            held: self.held,
+            hat: self.hat,
+            sprout: None,
+            boot: self.boot,
+            shield: self.shield,
+            remap,
+        }
+    }
+
     pub fn outfit(&'a self, sprout: Option<&'a Mesh>) -> Outfit<'a> {
         Outfit {
             held: self.held,
@@ -37,6 +49,28 @@ impl<'a> Dressed<'a> {
             remap: &self.remap,
         }
     }
+}
+
+/// A villager's clothes: their gear, with swaps aimed at their own textures.
+pub fn villager_dress(a: &Assets, v: super::folk::Villager) -> (Dressed<'_>, Vec<(TexId, TexId)>) {
+    let h = &a.folk[v as usize];
+    let equip = super::folk::outfit(v);
+    let held = v.def().holds.map(|i| Stack::new(i, 1));
+    let dressed = dress(a, &equip, held.as_ref());
+    let mut remap = Vec::new();
+    for (from, to) in &dressed.remap {
+        let t = if *from == a.hero.tex.body {
+            h.tex.body
+        } else if *from == a.hero.tex.arm {
+            h.tex.arm
+        } else if *from == a.hero.tex.leg {
+            h.tex.leg
+        } else {
+            *from
+        };
+        remap.push((t, *to));
+    }
+    (dressed, remap)
 }
 
 /// Looks up the hero's clothes and the item in hand.
@@ -253,6 +287,7 @@ impl Play {
             r.mesh(&a.bank, &a.critters.cat_tail, &tail, &o);
         }
 
+        self.draw_folk(r, a);
         self.draw_player(r, a);
         self.fx.draw(r);
         for f in &fireflies {
@@ -278,6 +313,67 @@ impl Play {
             }
         }
         r.fb.outline(INK);
+    }
+
+    /// The townsfolk, dressed up, with a bubble over anyone who wants you.
+    fn draw_folk(&self, r: &mut Renderer, a: &Assets) {
+        for (k, n) in self.folk.iter().enumerate() {
+            let v = n.who;
+            let d = v.def();
+            let h = &a.folk[v as usize];
+            let base = n.world_pos();
+            let (dressed, remap) = villager_dress(a, v);
+            let fit = dressed.outfit_with(&remap);
+            let pose = Pose {
+                walk: n.walk,
+                stride: n.stride,
+                bob: if n.stride < 0.1 {
+                    (self.time * 2.2 + k as f32).sin().abs() * 0.015
+                } else {
+                    0.0
+                },
+                ..Default::default()
+            };
+            r.shadow(a.tex(a.disk), base, 0.28 * d.look.scale);
+            let o = DrawOpts {
+                light: Light::At(base),
+                tag: 1,
+                ..Default::default()
+            };
+            draw_humanoid(r, a, h, base, n.yaw, &pose, &o, &fit);
+            // Quest bubbles.
+            if let Some(done) = self.marker(v) {
+                let icon = if done { "bubble_done" } else { "bubble_new" };
+                let id = a.icon(icon);
+                let bob = (self.time * 3.0 + k as f32).sin() * 0.05;
+                let top = base + Vec3::Y * (1.35 * d.look.scale + 0.2 + bob);
+                r.billboard(
+                    a.tex(id),
+                    full_uv(a, id),
+                    top,
+                    Vec2::splat(0.42),
+                    &DrawOpts {
+                        mode: Mode::Unlit,
+                        tag: 3,
+                        ..Default::default()
+                    },
+                );
+            } else if n.talking {
+                let id = a.icon("bubble_talk");
+                let top = base + Vec3::Y * (1.35 * d.look.scale + 0.2);
+                r.billboard(
+                    a.tex(id),
+                    full_uv(a, id),
+                    top,
+                    Vec2::splat(0.38),
+                    &DrawOpts {
+                        mode: Mode::Unlit,
+                        tag: 3,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
     }
 
     /// How dark it is outside (rooms still know whether it's night).
@@ -393,8 +489,11 @@ impl Play {
                 Vec2::splat(0.5),
                 &DrawOpts::at(base).with_tag(3).with_glow(0.8),
             );
-            let Some(rarity) = d.stack.rarity() else {
-                continue;
+            let rarity = match d.stack.rarity() {
+                Some(r) => r,
+                // Keepsakes shine like treasure.
+                None if d.stack.item.def().kind == Kind::Keepsake => Rarity::Legendary,
+                None => continue,
             };
             if rarity == Rarity::Common {
                 continue;

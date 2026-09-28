@@ -201,7 +201,19 @@ impl Stat {
 // Rarity
 // ------------------------------------------------------------------------------------------
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Debug,
+    Default,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Rarity {
     #[default]
     Common,
@@ -272,7 +284,7 @@ impl Rarity {
 // ------------------------------------------------------------------------------------------
 
 /// Which kind of scroll fits a piece of gear.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Group {
     Weapon,
     Armor,

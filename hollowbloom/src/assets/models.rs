@@ -91,10 +91,20 @@ pub struct Humanoid {
     pub hip_x: f32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Hair {
     Fluffy,
     Bald,
+    /// Falls down the back.
+    Long,
+    /// Tied up on top.
+    Bun,
+    /// Two little tails.
+    Pigtails,
+    /// A rounded bob down to the chin.
+    Bob,
+    /// Tufts sticking up.
+    Spiky,
 }
 
 #[derive(Clone, Copy)]
@@ -108,6 +118,7 @@ pub struct Look {
     pub pants: u8,
     pub boots: u8,
     pub style: Hair,
+    pub beard: bool,
     pub scale: f32,
 }
 
@@ -121,6 +132,7 @@ pub const HERO: Look = Look {
     pants: INDIGO,
     boots: RUST,
     style: Hair::Fluffy,
+    beard: false,
     scale: 1.0,
 };
 
@@ -139,7 +151,7 @@ pub fn head_tex(l: &Look) -> Texture {
         }
     }
     match l.style {
-        Hair::Fluffy => {
+        Hair::Fluffy | Hair::Long | Hair::Bun | Hair::Pigtails | Hair::Bob | Hair::Spiky => {
             for x in 0..8 {
                 t.set(x, 0, hm);
                 t.set(x, 1, if x % 3 == 1 { hl } else { hm });
@@ -275,6 +287,7 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
         UvRect::px(15, 0, 8, 7),
     ]);
     parts[HEAD].cube(v(-0.26, 0.0, -0.23), v(0.26, 0.46, 0.23), &head_uv, head, 0);
+    hair_extras(bank, &mut parts[HEAD], l);
     let body_uv = BoxUv([
         UvRect::px(12, 0, 4, 5),
         UvRect::px(12, 0, 4, 5),
@@ -305,6 +318,77 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
         neck: 0.43 * s,
         shoulder_x: 0.22 * s,
         hip_x: 0.08 * s,
+    }
+}
+
+/// Hair beyond the head box itself, and beards.
+fn hair_extras(bank: &mut TexBank, m: &mut Mesh, l: &Look) {
+    let s = l.scale;
+    let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z) * s;
+    let [hl, hm, hd] = l.hair;
+    let mid = bank.add(tiles::solid(hm));
+    let dark = bank.add(tiles::solid(hd));
+    let light = bank.add(tiles::solid(hl));
+    let w4 = Texture::new(4, 4, 0);
+    match l.style {
+        Hair::Long => {
+            skin_box(m, v(-0.27, -0.22, -0.27), v(0.27, 0.42, -0.18), mid, &w4);
+            skin_box(m, v(-0.29, -0.1, -0.2), v(-0.25, 0.4, 0.02), mid, &w4);
+            skin_box(m, v(0.25, -0.1, -0.2), v(0.29, 0.4, 0.02), mid, &w4);
+        }
+        Hair::Bun => {
+            skin_box(m, v(-0.11, 0.44, -0.2), v(0.11, 0.62, 0.0), mid, &w4);
+            skin_box(m, v(-0.05, 0.6, -0.14), v(0.05, 0.66, -0.06), light, &w4);
+        }
+        Hair::Pigtails => {
+            for sx in [-1.0f32, 1.0] {
+                let (a, b) = if sx < 0.0 {
+                    (-0.37, -0.25)
+                } else {
+                    (0.25, 0.37)
+                };
+                skin_box(m, v(a, 0.02, -0.12), v(b, 0.34, 0.04), mid, &w4);
+                skin_box(
+                    m,
+                    v(a + 0.02, 0.32, -0.08),
+                    v(b - 0.02, 0.37, 0.0),
+                    dark,
+                    &w4,
+                );
+            }
+        }
+        Hair::Bob => {
+            skin_box(m, v(-0.29, 0.06, -0.26), v(0.29, 0.47, -0.2), mid, &w4);
+            skin_box(m, v(-0.29, 0.06, -0.2), v(-0.25, 0.47, 0.14), mid, &w4);
+            skin_box(m, v(0.25, 0.06, -0.2), v(0.29, 0.47, 0.14), mid, &w4);
+        }
+        Hair::Spiky => {
+            for (x, z, t) in [
+                (-0.14f32, 0.02f32, -0.5f32),
+                (0.0, -0.06, 0.0),
+                (0.14, 0.04, 0.5),
+            ] {
+                let mut tuft = Mesh::new();
+                skin_box(
+                    &mut tuft,
+                    Vec3::new(-0.06, 0.0, -0.06) * s,
+                    Vec3::new(0.06, 0.14, 0.06) * s,
+                    if x == 0.0 { light } else { mid },
+                    &w4,
+                );
+                m.append(
+                    &tuft,
+                    Mat4::from_translation(v(x, 0.44, z)) * Mat4::from_rotation_z(t * 0.6),
+                );
+            }
+        }
+        Hair::Fluffy | Hair::Bald => {}
+    }
+    if l.beard {
+        skin_box(m, v(-0.21, -0.06, 0.17), v(0.21, 0.13, 0.27), mid, &w4);
+        skin_box(m, v(-0.12, -0.13, 0.18), v(0.12, -0.05, 0.26), dark, &w4);
+        // A moustache.
+        skin_box(m, v(-0.14, 0.12, 0.23), v(0.14, 0.17, 0.27), dark, &w4);
     }
 }
 
@@ -729,6 +813,7 @@ pub fn critters(bank: &mut TexBank) -> Critters {
             pants: INK,
             boots: INK,
             style: Hair::Bald,
+            beard: false,
             scale: 0.85,
         },
     );
@@ -744,6 +829,7 @@ pub fn critters(bank: &mut TexBank) -> Critters {
             pants: KHAKI,
             boots: ROSEWOOD,
             style: Hair::Bald,
+            beard: false,
             scale: 0.95,
         },
     );

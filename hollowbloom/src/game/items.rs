@@ -64,6 +64,9 @@ pub enum Kind {
     HeartCrystal,
     SunStone,
     WishStar,
+    /// Something someone in town asked you to find or carry. Only turns up while their
+    /// request is open.
+    Keepsake,
 }
 
 pub struct ItemDef {
@@ -463,6 +466,56 @@ items! {
     HeartCrystal = "heart_crystal", "Heart Crystal", "heart_crystal", 20, 500, HeartK, "Use to raise max HP by 10.";
     SunStone = "sun_stone", "Sun Stone", "stamina_gem", 20, 500, SunK, "Use to raise max energy by 15.";
     WishStar = "wish_star", "Wish Star", "wish_star", 20, 500, Kind::WishStar, "Use to raise max mana by 10.";
+
+    // Keepsakes: quest things that only exist while someone is waiting for them.
+    Letter = "letter", "Sealed Letter", "letter", 9, 0, Kind::Keepsake, "A letter to deliver. Your quest log says to whom.";
+    Parcel = "parcel", "Parcel", "parcel", 9, 0, Kind::Keepsake, "A tidy parcel tied with string.";
+    PieBasket = "pie_basket", "Pie Basket", "pie_basket", 9, 0, Kind::Keepsake, "Still warm. Smells of cinnamon.";
+    Locket = "locket", "Albert's Locket", "locket", 1, 0, Kind::Keepsake, "A little gold locket with a faded picture inside.";
+    Teddy = "teddy", "Patches the Teddy", "teddy", 1, 0, Kind::Keepsake, "A much-loved bear with one button eye.";
+    MapScrap = "map_scrap", "Map Scrap", "map_scrap", 9, 0, Kind::Keepsake, "Part of an old delver's map.";
+    SlimeHeart = "slime_heart", "Slime Heart", "slime_heart", 99, 0, Kind::Keepsake, "Wobbly, warm and oddly cute.";
+    Moonmoss = "moonmoss", "Moonmoss", "moonmoss", 99, 0, Kind::Keepsake, "Moss that glows the colour of moonlight.";
+    BatFang = "bat_fang", "Bat Fang", "bat_fang", 99, 0, Kind::Keepsake, "Tiny, pointy, and still a bit scary.";
+    SingingCrystal = "singing_crystal", "Singing Crystal", "singing_crystal", 99, 0, Kind::Keepsake, "It hums a soft note when you hold it.";
+    RainbowSpore = "rainbow_spore", "Rainbow Spore", "rainbow_spore", 99, 0, Kind::Keepsake, "A spore that shimmers every colour at once.";
+    EmberHeart = "ember_heart", "Ember Heart", "ember_heart", 99, 0, Kind::Keepsake, "An imp's little heart of fire. Warm to the touch.";
+    FrostBlossom = "frost_blossom", "Frost Blossom", "frost_blossom", 99, 0, Kind::Keepsake, "A flower made of ice that never melts.";
+    GhostLantern = "ghost_lantern", "Ghost Lantern", "ghost_lantern", 99, 0, Kind::Keepsake, "It glows with a gentle, friendly light.";
+    StarShard = "star_shard", "Fallen Star Shard", "star_shard", 99, 0, Kind::Keepsake, "A splinter of a star that fell into the Hollow.";
+    SongPage = "song_page", "Lost Song Page", "song_page", 9, 0, Kind::Keepsake, "A page of music, a little singed.";
+    KnightBadge = "knight_badge", "Old Knight's Badge", "knight_badge", 1, 0, Kind::Keepsake, "The crest of the Frost Guard.";
+    GoldenWhisk = "golden_whisk", "Golden Whisk", "golden_whisk", 1, 0, Kind::Keepsake, "A family heirloom. Makes the fluffiest cream.";
+    Mailbag = "mailbag", "Lost Mailbag", "mailbag", 1, 0, Kind::Keepsake, "Full of letters. One of them is for you!";
+    SeedPod = "seed_pod", "Ancient Seed Pod", "seed_pod", 9, 0, Kind::Keepsake, "Something very old is sleeping inside.";
+    Cog = "cog", "Clockwork Cog", "cog", 99, 0, Kind::Keepsake, "A brass cog from the old clockworks below.";
+    WishLeaf = "wish_leaf", "Wishing Leaf", "wish_leaf", 9, 0, Kind::Keepsake, "A leaf that drifted down from somewhere impossible.";
+    RoyalJelly = "royal_jelly", "Royal Jelly", "royal_jelly", 1, 0, Kind::Keepsake, "The King Slime's crown jewel. Sticky.";
+    MatriarchPearl = "matriarch_pearl", "Matriarch's Pearl", "matriarch_pearl", 1, 0, Kind::Keepsake, "Pulled from the Crystal Matriarch's shell.";
+    CapwoodAcorn = "capwood_acorn", "Capwood Acorn", "capwood_acorn", 1, 0, Kind::Keepsake, "Old Capwood's last acorn.";
+    EmberGem = "ember_gem", "Ember Lord's Gem", "ember_gem", 1, 0, Kind::Keepsake, "It burns without heat.";
+    FrostCore = "frost_core", "Frost Core", "frost_core", 1, 0, Kind::Keepsake, "The heart of the Frost Colossus.";
+    WardenKey = "warden_key", "Warden's Key", "warden_key", 1, 0, Kind::Keepsake, "Opens something, somewhere.";
+    PocketWatch = "pocket_watch", "Pocket Watch", "pocket_watch", 1, 0, Kind::Keepsake, "Still ticking, after all these years.";
+    Spectacles = "spectacles", "Reading Spectacles", "spectacles", 1, 0, Kind::Keepsake, "Round, gold-rimmed and very smudged.";
+    BellClapper = "bell_clapper", "Bell Clapper", "bell_clapper", 1, 0, Kind::Keepsake, "The heart of the town's clock bell.";
+    SpringStone = "spring_stone", "Spring Stone", "spring_stone", 9, 0, Kind::Keepsake, "Water wells up from it forever.";
+    GlowOil = "glow_oil", "Glow Oil", "glow_oil", 99, 0, Kind::Keepsake, "Wisp light in a bottle. Lamps love it.";
+    GlowBeetle = "glow_beetle", "Glow Beetle", "glow_beetle", 99, 0, Kind::Keepsake, "A sleepy beetle whose back glows green.";
+    PhoenixQuill = "phoenix_quill", "Phoenix Quill", "phoenix_quill", 1, 0, Kind::Keepsake, "It writes in firelight.";
+}
+
+impl Serialize for Item {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.def().key)
+    }
+}
+
+impl<'de> Deserialize<'de> for Item {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Item, D::Error> {
+        let key = String::deserialize(d)?;
+        Item::from_key(&key).ok_or_else(|| serde::de::Error::custom(format!("unknown item {key}")))
+    }
 }
 
 impl Item {

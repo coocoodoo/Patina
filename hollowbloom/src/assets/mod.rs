@@ -322,6 +322,8 @@ pub struct Assets {
     pub cursor_bad: TexId,
     pub flame: [TexId; 4],
     pub hero: Humanoid,
+    /// The people of Bramblewick, in `folk::VILLAGERS` order.
+    pub folk: Vec<Humanoid>,
     pub sprout: crate::render::Mesh,
     pub critters: Critters,
     pub props: Props,
@@ -365,7 +367,7 @@ impl Assets {
             bank.add(tiles::street(24)),
         ];
         let plaza = bank.add(tiles::pavers());
-        let checker = bank.add(tiles::checker(CREAM, BLUSH, SAND));
+        let checker = bank.add(tiles::checker(CREAM, PEACH, SAND));
         let carpets = [
             bank.add(tiles::carpet(CRIMSON, PLUM, GOLD)),
             bank.add(tiles::carpet(GRAPE, INDIGO, LAVENDER)),
@@ -462,6 +464,10 @@ impl Assets {
             bank.add(tiles::flame(3)),
         ];
         let hero = models::humanoid(&mut bank, &models::HERO);
+        let folk = crate::game::folk::VILLAGER_DEFS
+            .iter()
+            .map(|v| models::humanoid(&mut bank, &v.look))
+            .collect();
         let sprout = models::sprout(&mut bank);
         let critters = models::critters(&mut bank);
         let props = models::props(&mut bank);
@@ -506,6 +512,7 @@ impl Assets {
             cursor_bad,
             flame,
             hero,
+            folk,
             sprout,
             critters,
             props,

@@ -249,6 +249,7 @@ impl Play {
                             scroll = None;
                             self.put_gear(gear.unwrap(), g);
                             glow = 1.2;
+                            self.on_enchant();
                             io.audio.play(Sfx::Enchant);
                             let after = g.rarity();
                             let text = if after > before {

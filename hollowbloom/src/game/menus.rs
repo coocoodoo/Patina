@@ -4,11 +4,15 @@
 
 use glam::Vec2;
 
+use super::folk::Villager;
 use super::gear::{Rarity, SLOTS, Slot, Stat};
 use super::items::{CATS, Inventory, Item, Kind, RECIPES, Recipe, Stack};
 use super::loot;
 use super::play::{Play, Trans, transfer};
+use super::shops;
+use super::talk::Say;
 use super::tips::{draw_money, money_width, stat_icon};
+use super::town::Place;
 use super::{Io, Settings};
 use crate::assets::Assets;
 use crate::audio::Sfx;
@@ -78,10 +82,33 @@ pub enum Menu {
         cursor: usize,
     },
     Shop {
+        /// The town shop, or Burrowby's stall on the farm.
+        at: Option<Place>,
         tab: ShopTab,
         cursor: usize,
         scroll: usize,
     },
+    /// A conversation.
+    Talk {
+        who: Villager,
+        text: String,
+        shown: f32,
+        choices: Vec<(String, Say)>,
+        sel: usize,
+        blip: f32,
+    },
+    /// The request board or the guild's bounty board.
+    Board {
+        guild: bool,
+        sel: usize,
+    },
+    /// Quests, friends and records.
+    Journal {
+        tab: usize,
+        sel: usize,
+    },
+    /// Quest complete!
+    Cheer,
     Ship {
         cursor: usize,
     },
@@ -124,7 +151,17 @@ impl Menu {
     }
     pub fn shop() -> Menu {
         Menu::Shop {
+            at: None,
             tab: ShopTab::Seeds,
+            cursor: 0,
+            scroll: 0,
+        }
+    }
+    /// A town shop, opened on its first tab.
+    pub fn shop_at(place: Place) -> Menu {
+        Menu::Shop {
+            at: Some(place),
+            tab: shops::tabs(Some(place))[0],
             cursor: 0,
             scroll: 0,
         }
@@ -527,6 +564,7 @@ impl Play {
         if left > 0 {
             self.drop_stack(Stack { n: left, ..made });
         }
+        self.on_craft(made.item);
         io.audio.play(Sfx::Craft);
         match made.rarity() {
             Some(rar) => {
@@ -1006,7 +1044,19 @@ impl Play {
                 }
                 Menu::Chest { x, z, cursor }
             }
+            Menu::Talk {
+                who,
+                text,
+                shown,
+                choices,
+                sel,
+                blip,
+            } => self.update_talk(io, who, text, shown, choices, sel, blip),
+            Menu::Board { guild, sel } => self.update_board(io, guild, sel),
+            Menu::Journal { tab, sel } => self.update_journal(io, tab, sel),
+            Menu::Cheer => self.update_cheer(io),
             Menu::Shop {
+                at,
                 mut tab,
                 mut cursor,
                 mut scroll,
@@ -1016,14 +1066,11 @@ impl Play {
                     self.close_menu(io);
                     return;
                 }
-                let tabs = [
-                    ShopTab::Seeds,
-                    ShopTab::Goods,
-                    ShopTab::Specials,
-                    ShopTab::Sell,
-                ];
+                let tabs = shops::tabs(at);
+                let nt = tabs.len();
                 let before = tab;
-                for (i, (x, tw)) in tab_rects(&l, &SHOP_TABS).into_iter().enumerate() {
+                let widths = shop_tab_widths(at);
+                for (i, (x, tw)) in tab_rects(&l, &widths).into_iter().enumerate() {
                     if lclick && inside(mouse, x, l.py + 5, tw, 12) {
                         tab = tabs[i];
                     }
@@ -1033,10 +1080,10 @@ impl Play {
                     || input.pressed(Action::Inventory)
                     || input.pressed(Action::NextSlot)
                 {
-                    tab = tabs[(ti + 1) % 4];
+                    tab = tabs[(ti + 1) % nt];
                 }
                 if input.pressed(Action::PrevSlot) {
-                    tab = tabs[(ti + 3) % 4];
+                    tab = tabs[(ti + nt - 1) % nt];
                 }
                 if tab != before {
                     cursor = 0;
@@ -1045,7 +1092,7 @@ impl Play {
                 }
                 if tab != ShopTab::Sell {
                     let rows = 7;
-                    let entries = self.shop_rows(tab);
+                    let entries = shops::rows(self, at, tab);
                     let n = entries.len().max(1);
                     if input.pressed_repeat(Action::Down) {
                         cursor = (cursor + 1) % n;
@@ -1083,9 +1130,16 @@ impl Play {
                             if !sold && self.money >= price && self.player.inv.can_fit_stack(&stack)
                             {
                                 self.money -= price;
+                                // Plain gear off the shelf still gets its own rolls.
+                                let stack = match (stack.item.base(), stack.gear) {
+                                    (Some(b), Some(g)) if g.affixes.iter().all(|a| a.is_none()) => {
+                                        loot::roll_gear(stack.item, b.lvl, 0.0, &mut self.rng)
+                                    }
+                                    _ => stack,
+                                };
                                 self.player.inv.add_stack(stack);
                                 if tab == ShopTab::Specials {
-                                    self.bought.push(cursor);
+                                    self.bought.push(shops::special_id(at, cursor));
                                     if stack.rarity() >= Some(Rarity::Rare) {
                                         io.audio.play(Sfx::Rare);
                                     }
@@ -1116,7 +1170,7 @@ impl Play {
                         if let Some(s) = self.player.inv.slots[i] {
                             if can_sell(&s) {
                                 let n = if one { 1 } else { s.n };
-                                let v = s.unit_price() * n as u64;
+                                let v = s.unit_price() * n as u64 * shops::buy_rate(at, &s) / 100;
                                 self.money += v;
                                 self.stats.earned += v;
                                 self.player.inv.slots[i] = if s.n > n {
@@ -1132,6 +1186,7 @@ impl Play {
                     }
                 }
                 Menu::Shop {
+                    at,
                     tab,
                     cursor,
                     scroll,
@@ -1203,26 +1258,6 @@ impl Play {
                 glow,
             } => self.update_enchant(io, gear, scroll, socket, cursor, msg, glow),
         };
-    }
-
-    /// Rows of a shop tab: (what, price, sold out).
-    pub fn shop_rows(&self, tab: ShopTab) -> Vec<(Stack, u64, bool)> {
-        match tab {
-            ShopTab::Seeds => shop_seeds(self)
-                .into_iter()
-                .map(|(i, p)| (Stack::new(i, 1), p as u64, false))
-                .collect(),
-            ShopTab::Goods => shop_goods(self)
-                .into_iter()
-                .map(|(i, p)| (Stack::new(i, 1), p as u64, false))
-                .collect(),
-            ShopTab::Specials => loot::specials(self.seed, self.clock.day, self.deepest)
-                .into_iter()
-                .enumerate()
-                .map(|(k, (s, p))| (s, p, self.bought.contains(&k)))
-                .collect(),
-            ShopTab::Sell => Vec::new(),
-        }
     }
 
     // --------------------------------------------------------------------------------------
@@ -1506,10 +1541,22 @@ impl Play {
                 }
             }
             Menu::Shop {
+                at,
                 tab,
                 cursor,
                 scroll,
-            } => self.draw_shop(c, a, *tab, *cursor, *scroll, mouse),
+            } => self.draw_shop(c, a, *at, *tab, *cursor, *scroll, mouse),
+            Menu::Talk {
+                who,
+                text,
+                shown,
+                choices,
+                sel,
+                ..
+            } => self.draw_talk(c, a, *who, text, *shown, choices, *sel),
+            Menu::Board { guild, sel } => self.draw_board(c, a, *guild, *sel),
+            Menu::Journal { tab, sel } => self.draw_journal(c, a, *tab, *sel),
+            Menu::Cheer => self.draw_cheer(c, a),
             Menu::Ship { cursor } => {
                 let l = panel_layout(w, h);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
@@ -1858,10 +1905,12 @@ impl Play {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_shop(
         &self,
         c: &mut Canvas,
         a: &Assets,
+        at: Option<Place>,
         tab: ShopTab,
         cursor: usize,
         scroll: usize,
@@ -1870,22 +1919,15 @@ impl Play {
         let (w, h) = (c.w(), c.h());
         let l = panel_layout(w, h);
         c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
-        let ti = [
-            ShopTab::Seeds,
-            ShopTab::Goods,
-            ShopTab::Specials,
-            ShopTab::Sell,
-        ]
-        .iter()
-        .position(|t| *t == tab)
-        .unwrap_or(0);
-        tabs(
-            c,
-            &l,
-            &["Seeds", "Goods", "Specials", "Sell"],
-            ti,
-            &SHOP_TABS,
-        );
+        let all = shops::tabs(at);
+        let ti = all.iter().position(|t| *t == tab).unwrap_or(0);
+        let names: Vec<&str> = all.iter().map(|t| shops::tab_name(at, *t)).collect();
+        tabs(c, &l, &names, ti, &shop_tab_widths(at));
+        if let Some(p) = at {
+            let name = p.def().name;
+            let x = l.px + l.pw - 10 - c.text_width(name);
+            c.text(x, l.py + 7, name, ROSEWOOD);
+        }
         // Your purse, in the corner at the bottom.
         c.panel(
             l.px + l.pw - 16 - money_width(c, self.money),
@@ -1903,7 +1945,7 @@ impl Play {
             INK,
         );
         if tab != ShopTab::Sell {
-            let rows = self.shop_rows(tab);
+            let rows = shops::rows(self, at, tab);
             let mut tip = None;
             for row in 0..7 {
                 let i = scroll + row;
@@ -1950,11 +1992,7 @@ impl Play {
                     tip = Some((s, y));
                 }
             }
-            let talk = match tab {
-                ShopTab::Seeds => "Burrowby: \"New seeds as you go deeper!\"",
-                ShopTab::Goods => "Burrowby: \"Everything a delver needs.\"",
-                _ => "Burrowby: \"Fresh finds, every morning!\"",
-            };
+            let talk = shops::patter(at, tab);
             c.text(l.px + 10, l.py + l.ph - 14, talk, SHADOW);
             if let Some((s, y)) = tip {
                 if tab == ShopTab::Specials || s.item.def().kind != Kind::Material {
@@ -1974,9 +2012,13 @@ impl Play {
                 if let Some(s) = self.player.inv.slots[i] {
                     let y = g.y + g.h() + 8;
                     if can_sell(&s) {
+                        let rate = shops::buy_rate(at, &s);
                         let t = format!("{} x{} -", s.name(), s.n);
                         let tw = c.text(l.px + 10, y, &t, INK);
-                        draw_money(c, a, l.px + 14 + tw, y, s.value(), RUST);
+                        let mw = draw_money(c, a, l.px + 14 + tw, y, s.value() * rate / 100, RUST);
+                        if rate > 100 {
+                            c.text(l.px + 18 + tw + mw, y, &format!("+{}%!", rate - 100), GREEN);
+                        }
                     } else {
                         c.text(l.px + 10, y, &format!("{} - keep this one!", s.name()), INK);
                     }
@@ -1990,7 +2032,19 @@ impl Play {
     }
 }
 
-pub const SHOP_TABS: [i32; 4] = [36, 36, 46, 30];
+/// Tab widths for a shop's tabs.
+pub fn shop_tab_widths(at: Option<Place>) -> Vec<i32> {
+    shops::tabs(at)
+        .iter()
+        .map(|t| match shops::tab_name(at, *t) {
+            "Specials" => 46,
+            "Supplies" => 46,
+            "Seeds" | "Goods" | "Gems" | "Decor" | "Magic" | "Treats" | "Today" => 36,
+            "Menu" => 32,
+            _ => 30,
+        })
+        .collect()
+}
 
 /// Tab positions: (x, width).
 pub fn tab_rects(l: &Layout, widths: &[i32]) -> Vec<(i32, i32)> {
