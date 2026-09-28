@@ -3,12 +3,14 @@
 
 use glam::{Mat4, Vec2, Vec3};
 
-use super::draw::{self, Outfit, Pose, Swing, draw_humanoid, full_uv};
+use super::draw::{self, Outfit, Pose, Swing, draw_humanoid, flames, full_uv};
 use super::fx::shot_colors;
 use super::gear::{Rarity, Slot};
 use super::items::{Kind, Stack};
 use super::play::Play;
 use super::player::ActKind;
+use super::town::Decor;
+use super::travel::area_world_mut;
 use super::world::{Area, Wall};
 use crate::assets::Assets;
 use crate::palette::*;
@@ -73,7 +75,7 @@ impl Play {
                 power: 0.8,
                 warmth: 5.0,
             }),
-            Area::Farm if env.night > 0.2 => lights.push(PointLight {
+            Area::Farm | Area::Town if env.night > 0.2 => lights.push(PointLight {
                 pos: ppos + Vec3::Y * 1.0,
                 radius: 3.8,
                 power: 0.4 * env.night,
@@ -145,11 +147,31 @@ impl Play {
         } else {
             Vec::new()
         };
-        let world = match &mut self.level {
-            Some(l) if matches!(self.area, Area::Hollow { .. }) => &mut l.world,
-            _ => &mut self.farm,
-        };
+        if let Some(l) = self.bus_light(env.night) {
+            lights.push(l);
+        }
+        if let Some(room) = &self.room {
+            for d in &room.decor {
+                if let Decor::Sconce { x } = d {
+                    lights.push(PointLight {
+                        pos: Vec3::new(*x as f32 + 0.5, 1.4, 1.3),
+                        radius: 4.0,
+                        power: 0.35,
+                        warmth: 6.0,
+                    });
+                }
+            }
+        }
+        let world = area_world_mut(
+            self.area,
+            &mut self.farm,
+            &mut self.town,
+            &mut self.level,
+            &mut self.room,
+        );
         draw::draw_world(r, a, world, &env, &lights);
+        self.draw_decor(r, a);
+        self.draw_bus(r, a, self.sky_night());
 
         // Target cursor.
         if let (Some((tx, tz)), Some(item)) = (self.target, self.player.held()) {
@@ -165,7 +187,7 @@ impl Play {
                 } else {
                     a.cursor_bad
                 };
-                let y = if world.wall(tx, tz) != Wall::None {
+                let y = if self.world().wall(tx, tz) != Wall::None {
                     1.02
                 } else {
                     0.03
@@ -240,7 +262,7 @@ impl Play {
             }
         }
         // Rain.
-        if self.rain && self.area == Area::Farm {
+        if self.rain && matches!(self.area, Area::Farm | Area::Town) {
             let t = self.cam.target;
             for i in 0..90 {
                 let fx = (hash2(i, 0, 1) % 1000) as f32 / 1000.0;
@@ -256,6 +278,80 @@ impl Play {
             }
         }
         r.fb.outline(INK);
+    }
+
+    /// How dark it is outside (rooms still know whether it's night).
+    pub fn sky_night(&self) -> f32 {
+        ((self.clock.min - 1150.0) / 110.0).clamp(0.0, 1.0)
+    }
+
+    /// Rugs, windows, pictures and lamps in the room you're in.
+    fn draw_decor(&self, r: &mut Renderer, a: &Assets) {
+        let Some(room) = &self.room else { return };
+        let night = self.sky_night() > 0.3;
+        let t = &a.town;
+        // The doormat on the way out.
+        let (ex, ez) = room.exit;
+        let mat = t.rugs[(room.place as usize + 3) % t.rugs.len()];
+        r.decal(
+            a.tex(mat),
+            UvRect::new(0.0, 0.0, 16.0, 16.0),
+            Vec3::new(ex as f32 + 0.5, 0.01, ez as f32 + 0.35),
+            Vec2::new(0.42, 0.3),
+            &DrawOpts {
+                zwrite: false,
+                ..Default::default()
+            },
+        );
+        for d in &room.decor {
+            match *d {
+                Decor::Rug { x0, z0, x1, z1 } => {
+                    let tex = t.rugs[room.place as usize % t.rugs.len()];
+                    let c = Vec3::new((x0 + x1 + 1) as f32 * 0.5, 0.01, (z0 + z1 + 1) as f32 * 0.5);
+                    let half = Vec2::new(
+                        (x1 - x0 + 1) as f32 * 0.5 - 0.05,
+                        (z1 - z0 + 1) as f32 * 0.5 - 0.05,
+                    );
+                    r.decal(
+                        a.tex(tex),
+                        UvRect::new(0.0, 0.0, 16.0, 16.0),
+                        c,
+                        half,
+                        &DrawOpts {
+                            zwrite: false,
+                            ..Default::default()
+                        },
+                    );
+                }
+                Decor::Window { x } => {
+                    let m = Mat4::from_translation(Vec3::new(x as f32 + 0.5, 0.0, 1.01));
+                    r.mesh(&a.bank, &t.window, &m, &DrawOpts::default());
+                    let o = if night {
+                        DrawOpts::default()
+                    } else {
+                        DrawOpts::default().with_mode(Mode::Unlit)
+                    };
+                    r.mesh(&a.bank, &t.window_glass, &m, &o);
+                }
+                Decor::Painting { x } => {
+                    let m = Mat4::from_translation(Vec3::new(x as f32 + 0.5, 0.0, 1.01));
+                    let p = &t.paintings[(x as usize + room.place as usize) % t.paintings.len()];
+                    r.mesh(&a.bank, p, &m, &DrawOpts::default());
+                }
+                Decor::Sconce { x } => {
+                    let m = Mat4::from_translation(Vec3::new(x as f32 + 0.5, 0.0, 1.01));
+                    r.mesh(&a.bank, &t.sconce, &m, &DrawOpts::default());
+                    flames(
+                        r,
+                        a,
+                        Vec3::new(x as f32 + 0.5, 1.44, 1.1),
+                        0.22,
+                        self.time,
+                        x,
+                    );
+                }
+            }
+        }
     }
 
     /// Loot on the ground bobs and spins; coins pile up; rare things shine.

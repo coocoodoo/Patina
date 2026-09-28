@@ -42,7 +42,7 @@ pub struct SaveData {
     pub bought: Vec<usize>,
 }
 
-const FLOORS: [(Floor, char); 11] = [
+const FLOORS: [(Floor, char); 15] = [
     (Floor::Void, '.'),
     (Floor::Grass, 'g'),
     (Floor::Path, 'p'),
@@ -54,6 +54,10 @@ const FLOORS: [(Floor, char); 11] = [
     (Floor::Cobble, 'S'),
     (Floor::Cave, 'c'),
     (Floor::Lava, 'l'),
+    (Floor::Street, 'r'),
+    (Floor::Plaza, 'z'),
+    (Floor::Tiles, 'T'),
+    (Floor::Carpet, 'C'),
 ];
 
 fn floor_char(f: Floor) -> char {
@@ -79,6 +83,8 @@ fn wall_char(w: Wall) -> char {
         Wall::Cliff => 'c',
         Wall::Brick => 'S',
         Wall::Timber => 'W',
+        Wall::Hedge => 'h',
+        Wall::Paper(_) => '.',
     }
 }
 
@@ -89,6 +95,7 @@ fn char_wall(c: char) -> Wall {
         'c' => Wall::Cliff,
         'S' => Wall::Brick,
         'W' => Wall::Timber,
+        'h' => Wall::Hedge,
         d if d.is_ascii_digit() => Wall::Ore(d as u8 - b'0'),
         _ => Wall::None,
     }

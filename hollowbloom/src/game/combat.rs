@@ -504,7 +504,7 @@ impl Play {
         }
         let depth = match self.area {
             Area::Hollow { depth } => depth,
-            Area::Farm => 1,
+            _ => 1,
         };
         let def = self.player.defense().max(0) as f32;
         let k = 12.0 + 3.0 * depth as f32;

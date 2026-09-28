@@ -13,6 +13,8 @@ use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack};
 use super::loot::{self, Fortune};
 use super::menus::Menu;
 use super::player::{Act, ActKind, HOTBAR, Player, RADIUS};
+use super::town::{self, BUILDINGS, Place, Room};
+use super::travel::{Bus, area_world, area_world_mut};
 use super::world::{Area, FERTILE, Floor, Obj, WATERED, Wall, World};
 use super::{Io, Settings};
 use crate::assets::BIOME_STYLES;
@@ -54,10 +56,23 @@ impl Clock {
 /// What happens when a screen fade reaches black.
 #[derive(Clone, Copy, Debug)]
 pub enum Trans {
-    Descend { depth: u32, via_waystone: bool },
+    Descend {
+        depth: u32,
+        via_waystone: bool,
+    },
     Home,
-    Sleep { passed_out: bool },
+    Sleep {
+        passed_out: bool,
+    },
     Faint,
+    /// Riding the bus to town (or home).
+    Bus {
+        to_town: bool,
+    },
+    /// Through a door into a building.
+    Enter(Place),
+    /// Back out into the street.
+    Leave,
 }
 
 pub struct Fade {
@@ -91,6 +106,17 @@ pub struct Cat {
 pub struct Play {
     pub seed: u64,
     pub farm: World,
+    /// Bramblewick, rebuilt from its plan whenever you arrive.
+    pub town: World,
+    /// The inside of the building you're in.
+    pub room: Option<Room>,
+    /// Town projects finished (bits from `town`).
+    pub restored: u32,
+    pub bus: Option<Bus>,
+    /// How long you've been leaning on a shop door.
+    pub door_push: f32,
+    /// Cool-down for gentle reminders.
+    pub nag: f32,
     pub level: Option<Level>,
     pub area: Area,
     pub player: Player,
@@ -153,6 +179,12 @@ impl Play {
         let mut p = Play {
             seed,
             farm,
+            town: town::generate(0),
+            room: None,
+            restored: 0,
+            bus: None,
+            door_push: 0.0,
+            nag: 0.0,
             level: None,
             area: Area::Farm,
             player,
@@ -227,23 +259,23 @@ impl Play {
     }
 
     pub fn world(&self) -> &World {
-        match &self.level {
-            Some(l) if matches!(self.area, Area::Hollow { .. }) => &l.world,
-            _ => &self.farm,
-        }
+        area_world(self.area, &self.farm, &self.town, &self.level, &self.room)
     }
 
     pub fn world_mut(&mut self) -> &mut World {
-        match &mut self.level {
-            Some(l) if matches!(self.area, Area::Hollow { .. }) => &mut l.world,
-            _ => &mut self.farm,
-        }
+        area_world_mut(
+            self.area,
+            &mut self.farm,
+            &mut self.town,
+            &mut self.level,
+            &mut self.room,
+        )
     }
 
     pub fn depth(&self) -> u32 {
         match self.area {
             Area::Hollow { depth } => depth,
-            Area::Farm => 0,
+            _ => 0,
         }
     }
 
@@ -296,7 +328,14 @@ impl Play {
 
     pub fn env(&self) -> Env {
         match self.area {
-            Area::Farm => {
+            Area::Inside(_) => Env {
+                ambient: 0.8,
+                warmth: 4.6,
+                clear: INK,
+                time: self.time,
+                night: 1.0,
+            },
+            Area::Farm | Area::Town => {
                 const KEYS: [(f32, f32, f32); 9] = [
                     (360.0, 0.72, 5.4),
                     (430.0, 1.0, 4.6),
@@ -351,6 +390,17 @@ impl Play {
 
     pub fn music(&self) -> (Option<Song>, i32, f32) {
         match self.area {
+            Area::Town => {
+                if self.clock.min > 1170.0 {
+                    (Some(Song::Night), -2, 0.95)
+                } else {
+                    (Some(Song::Town), 0, 1.0)
+                }
+            }
+            Area::Inside(place) => {
+                let tr = [0, -3, 2, -2, -5, 3, 4, 1, 5, -1, 0][place as usize];
+                (Some(Song::Shop), tr, 1.0)
+            }
             Area::Farm => {
                 if self.clock.min > 1170.0 {
                     (Some(Song::Night), 0, 1.0)
@@ -415,6 +465,8 @@ impl Play {
 
     fn go_home(&mut self) {
         self.level = None;
+        self.room = None;
+        self.bus = None;
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
@@ -473,6 +525,8 @@ impl Play {
         p.facing = Vec2::new(0.0, 1.0);
         p.act = None;
         self.level = None;
+        self.room = None;
+        self.bus = None;
         self.foes.clear();
         self.shots.clear();
         self.bolts.clear();
@@ -529,8 +583,13 @@ impl Play {
                     Trans::Home => self.go_home(),
                     Trans::Sleep { passed_out } => self.sleep(passed_out),
                     Trans::Faint => self.faint(),
+                    Trans::Bus { to_town } => self.ride_bus(to_town),
+                    Trans::Enter(place) => self.enter_place(place),
+                    Trans::Leave => self.leave_place(),
                 }
-                io.audio.play(Sfx::Stairs);
+                if !matches!(action, Trans::Enter(_) | Trans::Leave) {
+                    io.audio.play(Sfx::Stairs);
+                }
             }
             if let Some(f) = &self.fade {
                 if f.t >= 2.0 {
@@ -556,13 +615,17 @@ impl Play {
             }
         }
         self.sel_name_t += dt;
+        self.nag = (self.nag - dt).max(0.0);
 
+        self.update_bus(io);
         if !matches!(self.menu, Menu::None) {
             self.update_menu(io, settings);
+            self.update_folk(dt, false);
             self.fx.update(dt);
             return;
         }
-        if self.fade.is_some() {
+        if self.fade.is_some() || self.bus.as_ref().is_some_and(|b| b.boarding) {
+            self.update_folk(dt, false);
             self.fx.update(dt);
             return;
         }
@@ -614,6 +677,8 @@ impl Play {
 
         self.player.refresh();
         self.update_player(io);
+        self.update_doors(io);
+        self.update_folk(dt, true);
         self.update_foes(io);
         self.update_statuses(dt, io);
         self.update_bolts(dt, io);
@@ -638,7 +703,7 @@ impl Play {
         let p = &mut self.player;
         // Health: the Regen stat every five seconds, heartsip, and a slow trickle at home.
         let mut rate = p.stat(Stat::Regen).max(0) as f32 / 5.0;
-        if self.area == Area::Farm {
+        if !matches!(self.area, Area::Hollow { .. }) {
             rate += 1.0;
         }
         p.regen_acc += rate * dt;
@@ -686,12 +751,26 @@ impl Play {
         let k = damp(7.0, dt);
         self.cam_pos += (p - self.cam_pos) * k;
         let mut t = self.cam_pos;
-        if self.area == Area::Farm {
-            let w = self.farm.w as f32;
-            let h = self.farm.h as f32;
-            t.x = t.x.clamp(10.5, w - 10.5);
-            t.z = t.z.clamp(7.0, h - 3.5);
+        match self.area {
+            Area::Farm | Area::Town => {
+                let w = self.world();
+                let (w, h) = (w.w as f32, w.h as f32);
+                t.x = t.x.clamp(10.5, w - 10.5);
+                t.z = t.z.clamp(7.0, h - 3.5);
+            }
+            Area::Inside(_) => {
+                // Rooms are small dioramas: the camera stands back and leans a little
+                // towards you.
+                let c = self.room_center();
+                t = c + (self.player.world_pos() - c) * Vec3::new(0.15, 0.0, 0.08);
+            }
+            _ => {}
         }
+        self.cam.dist = if matches!(self.area, Area::Inside(_)) {
+            17.5
+        } else {
+            15.5
+        };
         if self.shake > 0.0 {
             let s = self.shake * self.shake * 0.25;
             t.x += (self.time * 71.0).sin() * s;
@@ -726,10 +805,7 @@ impl Play {
             self.fx
                 .burst(p.world_pos() + Vec3::Y * 0.05, 6, &[SAND, WHITE], 1.5, 0.8);
         }
-        let world = match &self.level {
-            Some(l) if matches!(self.area, Area::Hollow { .. }) => &l.world,
-            _ => &self.farm,
-        };
+        let world = area_world(self.area, &self.farm, &self.town, &self.level, &self.room);
         let p = &mut self.player;
         if p.dodge > 0.0 {
             p.dodge -= dt;
@@ -857,6 +933,9 @@ impl Play {
     }
 
     fn can_act_on(&self, (x, z): (i32, i32)) -> bool {
+        if self.in_town() {
+            return false;
+        }
         let w = self.world();
         let Some(item) = self.player.held() else {
             return false;
@@ -971,6 +1050,17 @@ impl Play {
         let (ax, az) = w.anchor(x, z);
         let o = w.obj(ax, az)?;
         let s = match o {
+            Obj::Building { id } => {
+                let b = &BUILDINGS[*id as usize];
+                return Some(match b.place {
+                    Some(p) => format!("Enter {}", p.def().name),
+                    None => format!("Knock at {}", b.name),
+                });
+            }
+            Obj::BusStop => "Wait for the bus",
+            Obj::Board => "Read the notices",
+            Obj::Fountain { .. } => "Make a wish",
+            Obj::Well => "Peek in",
             Obj::House => "Sleep",
             Obj::Bin => "Ship items",
             Obj::Hollow => "Enter the Hollow",
@@ -1004,6 +1094,14 @@ impl Play {
             self.use_item(item, tile, io);
             return;
         };
+        if self.in_town() {
+            if self.nag <= 0.0 {
+                self.nag = 2.5;
+                self.toast("Better keep that put away in town.", None, 0);
+                io.audio.play(Sfx::Denied);
+            }
+            return;
+        }
         let p = &mut self.player;
         match kind {
             ActKind::Bolt | ActKind::Blast => {
@@ -1307,10 +1405,37 @@ impl Play {
             }
             Obj::Workbench => self.menu = Menu::inventory(true),
             Obj::EnchantTable => self.menu = Menu::enchant(),
+            Obj::BusStop => {
+                let text = if self.area == Area::Farm {
+                    "The little bus to Bramblewick stops here all day long. Wave it down?"
+                } else {
+                    "The bus back to Hollowbloom Farm leaves from here. Wave it down?"
+                };
+                self.menu = Menu::dialog_choice(
+                    text,
+                    vec![
+                        ("Ride the bus", super::menus::Choice::Bus),
+                        ("Not now", super::menus::Choice::Close),
+                    ],
+                );
+            }
+            Obj::Building { id } => {
+                self.knock(id as usize, io);
+                return true;
+            }
+            Obj::Board => self.open_board(io),
+            Obj::Fountain { .. } => self.wish(io),
+            Obj::Well => {
+                self.toast("It's very deep. Something glints far below...", None, 0);
+                io.audio.play_at(Sfx::Water, 0.4, 0.7);
+            }
             Obj::Sign { text } => {
                 let msg = match text {
                     0 => {
                         "THE HOLLOW\nMind your step. It goes down forever. Waystones every ten floors will bring you home."
+                    }
+                    2 => {
+                        "BUS STOP\nBramblewick - shops, friends and odd jobs. Buses all day, every day. Wave from the shelter!"
                     }
                     _ => "BURROWBY'S GOODS\nSeeds, supplies and a warm hello.",
                 };
@@ -1656,7 +1781,7 @@ impl Play {
     fn forage_seed(&mut self) -> Item {
         match self.area {
             Area::Hollow { depth } => loot::biome_seed(biome_for(depth), &mut self.rng),
-            Area::Farm => {
+            _ => {
                 let seeds = [
                     Item::TurnipSeeds,
                     Item::RadishSeeds,
@@ -2134,10 +2259,7 @@ impl Play {
 
     fn update_drops(&mut self, io: &mut Io) {
         let dt = io.dt;
-        let world = match &self.level {
-            Some(l) if matches!(self.area, Area::Hollow { .. }) => &l.world,
-            _ => &self.farm,
-        };
+        let world = area_world(self.area, &self.farm, &self.town, &self.level, &self.room);
         let ppos = self.player.pos;
         let mut picked: Vec<usize> = Vec::new();
         for (i, d) in self.drops.iter_mut().enumerate() {

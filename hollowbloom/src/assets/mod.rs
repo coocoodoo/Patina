@@ -4,8 +4,10 @@ pub mod font;
 pub mod gear_art;
 pub mod item_art;
 pub mod models;
+pub mod quest_art;
 pub mod sprites;
 pub mod tiles;
+pub mod town_art;
 
 use std::collections::HashMap;
 
@@ -290,6 +292,23 @@ pub struct Assets {
     pub water: [TexId; 4],
     pub wood_floor: TexId,
     pub stone_floor: TexId,
+    /// Roads with their outer corners rounded into grass: `rounded[road * 4 + grass][mask]`,
+    /// with roads in `ROADS` order and `mask` from the corner bits in `tiles`.
+    pub rounded: Vec<[TexId; 16]>,
+    pub street: [TexId; 3],
+    pub plaza: TexId,
+    pub checker: TexId,
+    /// Red, violet and teal carpets.
+    pub carpets: [TexId; 3],
+    pub hedge_side: TexId,
+    pub hedge_top: TexId,
+    /// Inside walls, by style.
+    pub wallpaper: Vec<TexId>,
+    /// The tops of inside walls.
+    pub beam: TexId,
+    pub town: town_art::TownArt,
+    /// Grass with road filling its inner corners, indexed the same way.
+    pub fillets: Vec<[TexId; 16]>,
     pub cliff_side: TexId,
     pub biomes: Vec<BiomeTex>,
     pub stone_wall_side: TexId,
@@ -315,6 +334,7 @@ impl Assets {
         let mut icons = sprites::build(&mut bank);
         item_art::build(&mut bank, &mut icons);
         let gear = gear_art::build(&mut bank, &mut icons);
+        quest_art::build(&mut bank, &mut icons);
         let grass = [
             bank.add(tiles::grass(1, false)),
             bank.add(tiles::grass(2, false)),
@@ -339,6 +359,47 @@ impl Assets {
         let wood_floor = bank.add(tiles::planks(CLAY, GOLD, RUST, 20));
         let stone_floor = bank.add(tiles::cobbles(KHAKI, SAND, SHADOW, 21));
         let cliff_side = bank.add(tiles::cliff_side());
+        let street = [
+            bank.add(tiles::street(22)),
+            bank.add(tiles::street(23)),
+            bank.add(tiles::street(24)),
+        ];
+        let plaza = bank.add(tiles::pavers());
+        let checker = bank.add(tiles::checker(CREAM, BLUSH, SAND));
+        let carpets = [
+            bank.add(tiles::carpet(CRIMSON, PLUM, GOLD)),
+            bank.add(tiles::carpet(GRAPE, INDIGO, LAVENDER)),
+            bank.add(tiles::carpet(DEEP_TEAL, INDIGO, GOLD)),
+        ];
+        let hedge_side = bank.add(tiles::hedge(25));
+        let hedge_top = bank.add(tiles::hedge(26));
+        let wallpaper = (0..11).map(|k| bank.add(tiles::wallpaper(k))).collect();
+        let beam = bank.add(tiles::planks(MAROON, RUST, INK, 27));
+        // Every road gets soft corners where it meets the lawn.
+        let roads = [
+            path[0],
+            path[1],
+            sand,
+            stone_floor,
+            wood_floor,
+            street[0],
+            plaza,
+        ];
+        let mut rounded = Vec::new();
+        let mut fillets = Vec::new();
+        for &road in &roads {
+            for &lawn in &grass {
+                let (rt, gt) = (bank.get(road).clone(), bank.get(lawn).clone());
+                let mut outer = [road; 16];
+                let mut inner = [lawn; 16];
+                for mask in 1..16u8 {
+                    outer[mask as usize] = bank.add(tiles::round_corners(&rt, &gt, mask, 6.0));
+                    inner[mask as usize] = bank.add(tiles::round_corners(&gt, &rt, mask, 3.0));
+                }
+                rounded.push(outer);
+                fillets.push(inner);
+            }
+        }
 
         let mut biomes = Vec::new();
         for (i, st) in BIOME_STYLES.iter().enumerate() {
@@ -404,6 +465,7 @@ impl Assets {
         let sprout = models::sprout(&mut bank);
         let critters = models::critters(&mut bank);
         let props = models::props(&mut bank);
+        let town = town_art::build(&mut bank, &icons, water[0]);
         let foes = foe_skins(&mut bank, &critters);
         Assets {
             foes,
@@ -420,6 +482,17 @@ impl Assets {
             water,
             wood_floor,
             stone_floor,
+            rounded,
+            fillets,
+            street,
+            plaza,
+            checker,
+            carpets,
+            hedge_side,
+            hedge_top,
+            wallpaper,
+            beam,
+            town,
             cliff_side,
             biomes,
             stone_wall_side,

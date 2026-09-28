@@ -127,6 +127,47 @@ pub fn sand(seed: u64) -> Texture {
     t
 }
 
+/// Corner bits for rounded tiles: north-west, north-east, south-west, south-east
+/// (texel (0, 0) is the north-west corner).
+pub const NW: u8 = 1;
+pub const NE: u8 = 2;
+pub const SW: u8 = 4;
+pub const SE: u8 = 8;
+
+/// `base` with the corners in `mask` rounded off: texels outside a quarter circle of
+/// radius `r` tucked into each corner come from `fill` instead. Rounding a road into
+/// grass softens its outer corners; rounding grass into road fills its inner ones.
+pub fn round_corners(base: &Texture, fill: &Texture, mask: u8, r: f32) -> Texture {
+    let mut t = base.clone();
+    let n = T as f32;
+    for (bit, cx, cy) in [
+        (NW, r, r),
+        (NE, n - r, r),
+        (SW, r, n - r),
+        (SE, n - r, n - r),
+    ] {
+        if mask & bit == 0 {
+            continue;
+        }
+        for y in 0..T {
+            for x in 0..T {
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                // Only the square between the circle's centre and the corner.
+                let inside_x = if cx < n * 0.5 { px < cx } else { px > cx };
+                let inside_y = if cy < n * 0.5 { py < cy } else { py > cy };
+                if !(inside_x && inside_y) {
+                    continue;
+                }
+                let (dx, dy) = (px - cx, py - cy);
+                if dx * dx + dy * dy > r * r {
+                    t.set(x, y, fill.get(x, y));
+                }
+            }
+        }
+    }
+    t
+}
+
 /// One frame of animated water; `frame` shifts the ripples.
 pub fn water(frame: u32) -> Texture {
     let mut t = tex(BLUE);
@@ -581,6 +622,262 @@ pub fn cliff_side() -> Texture {
         }
         if x % 5 == 0 {
             t.set(x, 3, TEAL);
+        }
+    }
+    t
+}
+
+/// Rounded town cobbles in warm stone.
+pub fn street(seed: u64) -> Texture {
+    let mut t = tex(ROSEWOOD);
+    let mut r = Rng::new(seed);
+    for gy in 0..4 {
+        for gx in 0..4 {
+            let off = if gy % 2 == 0 { 0 } else { 2 };
+            let x0 = gx * 4 + off;
+            let y0 = gy * 4;
+            let c = *r.pick(&[SAND, SAND, KHAKI, PEACH]);
+            for y in 0..3 {
+                for x in 0..3 {
+                    let corner = (x == 0 || x == 2) && (y == 0 || y == 2);
+                    if !corner {
+                        let px = if y == 0 && x == 1 { PEACH } else { c };
+                        t.set_wrap(x0 + x, y0 + y, px);
+                    } else if r.chance(0.5) {
+                        t.set_wrap(x0 + x, y0 + y, c);
+                    }
+                }
+            }
+        }
+    }
+    t
+}
+
+/// Basket-weave brick pavers for the plaza.
+pub fn pavers() -> Texture {
+    let mut t = tex(ROSEWOOD);
+    for by in 0..4 {
+        for bx in 0..4 {
+            let flip = (bx + by) % 2 == 0;
+            let (x0, y0) = (bx * 4, by * 4);
+            for k in 0..2 {
+                for a in 0..3 {
+                    for b in 0..1 {
+                        let (x, y) = if flip {
+                            (x0 + a, y0 + k * 2 + b)
+                        } else {
+                            (x0 + k * 2 + b, y0 + a)
+                        };
+                        let c = if a == 0 { PEACH } else { SALMON };
+                        t.set(x, y, c);
+                    }
+                }
+            }
+        }
+    }
+    t
+}
+
+/// Checkered shop tiles.
+pub fn checker(a: u8, b: u8, line: u8) -> Texture {
+    let mut t = tex(a);
+    for y in 0..T {
+        for x in 0..T {
+            let c = if ((x / 8) + (y / 8)) % 2 == 0 { a } else { b };
+            t.set(x, y, c);
+            if x % 8 == 7 || y % 8 == 7 {
+                t.set(x, y, line);
+            }
+        }
+    }
+    t
+}
+
+/// A soft carpet with a small diamond pattern.
+pub fn carpet(base: u8, pattern: u8, dot: u8) -> Texture {
+    let mut t = tex(base);
+    for y in 0..T {
+        for x in 0..T {
+            let dx = (x % 8 - 4).abs();
+            let dy = (y % 8 - 4).abs();
+            if dx + dy == 3 {
+                t.set(x, y, pattern);
+            }
+            if dx + dy == 0 {
+                t.set(x, y, dot);
+            }
+        }
+    }
+    t
+}
+
+/// Clipped hedge leaves.
+pub fn hedge(seed: u64) -> Texture {
+    let mut t = tex(GREEN);
+    let mut r = Rng::new(seed);
+    for _ in 0..10 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        blob(&mut t, x, y, 1, 1, TEAL);
+    }
+    for _ in 0..14 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        t.set_wrap(x, y, LIME);
+    }
+    speckle(&mut t, &mut r, DEEP_TEAL, 6);
+    t
+}
+
+/// Painted plaster in a palette of (light, main, dark).
+pub fn plaster(pal: [u8; 3], seed: u64) -> Texture {
+    let [hi, mid, lo] = pal;
+    let mut t = tex(mid);
+    let mut r = Rng::new(seed);
+    speckle(&mut t, &mut r, hi, 12);
+    speckle(&mut t, &mut r, lo, 6);
+    t
+}
+
+/// Upright boards.
+pub fn boards(pal: [u8; 3], seed: u64) -> Texture {
+    let [hi, mid, lo] = pal;
+    let mut t = tex(mid);
+    let mut r = Rng::new(seed);
+    for x in 0..T {
+        let col = x % 4;
+        for y in 0..T {
+            if col == 3 {
+                t.set(x, y, lo);
+            } else if col == 0 && r.chance(0.5) {
+                t.set(x, y, hi);
+            }
+        }
+    }
+    for _ in 0..4 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        if x % 4 != 3 {
+            t.set(x, y, lo);
+        }
+    }
+    t
+}
+
+/// A clock face with hands at ten past ten.
+pub fn clock_face() -> Texture {
+    let mut t = Texture::clear(16, 16);
+    for y in 0..16 {
+        for x in 0..16 {
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let d = (dx * dx + dy * dy).sqrt();
+            if d < 7.6 {
+                t.set(x, y, if d > 6.4 { GOLD } else { CREAM });
+            }
+        }
+    }
+    for (x, y) in [(7, 1), (7, 13), (1, 7), (13, 7)] {
+        t.set(x, y, RUST);
+    }
+    for k in 0..5 {
+        t.set(7, 7 - k, INK);
+    }
+    for k in 0..4 {
+        t.set(7 + k, 7 - k / 2, INK);
+    }
+    t
+}
+
+/// A guild banner: blue cloth, a gold lantern and a fringe.
+pub fn banner() -> Texture {
+    let mut t = tex(BLUE);
+    for y in 0..T {
+        t.set(0, y, INDIGO);
+        t.set(T - 1, y, INDIGO);
+    }
+    for x in 0..T {
+        t.set(x, 0, GOLD);
+        if x % 2 == 0 {
+            t.set(x, T - 1, GOLD);
+        } else {
+            t.set(x, T - 1, CLEAR);
+        }
+    }
+    for y in 5..11 {
+        for x in 6..10 {
+            t.set(x, y, if y == 5 || y == 10 { CLAY } else { GOLD });
+        }
+    }
+    t.set(7, 4, CLAY);
+    t.set(8, 4, CLAY);
+    t.set(7, 7, CREAM);
+    t.set(8, 8, CREAM);
+    t
+}
+
+/// Inside walls, 16x32 texels for a wall two units tall: crown moulding, the paper
+/// pattern, a chair rail and wainscot panels.
+pub fn wallpaper(style: u8) -> Texture {
+    let mut t = Texture::new(16, 32, CREAM);
+    let (paper, fleck, wood, wood_dark) = match style {
+        0 => ([SAND, KHAKI], SHADOW, CLAY, RUST),
+        1 => ([RUST, MAROON], CLAY, KHAKI, SHADOW),
+        2 => ([MINT, AQUA], WHITE, CLAY, RUST),
+        3 => ([PURPLE, GRAPE], CREAM, INDIGO, INK),
+        4 => ([GOLD, CLAY], CREAM, RUST, MAROON),
+        5 => ([CREAM, PEACH], PINK, SALMON, ROSEWOOD),
+        6 => ([TEAL, DEEP_TEAL], GOLD, INDIGO, INK),
+        7 => ([PEACH, SAND], PINK, CLAY, RUST),
+        8 => ([SAND, PEACH], CLAY, RUST, MAROON),
+        9 => ([SLATE, INDIGO], SKY, RUST, MAROON),
+        _ => ([CREAM, SAND], GOLD, CRIMSON, PLUM),
+    };
+    for y in 0..32 {
+        for x in 0..16 {
+            let c = match y {
+                0 => wood_dark,
+                1..=2 => wood,
+                3 => wood_dark,
+                4..=19 => {
+                    // Paper: stripes, stones or a sprinkle of motifs.
+                    match style {
+                        0 | 1 | 9 => {
+                            // Stone or brick courses.
+                            let course = (y - 4) / 4;
+                            let off = if course % 2 == 0 { 0 } else { 4 };
+                            if (y - 4) % 4 == 3 || (x + off) % 8 == 7 {
+                                fleck
+                            } else {
+                                paper[(((x + off) / 8 + course) % 2) as usize]
+                            }
+                        }
+                        4 => {
+                            if x % 4 == 3 {
+                                wood_dark
+                            } else {
+                                paper[0]
+                            }
+                        }
+                        2 | 8 => paper[(x / 4 % 2) as usize],
+                        _ => {
+                            let motif = (x + y * 3) % 11 == 0;
+                            if motif {
+                                fleck
+                            } else {
+                                paper[((y / 8) % 2) as usize]
+                            }
+                        }
+                    }
+                }
+                20 => wood_dark,
+                21 => wood,
+                22..=30 => {
+                    if x % 8 == 0 || y == 22 || y == 30 {
+                        wood_dark
+                    } else {
+                        wood
+                    }
+                }
+                _ => wood_dark,
+            };
+            t.set(x, y, c);
         }
     }
     t

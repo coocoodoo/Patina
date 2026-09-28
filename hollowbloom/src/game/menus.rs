@@ -26,6 +26,7 @@ pub enum Choice {
     Close,
     Sleep,
     ReturnHome,
+    Bus,
 }
 
 pub struct Summary {
@@ -644,6 +645,7 @@ impl Play {
                                 io.audio.play(Sfx::Waystone);
                                 self.start_fade(Trans::Home);
                             }
+                            Choice::Bus => self.call_bus(io),
                         }
                         Menu::None
                     } else {

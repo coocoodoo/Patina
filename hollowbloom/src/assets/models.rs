@@ -74,6 +74,7 @@ pub const LEG_R: usize = 5;
 /// The textures a humanoid is dressed in, so clothes can be swapped in.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HumanTex {
+    pub head: TexId,
     pub body: TexId,
     pub arm: TexId,
     pub leg: TexId,
@@ -293,7 +294,12 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
     }
     Humanoid {
         parts,
-        tex: HumanTex { body, arm, leg },
+        tex: HumanTex {
+            head,
+            body,
+            arm,
+            leg,
+        },
         hip: 0.18 * s,
         shoulder: 0.43 * s,
         neck: 0.43 * s,

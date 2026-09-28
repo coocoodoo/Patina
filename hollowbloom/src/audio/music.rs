@@ -10,6 +10,10 @@ pub enum Song {
     Hollow,
     Haven,
     Boss,
+    /// Bramblewick by day.
+    Town,
+    /// Inside the shops.
+    Shop,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -126,6 +130,50 @@ fn def(s: Song) -> SongDef {
                     0.24,
                 ),
                 ("k h s h k h s h", Inst::Drums, 0.18),
+            ],
+        },
+        Song::Town => SongDef {
+            bpm: 112.0,
+            tracks: [
+                (
+                    "G4 - B4 - D5 - - B4 C5 - E5 - D5 - - - B4 - G4 - A4 B4 C5 - A4 - B4 - - - . . \
+                     D5 - E5 - F#5 - G5 - E5 - C5 - D5 - - - B4 - A4 - B4 C5 D5 - A4 - G4 - - - . .",
+                    Inst::Lead,
+                    0.18,
+                ),
+                (
+                    "G4 B4 D5 B4 G4 B4 D5 B4 C4 E4 G4 E4 C4 E4 G4 E4 D4 F#4 A4 F#4 D4 F#4 A4 F#4 G4 B4 D5 B4 G4 B4 D5 B4",
+                    Inst::Arp,
+                    0.09,
+                ),
+                (
+                    "G2 - D3 - G2 - D3 - C2 - G2 - C2 - G2 - D2 - A2 - D2 - A2 - G2 - D3 - G2 - B2 -",
+                    Inst::Bass,
+                    0.24,
+                ),
+                ("k . h . s . h h k . h . s . h .", Inst::Drums, 0.15),
+            ],
+        },
+        Song::Shop => SongDef {
+            bpm: 88.0,
+            tracks: [
+                (
+                    "C5 - - - A4 - C5 - F5 - E5 - D5 - - - C5 - - - Bb4 - A4 - G4 - - - - - . . \
+                     A4 - - - C5 - F5 - A5 - G5 - F5 - - - E5 - - - D5 - E5 - F5 - - - - - . .",
+                    Inst::Bell,
+                    0.18,
+                ),
+                (
+                    "F3 A3 C4 A3 F3 A3 C4 A3 Bb3 D4 F4 D4 Bb3 D4 F4 D4 C4 E4 G4 E4 C4 E4 G4 E4 F3 A3 C4 A3 F3 A3 C4 A3",
+                    Inst::Soft,
+                    0.08,
+                ),
+                (
+                    "F2 - - - C3 - - - Bb1 - - - F2 - - - C2 - - - G2 - - - F2 - - - C2 - - -",
+                    Inst::Bass,
+                    0.2,
+                ),
+                ("k . . h s . . h", Inst::Drums, 0.1),
             ],
         },
     }

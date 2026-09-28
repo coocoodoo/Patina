@@ -4,6 +4,7 @@ use std::f32::consts::PI;
 
 use glam::{Mat4, Vec2, Vec3};
 
+use super::items::{Item, Stack};
 use super::world::{Floor, Obj, World};
 use crate::assets::Assets;
 use crate::assets::models::{ARM_L, ARM_R, BODY, HEAD, Humanoid, LEG_L, LEG_R};
@@ -35,7 +36,11 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
         for x in (x0 - 6).max(0)..(x1 + 6).min(w.w) {
             let Some(o) = w.obj(x, z) else { continue };
             let lit = match o {
-                Obj::Lamp | Obj::House | Obj::EnchantTable => env.night > 0.2,
+                Obj::Lamp
+                | Obj::House
+                | Obj::EnchantTable
+                | Obj::StreetLamp { .. }
+                | Obj::Building { .. } => env.night > 0.2,
                 Obj::Crop { crop, days, .. } => {
                     crop.def().glow && *days >= crop.def().days && env.night > 0.2
                 }
@@ -64,6 +69,14 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
                     radius: 5.0,
                     power: 0.75 * env.night,
                     warmth: 7.5,
+                });
+            } else if let Obj::Building { id } = o {
+                let b = &super::town::BUILDINGS[*id as usize];
+                out.push(PointLight {
+                    pos: base + Vec3::new(b.door as f32, 0.9, 1.3),
+                    radius: 4.5 + b.w as f32 * 0.4,
+                    power: 0.7 * env.night,
+                    warmth: 7.0,
                 });
             } else if matches!(o, Obj::Crop { .. }) {
                 out.push(PointLight {
@@ -325,6 +338,151 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 r.point(q, 1, [LAVENDER, MINT, BLUSH][k]);
             }
         }
+        Obj::BusStop => {
+            r.mesh(&a.bank, &a.town.shelter, &at, &DrawOpts::default());
+        }
+        Obj::Building { id } => {
+            let (body, windows) = &a.town.buildings[*id as usize];
+            r.mesh(&a.bank, body, &at, &DrawOpts::default());
+            let mode = if env.night > 0.3 {
+                Mode::Unlit
+            } else {
+                Mode::Lit
+            };
+            r.mesh(&a.bank, windows, &at, &DrawOpts::default().with_mode(mode));
+        }
+        Obj::Fountain { flowing } => {
+            r.mesh(&a.bank, &a.town.fountain, &at, &DrawOpts::default());
+            if *flowing {
+                r.mesh(&a.bank, &a.town.fountain_water, &at, &DrawOpts::default());
+                // Water arcing from the top bowl and splashing below.
+                for i in 0..12 {
+                    let k = (env.time * 0.9 + i as f32 / 12.0).fract();
+                    let ang = i as f32 * 0.5236;
+                    let rad = 0.35 + k * 0.6;
+                    let y = 1.3 + k * 0.25 - k * k * 1.2;
+                    let p = base + Vec3::new(ang.cos() * rad, y, ang.sin() * rad);
+                    r.point(p, 1, if i % 3 == 0 { WHITE } else { SKY });
+                }
+                let s = (env.time * 5.0).sin() > 0.0;
+                r.point(
+                    base + Vec3::new(0.0, 1.62, 0.0),
+                    if s { 2 } else { 1 },
+                    WHITE,
+                );
+            }
+        }
+        Obj::StreetLamp { lit } => {
+            r.mesh(&a.bank, &a.town.street_lamp, &at, &lit_opts(base));
+            let glow = *lit && env.night > 0.2;
+            let o = if glow {
+                DrawOpts::default().with_mode(Mode::Unlit)
+            } else {
+                lit_opts(base)
+            };
+            r.mesh(&a.bank, &a.town.lamp_glass, &at, &o);
+            if glow && (env.time * 2.0 + x as f32).sin() > 0.95 {
+                r.point(base + Vec3::new(0.0, 1.95, 0.0), 1, CREAM);
+            }
+        }
+        Obj::Board => r.mesh(&a.bank, &a.town.board, &at, &lit),
+        Obj::Planter { var } => {
+            let m = &a.town.planters[*var as usize % a.town.planters.len()];
+            r.mesh(&a.bank, m, &at, &lit);
+        }
+        Obj::Bush { var } => {
+            r.shadow(a.tex(a.disk), base, 0.45);
+            let m = &a.town.bushes[*var as usize % a.town.bushes.len()];
+            r.mesh(&a.bank, m, &(at * small_rot(x, z)), &lit);
+        }
+        Obj::Well => r.mesh(&a.bank, &a.town.well, &at, &lit),
+        Obj::Stand { var } => {
+            let m = &a.town.stands[*var as usize % a.town.stands.len()];
+            r.mesh(&a.bank, m, &at, &lit);
+        }
+        Obj::Barrel => r.mesh(&a.bank, &a.town.barrel, &at, &lit),
+        Obj::Counter => r.mesh(&a.bank, &a.town.counter, &at, &lit),
+        Obj::Shelf { var } => {
+            r.mesh(&a.bank, &a.town.shelf, &at, &lit);
+            let goods = shelf_goods(*var);
+            for (row, y) in [0.12f32, 0.62, 1.12].into_iter().enumerate() {
+                for k in 0..3 {
+                    let pick = hash2(x * 3 + k, z * 5 + row as i32, 17) as usize % goods.len();
+                    let id = a.icon(goods[pick]);
+                    r.billboard(
+                        a.tex(id),
+                        full_uv(a, id),
+                        base + Vec3::new(-0.26 + k as f32 * 0.26, y, -0.3),
+                        Vec2::splat(0.3),
+                        &lit,
+                    );
+                }
+            }
+        }
+        Obj::Rack { var } => {
+            r.mesh(&a.bank, &a.town.rack, &at, &lit);
+            let set: [&str; 3] = match var % 3 {
+                0 => ["twig_sword", "carrot_blade", "mighty_leek"],
+                1 => ["bubble_wand", "crystal_wand", "star_wand"],
+                _ => ["oak_staff", "mossy_staff", "crystal_staff"],
+            };
+            for (k, icon) in set.iter().enumerate() {
+                if let Some(mesh) = a.held_mesh(icon) {
+                    let m = at
+                        * Mat4::from_translation(Vec3::new(-0.26 + k as f32 * 0.26, 0.28, -0.34))
+                        * Mat4::from_rotation_z(PI);
+                    r.mesh(&a.bank, mesh, &m, &lit);
+                }
+            }
+        }
+        Obj::Mannequin { var } => {
+            r.shadow(a.tex(a.disk), base, 0.3);
+            r.mesh(&a.bank, &a.town.dummy_base, &at, &lit);
+            draw_mannequin(r, a, base + Vec3::Y * 0.2, *var);
+        }
+        Obj::Table { var } => {
+            let m = if matches!(var, 1 | 9) {
+                &a.town.tables[1]
+            } else {
+                &a.town.tables[0]
+            };
+            r.mesh(&a.bank, m, &at, &lit);
+        }
+        Obj::Stool => r.mesh(&a.bank, &a.town.stool, &at, &lit),
+        Obj::Hearth => {
+            r.mesh(&a.bank, &a.town.hearth, &at, &lit);
+            flames(
+                r,
+                a,
+                base + Vec3::new(0.0, 0.08, -0.25),
+                0.55,
+                env.time,
+                x * 7 + z,
+            );
+        }
+        Obj::Fixture { var } => {
+            let m = &a.town.fixtures[*var as usize % a.town.fixtures.len()];
+            r.mesh(&a.bank, m, &at, &lit);
+            match var {
+                0 => {
+                    // The oven's glow.
+                    if (env.time * 3.0).sin() > 0.3 {
+                        r.point(base + Vec3::new(0.0, 0.42, 0.4), 1, GOLD);
+                    }
+                }
+                2 => {
+                    // Bubbles in the cauldron.
+                    for i in 0..3 {
+                        let k = (env.time * 0.8 + i as f32 * 0.33).fract();
+                        let p = base + Vec3::new((i as f32 - 1.0) * 0.1, 0.52 + k * 0.4, 0.0);
+                        if k < 0.8 {
+                            r.point(p, 1, if i == 1 { MINT } else { AQUA });
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         Obj::Crop { crop, days, .. } => {
             let def = crop.def();
             let name = match crop.stage(*days) {
@@ -349,6 +507,164 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             }
         }
     }
+}
+
+/// Lit evenly from the object's position.
+fn lit_opts(base: Vec3) -> DrawOpts {
+    DrawOpts::at(base)
+}
+
+/// What a shop's shelves hold, by the shop's goods.
+pub fn shelf_goods(var: u8) -> &'static [&'static str] {
+    match var {
+        0 => &[
+            "copper_helm",
+            "iron_helm",
+            "leather_boots",
+            "iron_boots",
+            "copper_shield",
+            "leaf_shield",
+            "straw_hat",
+            "bunny_hood",
+            "frog_hood",
+        ],
+        1 => &[
+            "twig_sword",
+            "carrot_blade",
+            "mighty_leek",
+            "bubble_wand",
+            "glowcap_wand",
+            "oak_staff",
+            "sunflower_staff",
+            "crystal_wand",
+        ],
+        2 => &[
+            "turnip_seeds",
+            "carrot_seeds",
+            "tomato_seeds",
+            "strawberry_seeds",
+            "corn_seeds",
+            "sunflower_seeds",
+            "rose_seeds",
+            "pumpkin_seeds",
+            "melon_seeds",
+        ],
+        3 => &[
+            "weapon_scroll",
+            "armor_scroll",
+            "tool_scroll",
+            "mana_tonic",
+            "wish_star",
+        ],
+        4 => &[
+            "copper_hoe",
+            "iron_hoe",
+            "duck_can",
+            "teapot_can",
+            "copper_sickle",
+            "beaver_axe",
+            "mole_pick",
+            "sprinkler",
+        ],
+        5 => &[
+            "ruby",
+            "sapphire",
+            "emerald",
+            "topaz",
+            "amethyst",
+            "moonstone",
+            "moon_pearl",
+        ],
+        7 => &["lamp", "flower_pot", "bench", "chest", "fence", "torch"],
+        8 => &[
+            "fresh_bread",
+            "blueberry_muffin",
+            "carrot_cake",
+            "shortcake",
+            "berry_tart",
+            "pumpkin_pie",
+            "sunflower_cookies",
+            "garlic_bread",
+        ],
+        9 => &[
+            "veggie_stew",
+            "tomato_soup",
+            "corn_chowder",
+            "ember_curry",
+            "lava_lemonade",
+            "mint_tea",
+            "popcorn",
+        ],
+        _ => &["request", "music_box", "lost_button", "ancient_coin"],
+    }
+}
+
+/// Outfits the shop dummies show off.
+pub const DUMMY_OUTFITS: [[Item; 5]; 6] = [
+    [
+        Item::CopperHelm,
+        Item::CopperMail,
+        Item::CopperGreaves,
+        Item::CopperSabatons,
+        Item::CopperShield,
+    ],
+    [
+        Item::FrogHood,
+        Item::FrogRaincoat,
+        Item::PumpkinBloomers,
+        Item::FrogSlippers,
+        Item::LeafShield,
+    ],
+    [
+        Item::IronHelm,
+        Item::IronPlate,
+        Item::IronGreaves,
+        Item::IronBoots,
+        Item::IronShield,
+    ],
+    [
+        Item::WizardHat,
+        Item::MageRobe,
+        Item::StarryLeggings,
+        Item::FeatherBoots,
+        Item::MushroomShield,
+    ],
+    [
+        Item::CrystalCirclet,
+        Item::CrystalMail,
+        Item::CrystalGreaves,
+        Item::CrystalBoots,
+        Item::CrystalAegis,
+    ],
+    [
+        Item::BunnyHood,
+        Item::WoollyPoncho,
+        Item::LeatherLeggings,
+        Item::BunnySlippers,
+        Item::TurtleShell,
+    ],
+];
+
+/// A wooden dummy wearing one of the shop's outfits.
+pub fn draw_mannequin(r: &mut Renderer, a: &Assets, pos: Vec3, var: u8) {
+    let mut equip: [Option<Stack>; 5] = [None; 5];
+    for it in DUMMY_OUTFITS[var as usize % DUMMY_OUTFITS.len()] {
+        if let Some(slot) = it.class().and_then(|c| c.slot()) {
+            equip[slot as usize] = Some(Stack::new(it, 1));
+        }
+    }
+    let mut dressed = super::scene::dress(a, &equip, None);
+    let wood = a.town.dummy_wood;
+    let t = a.hero.tex;
+    dressed.remap.push((t.head, wood));
+    for skin in [t.body, t.arm, t.leg] {
+        if !dressed.remap.iter().any(|(from, _)| *from == skin) {
+            dressed.remap.push((skin, wood));
+        }
+    }
+    let pose = Pose::default();
+    let o = DrawOpts::at(pos).with_tag(1);
+    draw_humanoid(r, a, &a.hero, pos, 0.0, &pose, &o, &dressed.outfit(None));
 }
 
 /// A few flickering flame sprites.

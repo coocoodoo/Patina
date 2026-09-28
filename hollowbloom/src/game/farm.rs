@@ -16,7 +16,12 @@ pub struct Landmarks {
     pub stall: (i32, i32),
     pub spawn: (i32, i32),
     pub enchant: (i32, i32),
+    /// The bus shelter (2x1, anchored at its west end).
+    pub stop: (i32, i32),
 }
+
+/// The country road along the east edge, two tiles wide.
+pub const ROAD_X: i32 = 60;
 
 pub const MARKS: Landmarks = Landmarks {
     house: (28, 9),
@@ -26,6 +31,7 @@ pub const MARKS: Landmarks = Landmarks {
     stall: (44, 12),
     spawn: (29, 11),
     enchant: (34, 9),
+    stop: (57, 18),
 };
 
 fn reserved(x: i32, z: i32) -> bool {
@@ -38,6 +44,8 @@ fn reserved(x: i32, z: i32) -> bool {
         || (x == 29 && (10..=21).contains(&z))
         || (z == 20 && (29..=52).contains(&x))
         || (x == 52 && (18..=20).contains(&z))
+        || (x >= 53 && (17..=21).contains(&z))
+        || x >= ROAD_X - 1
 }
 
 pub fn generate(seed: u64) -> World {
@@ -184,6 +192,8 @@ pub fn generate(seed: u64) -> World {
     );
     w.set_obj(sx - 1, sz + 1, Some(Obj::Sign { text: 1 }));
 
+    lay_road(&mut w);
+
     // Starter field: tilled soil, a few turnips already sprouting.
     for z in 13..16 {
         for x in 24..30 {
@@ -257,6 +267,54 @@ pub fn generate(seed: u64) -> World {
         var: r.below(4) as u8,
     });
     w
+}
+
+/// The road to town along the east edge, the path out to it and the bus shelter. Also run
+/// on farms saved before the bus came, so it clears whatever grew in the way.
+pub fn lay_road(w: &mut World) {
+    for z in 0..FARM_H {
+        for x in ROAD_X..ROAD_X + 2 {
+            w.set_wall(x, z, Wall::None);
+            w.set_obj(x, z, None);
+            w.set_floor(x, z, Floor::Street);
+        }
+        // A grassy verge between the road and the cliff.
+        if w.wall(ROAD_X + 2, z) == Wall::Cliff && w.wall(ROAD_X + 3, z) == Wall::Cliff {
+            w.set_wall(ROAD_X + 2, z, Wall::None);
+            w.set_floor(ROAD_X + 2, z, Floor::Grass);
+        }
+        if w.wall(ROAD_X - 1, z) != Wall::None {
+            w.set_wall(ROAD_X - 1, z, Wall::None);
+            w.set_floor(ROAD_X - 1, z, Floor::Grass);
+        }
+    }
+    let (sx, sz) = MARKS.stop;
+    for x in 53..ROAD_X {
+        if !matches!(w.obj(x, 20), Some(Obj::Chest { .. })) {
+            w.set_obj(x, 20, None);
+        }
+        w.set_wall(x, 20, Wall::None);
+        w.set_floor(x, 20, Floor::Path);
+    }
+    for x in sx..sx + 2 {
+        for z in sz..=sz + 1 {
+            if !matches!(w.obj(x, z), Some(Obj::Chest { .. })) {
+                w.set_obj(x, z, None);
+            }
+            w.set_wall(x, z, Wall::None);
+        }
+        w.set_floor(x, sz + 1, Floor::Path);
+    }
+    w.set_obj(sx, sz, Some(Obj::BusStop));
+    w.set_obj(
+        sx + 1,
+        sz,
+        Some(Obj::Part {
+            ax: sx as i16,
+            az: sz as i16,
+        }),
+    );
+    w.set_obj(sx - 1, sz + 1, Some(Obj::Sign { text: 2 }));
 }
 
 /// What happened overnight, for the morning summary.

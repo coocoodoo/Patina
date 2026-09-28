@@ -44,6 +44,17 @@ pub enum Sfx {
     Blast,
     Enchant,
     Block,
+    Door,
+    BusHorn,
+    /// A quest finished.
+    Fanfare,
+    /// A quest taken on.
+    Accept,
+    /// One syllable of a villager's chatter.
+    Talk,
+    /// Friendship growing.
+    Heart,
+    Bell,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -85,6 +96,13 @@ pub const ALL: &[Sfx] = &[
     Sfx::Blast,
     Sfx::Enchant,
     Sfx::Block,
+    Sfx::Door,
+    Sfx::BusHorn,
+    Sfx::Fanfare,
+    Sfx::Accept,
+    Sfx::Talk,
+    Sfx::Heart,
+    Sfx::Bell,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -419,6 +437,101 @@ pub fn make(s: Sfx) -> Vec<f32> {
                 a += 1320.0 / RATE;
                 c += 1830.0 / RATE;
                 (sine(a) * 0.4 + sine(c) * 0.3) * (-t * 14.0).exp() + n * 0.4 * (-t * 60.0).exp()
+            })
+        }
+        Sfx::Door => {
+            // A latch, then a soft wooden thump.
+            let mut b = render(0.05, |t, n| n * 0.35 * (-t * 60.0).exp());
+            lowpass(&mut b, 0.5);
+            let mut phase = 0.0;
+            let mut thump = render(0.16, |t, n| {
+                phase += (140.0 - t * 300.0).max(60.0) / RATE;
+                (sine(phase) * 0.6 + n * 0.15) * (-t * 18.0).exp()
+            });
+            lowpass(&mut thump, 0.35);
+            b.extend(thump);
+            b
+        }
+        Sfx::BusHorn => {
+            // Beep beep! Two friendly honks.
+            let mut b = Vec::new();
+            for _ in 0..2 {
+                let (mut a, mut c) = (0.0, 0.0);
+                b.extend(render(0.13, |t, _| {
+                    a += note(69) / RATE;
+                    c += note(73) / RATE;
+                    (square(a, 0.5) * 0.25 + square(c, 0.5) * 0.2) * (1.0 - t * 2.0).max(0.2)
+                }));
+                b.extend(std::iter::repeat_n(0.0, (RATE * 0.06) as usize));
+            }
+            lowpass(&mut b, 0.35);
+            b
+        }
+        Sfx::Fanfare => {
+            // Ta-da! A rising run, a held chord and a sparkle on top.
+            let mut b = arp(
+                &[
+                    (note(72), 0.09),
+                    (note(76), 0.09),
+                    (note(79), 0.09),
+                    (note(84), 0.14),
+                    (note(79), 0.09),
+                    (note(84), 0.5),
+                ],
+                0.25,
+                3.5,
+            );
+            let (mut a, mut c, mut d) = (0.0, 0.0, 0.0);
+            let chord = render(0.9, |t, _| {
+                a += note(72) / RATE;
+                c += note(76) / RATE;
+                d += note(79) / RATE;
+                (tri(a) + tri(c) + tri(d)) * 0.1 * (1.0 - t / 0.9) * (t * 20.0).min(1.0)
+            });
+            let start = (RATE * 0.5) as usize;
+            b.resize(b.len().max(start + chord.len()), 0.0);
+            for (i, v) in chord.iter().enumerate() {
+                b[start + i] += v;
+            }
+            let (mut e, mut f) = (0.0, 0.0);
+            let shimmer = render(0.6, |t, _| {
+                e += note(108) / RATE;
+                f += (note(108) + 9.0) / RATE;
+                (sine(e) + sine(f)) * 0.08 * (-t * 4.0).exp()
+            });
+            let start = (RATE * 0.55) as usize;
+            b.resize(b.len().max(start + shimmer.len()), 0.0);
+            for (i, v) in shimmer.iter().enumerate() {
+                b[start + i] += v;
+            }
+            b
+        }
+        Sfx::Accept => arp(
+            &[(note(79), 0.06), (note(84), 0.06), (note(91), 0.18)],
+            0.25,
+            9.0,
+        ),
+        Sfx::Talk => sweep(0.045, 620.0, 560.0, 30.0, |p| {
+            square(p, 0.5) * 0.35 + sine(p) * 0.2
+        }),
+        Sfx::Heart => {
+            let (mut a, mut c) = (0.0, 0.0);
+            render(0.45, |t, _| {
+                a += note(88) / RATE;
+                c += note(93) / RATE;
+                (sine(a) * 0.35 + sine(c) * 0.25 * (t * 10.0).min(1.0)) * (-t * 6.0).exp()
+            })
+        }
+        Sfx::Bell => {
+            let (mut a, mut c, mut d) = (0.0, 0.0, 0.0);
+            render(1.6, |t, _| {
+                a += 392.0 / RATE;
+                c += 392.0 * 2.76 / RATE;
+                d += 392.0 * 5.4 / RATE;
+                (sine(a) * 0.4
+                    + sine(c) * 0.2 * (-t * 3.0).exp()
+                    + sine(d) * 0.1 * (-t * 6.0).exp())
+                    * (-t * 2.2).exp()
             })
         }
     }

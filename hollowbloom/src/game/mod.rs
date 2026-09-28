@@ -6,6 +6,7 @@ pub mod dungeon;
 pub mod enchant;
 pub mod farm;
 pub mod foes;
+pub mod folk;
 pub mod fx;
 pub mod gear;
 pub mod hud;
@@ -19,6 +20,8 @@ pub mod scene;
 #[cfg(test)]
 mod tests;
 pub mod tips;
+pub mod town;
+pub mod travel;
 pub mod world;
 
 use glam::{Vec2, Vec3};
@@ -118,7 +121,7 @@ impl Game {
     /// Called when the window closes.
     pub fn shutdown(&mut self) {
         if let State::Play(p) = &self.state {
-            if p.area == world::Area::Farm && p.fade.is_none() {
+            if !matches!(p.area, world::Area::Hollow { .. }) && p.fade.is_none() {
                 let _ = save::write(p);
             }
         }
@@ -142,7 +145,7 @@ impl Game {
                     }
                 }
                 if p.quit_to_title {
-                    if p.area == world::Area::Farm {
+                    if !matches!(p.area, world::Area::Hollow { .. }) {
                         let _ = save::write(p);
                     }
                     Some(State::Title(Box::new(Self::title())))

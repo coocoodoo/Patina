@@ -5,7 +5,8 @@ use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
 use super::items::{Crop, Stack};
-use crate::assets::{Assets, BIOMES};
+use super::town::Place;
+use crate::assets::{Assets, BIOMES, tiles};
 use crate::render::{Mesh, TexId, UvRect};
 use crate::util::hash2;
 
@@ -30,6 +31,14 @@ pub enum Floor {
     Cobble,
     Cave,
     Lava,
+    /// Town cobbles.
+    Street,
+    /// Brick pavers around the fountain.
+    Plaza,
+    /// Checkered shop tiles.
+    Tiles,
+    /// Soft carpet.
+    Carpet,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
@@ -43,6 +52,21 @@ pub enum Wall {
     Cliff,
     Brick,
     Timber,
+    /// A trimmed hedge.
+    Hedge,
+    /// A tall papered wall inside a building, by style.
+    Paper(u8),
+}
+
+impl Wall {
+    /// How tall the wall stands.
+    pub fn height(self) -> f32 {
+        match self {
+            Wall::Paper(_) => 2.0,
+            Wall::Hedge => 0.8,
+            _ => WALL_H,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -129,6 +153,55 @@ pub enum Obj {
         harvested: bool,
     },
     EnchantTable,
+    /// The bus shelter (2x1).
+    BusStop,
+    /// A town building, by index into `town::BUILDINGS`.
+    Building {
+        id: u8,
+    },
+    Fountain {
+        flowing: bool,
+    },
+    StreetLamp {
+        lit: bool,
+    },
+    /// The request board.
+    Board,
+    Planter {
+        var: u8,
+    },
+    Bush {
+        var: u8,
+    },
+    Well,
+    /// A market stand, by colour.
+    Stand {
+        var: u8,
+    },
+    Barrel,
+    /// A shop counter.
+    Counter,
+    /// Shelves of goods against a wall, by what they hold.
+    Shelf {
+        var: u8,
+    },
+    /// A rack of weapons.
+    Rack {
+        var: u8,
+    },
+    /// A wooden dummy showing off an outfit.
+    Mannequin {
+        var: u8,
+    },
+    Table {
+        var: u8,
+    },
+    Stool,
+    Hearth,
+    /// Shop furniture with a special look, by kind (oven, anvil, cauldron...).
+    Fixture {
+        var: u8,
+    },
 }
 
 impl Obj {
@@ -155,6 +228,8 @@ impl Obj {
             Obj::Mushroom { .. } => Some((0.3, 3.0, 0.45, 2.5)),
             Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
             Obj::EnchantTable => Some((0.9, 3.4, 0.5, 1.4)),
+            Obj::StreetLamp { lit: true } => Some((1.7, 6.0, 0.9, 5.8)),
+            Obj::Hearth => Some((0.5, 5.0, 0.6, 7.0)),
             _ => None,
         }
     }
@@ -163,7 +238,12 @@ impl Obj {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Area {
     Farm,
-    Hollow { depth: u32 },
+    Hollow {
+        depth: u32,
+    },
+    Town,
+    /// Inside one of the town's buildings.
+    Inside(Place),
 }
 
 pub struct World {
@@ -296,9 +376,20 @@ impl World {
         }
     }
 
-    /// Marks the chunk holding a tile (and neighbours across edges) for re-meshing.
+    /// Marks the chunk holding a tile (and neighbours across edges and corners, whose
+    /// rounded corners may change) for re-meshing.
     pub fn touch(&mut self, x: i32, z: i32) {
-        for (dx, dz) in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)] {
+        for (dx, dz) in [
+            (0, 0),
+            (-1, 0),
+            (1, 0),
+            (0, -1),
+            (0, 1),
+            (-1, -1),
+            (1, -1),
+            (-1, 1),
+            (1, 1),
+        ] {
             let (tx, tz) = (x + dx, z + dz);
             if self.inside(tx, tz) {
                 let c = (tz / CHUNK * self.cw + tx / CHUNK) as usize;
@@ -450,17 +541,111 @@ impl World {
         out
     }
 
+    /// Open lawn (no wall on it): roads round their corners off into it.
+    fn lawn(&self, x: i32, z: i32) -> bool {
+        self.floor(x, z) == Floor::Grass && self.wall(x, z) == Wall::None
+    }
+
+    /// Which road texture a floor uses, as an index into `ROADS` order.
+    fn road(&self, x: i32, z: i32) -> Option<usize> {
+        if self.wall(x, z) != Wall::None {
+            return None;
+        }
+        match self.floor(x, z) {
+            Floor::Path => Some((hash2(x, z, 7) % 2) as usize),
+            Floor::Sand => Some(2),
+            Floor::Cobble => Some(3),
+            Floor::Planks => Some(4),
+            Floor::Street => Some(5),
+            Floor::Plaza => Some(6),
+            _ => None,
+        }
+    }
+
+    /// Corners of a road tile that stick out into the lawn on both sides.
+    fn outer_corners(&self, x: i32, z: i32) -> u8 {
+        let (n, s) = (self.lawn(x, z - 1), self.lawn(x, z + 1));
+        let (w, e) = (self.lawn(x - 1, z), self.lawn(x + 1, z));
+        let mut m = 0;
+        if n && w {
+            m |= tiles::NW;
+        }
+        if n && e {
+            m |= tiles::NE;
+        }
+        if s && w {
+            m |= tiles::SW;
+        }
+        if s && e {
+            m |= tiles::SE;
+        }
+        m
+    }
+
+    /// Inner corners of a lawn tile where one kind of road bends around it.
+    fn inner_corners(&self, x: i32, z: i32) -> Option<(usize, u8)> {
+        let kind = |tx: i32, tz: i32| self.road(tx, tz).map(|r| if r < 2 { 0 } else { r });
+        let mut found: Option<(usize, u8)> = None;
+        for (bit, dx, dz) in [
+            (tiles::NW, -1, -1),
+            (tiles::NE, 1, -1),
+            (tiles::SW, -1, 1),
+            (tiles::SE, 1, 1),
+        ] {
+            let (a, b, c) = (kind(x + dx, z), kind(x, z + dz), kind(x + dx, z + dz));
+            let Some(k) = a else { continue };
+            if b != Some(k) || c != Some(k) {
+                continue;
+            }
+            match &mut found {
+                None => found = Some((k, bit)),
+                Some((fk, m)) if *fk == k => *m |= bit,
+                _ => {}
+            }
+        }
+        found
+    }
+
     fn floor_tex(&self, a: &Assets, x: i32, z: i32, f: Floor) -> TexId {
         let h = hash2(x, z, 7);
+        let lawn = (h % 4) as usize;
         match f {
             Floor::Grass => {
+                if let Some((road, mask)) = self.inner_corners(x, z) {
+                    return a.fillets[road * 4 + lawn][mask as usize];
+                }
                 if h % 11 == 0 {
                     a.grass_flowers[(h as usize / 11) % 2]
                 } else {
-                    a.grass[(h % 4) as usize]
+                    a.grass[lawn]
                 }
             }
-            Floor::Path => a.path[(h % 2) as usize],
+            Floor::Path
+            | Floor::Sand
+            | Floor::Cobble
+            | Floor::Planks
+            | Floor::Street
+            | Floor::Plaza => {
+                let road = self.road(x, z).unwrap_or(0);
+                let mask = self.outer_corners(x, z);
+                if mask != 0 {
+                    return a.rounded[road * 4 + lawn][mask as usize];
+                }
+                match f {
+                    Floor::Path => a.path[(h % 2) as usize],
+                    Floor::Sand => a.sand,
+                    Floor::Cobble => a.stone_floor,
+                    Floor::Street => a.street[(h % 3) as usize],
+                    Floor::Plaza => a.plaza,
+                    _ => a.wood_floor,
+                }
+            }
+            Floor::Tiles => a.checker,
+            Floor::Carpet => match self.area {
+                Area::Inside(Place::Scrolls) => a.carpets[1],
+                Area::Inside(Place::Jeweler) => a.carpets[2],
+                _ => a.carpets[0],
+            },
             Floor::Soil => a.soil,
             Floor::Tilled => {
                 if self.flag(x, z, WATERED) {
@@ -469,10 +654,7 @@ impl World {
                     a.tilled
                 }
             }
-            Floor::Sand => a.sand,
             Floor::Water => a.water[0],
-            Floor::Planks => a.wood_floor,
-            Floor::Cobble => a.stone_floor,
             Floor::Cave => {
                 let b = &a.biomes[self.biome];
                 b.floor[if h % 5 == 0 { 1 } else { (h % 2) as usize * 2 }]
@@ -494,6 +676,8 @@ impl World {
             Wall::Cliff => (a.cliff_side, a.grass[1]),
             Wall::Brick => (a.stone_wall_side, a.stone_wall_top),
             Wall::Timber => (a.wood_wall_side, a.wood_wall_top),
+            Wall::Hedge => (a.hedge_side, a.hedge_top),
+            Wall::Paper(k) => (a.wallpaper[k as usize % a.wallpaper.len()], a.beam),
             Wall::None => (b.side, b.top),
         }
     }
@@ -510,6 +694,11 @@ impl World {
         let mut m = Mesh::new();
         let full = UvRect::new(0.0, 0.0, 16.0, 16.0);
         let solid = |x: i32, z: i32| self.wall(x, z) != Wall::None;
+        // A face shows unless a wall at least as tall stands next to it.
+        let hides = |x: i32, z: i32, hgt: f32| {
+            let w = self.wall(x, z);
+            w != Wall::None && w.height() >= hgt
+        };
         for z in cz * CHUNK..((cz + 1) * CHUNK).min(self.h) {
             for x in cx * CHUNK..((cx + 1) * CHUNK).min(self.w) {
                 let i = self.idx(x, z);
@@ -517,9 +706,10 @@ impl World {
                 let wall = self.wall[i];
                 if wall != Wall::None {
                     let (side, top) = self.wall_tex(a, wall);
-                    let hgt = WALL_H;
+                    let hgt = wall.height();
                     let top_ao = match wall {
-                        Wall::Cliff | Wall::Brick | Wall::Timber => [1.0; 4],
+                        Wall::Cliff | Wall::Brick | Wall::Timber | Wall::Hedge => [1.0; 4],
+                        Wall::Paper(_) => [0.5; 4],
                         _ => [0.62; 4],
                     };
                     m.quad_ao(
@@ -534,7 +724,7 @@ impl World {
                         top_ao,
                     );
                     // South face (towards the camera).
-                    if !solid(x, z + 1) {
+                    if !hides(x, z + 1, hgt) {
                         let base = Self::floor_y(self.floor(x, z + 1)).min(0.0);
                         m.quad(
                             [
@@ -547,7 +737,8 @@ impl World {
                             side,
                         );
                     }
-                    if !solid(x + 1, z) {
+                    let tall = UvRect::new(0.0, 0.0, 16.0, 16.0 * hgt);
+                    if !hides(x + 1, z, hgt) {
                         m.quad(
                             [
                                 Vec3::new(fx + 1.0, 0.0, fz + 1.0),
@@ -555,11 +746,11 @@ impl World {
                                 Vec3::new(fx + 1.0, hgt, fz),
                                 Vec3::new(fx + 1.0, hgt, fz + 1.0),
                             ],
-                            full,
+                            tall,
                             side,
                         );
                     }
-                    if !solid(x - 1, z) {
+                    if !hides(x - 1, z, hgt) {
                         m.quad(
                             [
                                 Vec3::new(fx, 0.0, fz),
@@ -567,7 +758,7 @@ impl World {
                                 Vec3::new(fx, hgt, fz + 1.0),
                                 Vec3::new(fx, hgt, fz),
                             ],
-                            full,
+                            tall,
                             side,
                         );
                     }

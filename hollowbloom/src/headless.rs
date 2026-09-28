@@ -1053,3 +1053,114 @@ pub fn bench() {
         draw_time * 1000.0 / frames as f64
     );
 }
+
+/// `--town-shots DIR`: the road to town, Bramblewick from above and street level, and the
+/// inside of every shop. Handy while building the town.
+pub fn town_shots(dir: &str) {
+    use crate::game::town::{self, PLACES};
+    use crate::game::world::Area;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20260928);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        let (sx, sz) = crate::game::farm::MARKS.stop;
+        p.player.pos = Vec2::new(sx as f32 + 1.0, sz as f32 + 1.6);
+        p.player.facing = Vec2::new(1.0, 0.0);
+    }
+    snap(&mut game, &mut r, &input, dir, "t01_farm_bus_stop");
+    // Wave the bus down and watch it pull in.
+    {
+        let p = play(&mut game);
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &input,
+            audio: &audio,
+            view: (W, H),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        p.call_bus(&mut io);
+    }
+    tick(&mut game, &input, &audio, 110);
+    snap(&mut game, &mut r, &input, dir, "t02_bus_arrives");
+    tick(&mut game, &input, &audio, 150);
+    {
+        let p = play(&mut game);
+        p.banner = None;
+    }
+    snap(&mut game, &mut r, &input, dir, "t03_town_arrival");
+    // Every restoration done, for the postcard views.
+    for (name, done) in [("before", 0u32), ("after", u32::MAX)] {
+        {
+            let p = play(&mut game);
+            p.restored = done;
+            p.town = town::generate(done);
+            p.bus = None;
+            p.clock.min = 700.0;
+        }
+        // The whole town from high above.
+        let mut big = Renderer::new(1440, 1000);
+        if let State::Play(p) = &mut game.state {
+            let a = &game.assets;
+            big.cam.target = glam::Vec3::new(36.0, 0.0, 27.0);
+            big.cam.dist = 118.0;
+            big.cam.pitch = 62f32.to_radians();
+            big.cam.update(1440, 1000);
+            let env = p.env();
+            crate::game::draw::draw_world(&mut big, a, &mut p.town, &env, &[]);
+            big.fb.outline(crate::palette::INK);
+        }
+        let path = dir.join(format!("t04_town_overview_{name}.png"));
+        let _ = save_png(&path, &big.fb, 1);
+        println!("wrote {}", path.display());
+    }
+    let spots: [(&str, (f32, f32), f32); 6] = [
+        ("t05_plaza", (35.5, 30.5), 700.0),
+        ("t06_main_street_west", (12.0, 21.5), 760.0),
+        ("t07_main_street_east", (44.0, 21.5), 820.0),
+        ("t08_town_hall", (34.0, 12.5), 900.0),
+        ("t09_tavern_evening", (54.0, 35.0), 1230.0),
+        ("t10_wishing_tree", (65.0, 27.0), 640.0),
+    ];
+    for (name, (x, z), min) in spots {
+        let p = play(&mut game);
+        p.area = Area::Town;
+        p.player.pos = Vec2::new(x, z);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        p.clock.min = min;
+        snap(&mut game, &mut r, &input, dir, name);
+    }
+    for (i, place) in PLACES.iter().enumerate() {
+        {
+            let p = play(&mut game);
+            p.clock.min = 720.0;
+            p.enter_place(*place);
+            let (ex, ez) = p.room.as_ref().unwrap().exit;
+            p.player.pos = Vec2::new(ex as f32 + 0.5, ez as f32 - 2.5);
+        }
+        let p = play(&mut game);
+        p.cam_pos = p.room_center();
+        p.cam.target = p.cam_pos;
+        p.cam.update(W, H);
+        game.draw(&mut r, &input);
+        let path = dir.join(format!("t{:02}_inside_{:?}.png", 11 + i, place).to_lowercase());
+        let _ = save_png(&path, &r.fb, 2);
+        println!("wrote {}", path.display());
+        play(&mut game).leave_place();
+    }
+}
