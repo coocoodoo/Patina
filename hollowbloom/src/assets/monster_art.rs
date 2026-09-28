@@ -16,21 +16,28 @@ use crate::render::{BoxUv, Mesh, TexBank, TexId, Texture, UvRect};
 /// Looks per family: one for each biome.
 pub const KINDS: usize = 6;
 
-/// A bug: a body, one leg (drawn at every hip, skittering), and wings or claws for some.
+/// A bug: a body, jointed legs (a thigh rising from the hip to a knee, a shin reaching down
+/// to the floor), and wings or claws for some.
 pub struct Bug {
     pub body: Mesh,
-    pub leg: Mesh,
+    /// A leg's two segments, each running along +x from its joint.
+    pub thigh: Mesh,
+    pub shin: Mesh,
+    pub thigh_len: f32,
+    pub shin_len: f32,
+    /// Each pair of legs: where it meets the body along its length (z), and how far it
+    /// reaches forwards (+) or back (-), in radians.
+    pub legs: Vec<(f32, f32)>,
+    /// How far out from the middle and how high the hips are.
+    pub hip_x: f32,
+    pub hip_y: f32,
+    /// How steeply the thighs rise to the knees (radians above level).
+    pub knee: f32,
     /// Moths have wings, drawn on each side and flapping.
     pub wing: Option<Mesh>,
     /// Mantises have a pair of folding claws up front.
     pub claw: Option<Mesh>,
-    /// Where each pair of legs meets the body, front to back (z), how far out (x) and up.
-    pub hips: Vec<f32>,
-    pub hip_x: f32,
-    pub hip_y: f32,
-    /// How long a leg is, out from the hip.
-    pub leg_len: f32,
-    /// Flies above the ground instead of scuttling.
+    /// Flies above the ground instead of scuttling (its legs dangle).
     pub flies: bool,
 }
 
@@ -988,11 +995,182 @@ fn ghost_hat(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Mesh {
 // Bugs
 // ------------------------------------------------------------------------------------------
 
+/// One segment of a jointed leg, `len` long along +x and `t` thick, banded in two colours
+/// and tapering a little towards its end (with a dark claw on a shin).
+fn segment(bank: &mut TexBank, k: &mut Kit, len: f32, t: f32, c: [u8; 2], claw: bool) -> Mesh {
+    let mut m = Mesh::new();
+    let bands = ((len / 0.07).round() as usize).clamp(1, 5);
+    for i in 0..bands {
+        let x0 = len * i as f32 / bands as f32;
+        let x1 = len * (i + 1) as f32 / bands as f32;
+        let w = t * (1.0 - 0.3 * i as f32 / bands as f32);
+        k.bx(bank, &mut m, v(x0, -w, -w), v(x1, w, w), c[i % 2]);
+    }
+    // A knuckle at the joint.
+    k.bx(
+        bank,
+        &mut m,
+        v(-t * 1.2, -t * 1.2, -t * 1.2),
+        v(t * 1.2, t * 1.2, t * 1.2),
+        c[1],
+    );
+    if claw {
+        k.bx(
+            bank,
+            &mut m,
+            v(len - 0.01, -t * 0.6, -t * 0.6),
+            v(len + 0.03, t * 0.6, t * 0.6),
+            INK,
+        );
+    }
+    m
+}
+
+/// A round, fuzzy body part: a lathe `r` across and `h` tall sitting at `at`.
+fn blob(m: &mut Mesh, at: Vec3, r: f32, h: f32, tex: TexId) {
+    lathe(
+        m,
+        at,
+        &[
+            (0.0, 0.0),
+            (r * 0.7, h * 0.08),
+            (r, h * 0.4),
+            (r * 0.85, h * 0.75),
+            (r * 0.45, h * 0.95),
+            (0.0, h),
+        ],
+        8,
+        0.2,
+        tex,
+        false,
+    );
+}
+
+/// An abdomen's pattern: a fuzzy base with a bright chevron marking down its back.
+fn spider_skin(bank: &mut TexBank, pal: [u8; 3], mark: u8) -> TexId {
+    let mut t = Texture::new(16, 16, pal[1]);
+    for y in 0..16 {
+        for x in 0..16 {
+            let n = (x * 7 + y * 13) % 11;
+            if n == 0 {
+                t.set(x, y, pal[0]);
+            } else if n == 5 {
+                t.set(x, y, pal[2]);
+            }
+        }
+    }
+    // Chevrons pointing forwards down the middle of the back.
+    for (i, y) in [3, 6, 9, 12].into_iter().enumerate() {
+        let w = 4 - i as i32;
+        for d in 0..=w {
+            t.set(7 - d, y + d / 2, mark);
+            t.set(8 + d, y + d / 2, mark);
+        }
+    }
+    bank.add(t)
+}
+
+/// A spider: a small head-and-chest up front with a cluster of eyes and a pair of fangs, a
+/// big round abdomen behind, and eight long legs arching up to knees as high as its back
+/// and down to the floor well out to the sides. `pal` colours it; `legs` bands its legs.
+fn spider(bank: &mut TexBank, k: &mut Kit, pal: [u8; 3], mark: u8, legs: [u8; 2], eyes: u8) -> Bug {
+    let mut body = Mesh::new();
+    let skin = spider_skin(bank, pal, mark);
+    let head = speck(bank, [pal[0], pal[1], pal[2]]);
+    // Both slung low between the legs, a little oval: the abdomen behind, the head in front.
+    let mut part = Mesh::new();
+    blob(&mut part, Vec3::ZERO, 0.17, 0.26, skin);
+    body.append(
+        &part,
+        Mat4::from_translation(v(0.0, 0.07, -0.23)) * Mat4::from_scale(v(1.0, 1.0, 1.15)),
+    );
+    let mut part = Mesh::new();
+    blob(&mut part, Vec3::ZERO, 0.1, 0.14, head);
+    body.append(
+        &part,
+        Mat4::from_translation(v(0.0, 0.07, 0.06)) * Mat4::from_scale(v(1.0, 1.0, 1.25)),
+    );
+    // A waist joining them.
+    k.bx(
+        bank,
+        &mut body,
+        v(-0.04, 0.11, -0.08),
+        v(0.04, 0.17, -0.02),
+        pal[2],
+    );
+    for sx in [-1.0f32, 1.0] {
+        // Eight eyes: a big pair up front with a glint in each, and three little ones
+        // either side above them.
+        k.bx(
+            bank,
+            &mut body,
+            v(sx * 0.037 - 0.018, 0.145, 0.155),
+            v(sx * 0.037 + 0.018, 0.185, 0.18),
+            eyes,
+        );
+        k.bx(
+            bank,
+            &mut body,
+            v(sx * 0.037 - 0.008, 0.172, 0.176),
+            v(sx * 0.037 + 0.004, 0.182, 0.182),
+            WHITE,
+        );
+        for (dx, y, z) in [
+            (0.016f32, 0.197f32, 0.13f32),
+            (0.06, 0.18, 0.14),
+            (0.074, 0.155, 0.15),
+        ] {
+            k.bx(
+                bank,
+                &mut body,
+                v(sx * dx - 0.01, y - 0.01, z - 0.01),
+                v(sx * dx + 0.01, y + 0.01, z + 0.012),
+                eyes,
+            );
+        }
+        // Fangs, curving down under the eyes.
+        k.bx(
+            bank,
+            &mut body,
+            v(sx * 0.03 - 0.017, 0.07, 0.15),
+            v(sx * 0.03 + 0.017, 0.125, 0.2),
+            INK,
+        );
+        k.bx(
+            bank,
+            &mut body,
+            v(sx * 0.026 - 0.01, 0.035, 0.175),
+            v(sx * 0.026 + 0.01, 0.08, 0.2),
+            MAROON,
+        );
+    }
+    // A spinneret at the tip of the abdomen.
+    k.bx(
+        bank,
+        &mut body,
+        v(-0.025, 0.13, -0.44),
+        v(0.025, 0.17, -0.4),
+        pal[2],
+    );
+    Bug {
+        body,
+        thigh: segment(bank, k, 0.26, 0.028, legs, false),
+        shin: segment(bank, k, 0.42, 0.022, legs, true),
+        thigh_len: 0.26,
+        shin_len: 0.42,
+        // Four pairs round the head-and-chest, fanning from well forwards to well back.
+        legs: vec![(0.12, 1.05), (0.08, 0.4), (0.04, -0.35), (0.0, -1.0)],
+        hip_x: 0.07,
+        hip_y: 0.14,
+        knee: 0.95,
+        wing: None,
+        claw: None,
+        flies: false,
+    }
+}
+
 fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
     let mut body = Mesh::new();
-    let mut leg = Mesh::new();
-    let mut wing = None;
-    let mut claw = None;
     let eye = |bank: &mut TexBank, k: &mut Kit, m: &mut Mesh, y: f32, z: f32, gap: f32, c: u8| {
         for s in [-1.0f32, 1.0] {
             k.bx(
@@ -1004,35 +1182,13 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
             );
         }
     };
-    let (hips, hip_x, hip_y, flies) = match biome {
+    match biome {
         0 => {
-            // Moss mite: a round, fuzzy green ball with moss on its back.
-            let fuzz = speck(bank, [LIME, GREEN, TEAL]);
-            lathe(
-                &mut body,
-                v(0.0, 0.06, 0.0),
-                &[
-                    (0.0, 0.0),
-                    (0.2, 0.04),
-                    (0.24, 0.16),
-                    (0.18, 0.28),
-                    (0.0, 0.32),
-                ],
-                8,
-                0.0,
-                fuzz,
-                false,
-            );
-            moss(bank, k, &mut body, v(0.0, 0.34, -0.02), 1.2);
-            eye(bank, k, &mut body, 0.22, 0.2, 0.08, INK);
-            k.bx(
-                bank,
-                &mut leg,
-                v(-0.02, -0.02, -0.02),
-                v(0.18, 0.02, 0.02),
-                TEAL,
-            );
-            (vec![0.12, 0.0, -0.12], 0.18, 0.1, false)
+            // Moss spider: green and fuzzy, with moss growing on its back.
+            let mut b = spider(bank, k, [LIME, GREEN, TEAL], GOLD, [GREEN, DEEP_TEAL], RED);
+            moss(bank, k, &mut b.body, v(-0.04, 0.31, -0.26), 0.9);
+            moss(bank, k, &mut b.body, v(0.05, 0.3, -0.17), 0.6);
+            b
         }
         1 => {
             // Glass mantis: thin and angular, with folding claws.
@@ -1071,13 +1227,6 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
                     AQUA,
                 );
             }
-            k.bx(
-                bank,
-                &mut leg,
-                v(-0.015, -0.015, -0.015),
-                v(0.22, 0.015, 0.015),
-                TEAL,
-            );
             let mut c = Mesh::new();
             k.bx(
                 bank,
@@ -1093,8 +1242,20 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
                 v(0.02, 0.0, 0.19),
                 MINT,
             );
-            claw = Some(c);
-            (vec![0.0, -0.1, -0.2], 0.05, 0.18, false)
+            Bug {
+                body: std::mem::take(&mut body),
+                thigh: segment(bank, k, 0.15, 0.015, [AQUA, TEAL], false),
+                shin: segment(bank, k, 0.3, 0.012, [AQUA, TEAL], true),
+                thigh_len: 0.15,
+                shin_len: 0.3,
+                legs: vec![(0.02, 0.35), (-0.12, -0.55)],
+                hip_x: 0.05,
+                hip_y: 0.17,
+                knee: 0.7,
+                wing: None,
+                claw: Some(c),
+                flies: false,
+            }
         }
         2 => {
             // Spore moth: fuzzy, feathery antennae and big eyespot wings. It flies.
@@ -1161,187 +1322,173 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
                 UvRect::new(0.0, 0.0, 16.0, 16.0),
                 wt,
             );
-            wing = Some(w);
-            k.bx(
-                bank,
-                &mut leg,
-                v(-0.01, -0.01, -0.01),
-                v(0.1, 0.01, 0.01),
-                PURPLE,
-            );
-            (vec![0.04, -0.06], 0.06, 0.02, true)
+            Bug {
+                body: std::mem::take(&mut body),
+                thigh: segment(bank, k, 0.06, 0.01, [PURPLE, GRAPE], false),
+                shin: segment(bank, k, 0.09, 0.008, [PURPLE, GRAPE], true),
+                thigh_len: 0.06,
+                shin_len: 0.09,
+                legs: vec![(0.05, 0.4), (0.0, 0.0), (-0.05, -0.4)],
+                hip_x: 0.05,
+                hip_y: 0.02,
+                knee: -0.5,
+                wing: Some(w),
+                claw: None,
+                flies: true,
+            }
         }
         3 => {
-            // Fire ant: head, waist and a big glowing tail, with mandibles.
+            // Fire ant: a head with mandibles and elbowed feelers, a chest the legs come
+            // from, a pinched waist, and a big glowing tail.
             let shell = speck(bank, [RED, CRIMSON, MAROON]);
             let glow = speck(bank, [GOLD, ORANGE, RED]);
-            lathe(
-                &mut body,
-                v(0.0, 0.12, -0.2),
-                &[(0.0, -0.13), (0.13, -0.06), (0.14, 0.05), (0.0, 0.13)],
-                8,
-                0.0,
-                glow,
-                false,
-            );
+            // The tail, lying back from the waist.
             let mut tail = Mesh::new();
-            tail.append(&body, Mat4::IDENTITY);
-            body = Mesh::new();
+            blob(&mut tail, Vec3::ZERO, 0.13, 0.3, glow);
             body.append(
                 &tail,
-                Mat4::from_translation(v(0.0, 0.0, -0.2))
-                    * Mat4::from_rotation_x(PI * 0.5)
-                    * Mat4::from_translation(v(0.0, 0.2, -0.12)),
+                Mat4::from_translation(v(0.0, 0.15, -0.1))
+                    * Mat4::from_rotation_x(-PI * 0.5 - 0.25),
             );
-            tiled_box(
+            // Waist, chest and head.
+            k.bx(
+                bank,
                 &mut body,
-                v(-0.06, 0.1, -0.08),
-                v(0.06, 0.2, 0.08),
-                shell,
-                0,
+                v(-0.025, 0.13, -0.1),
+                v(0.025, 0.17, -0.04),
+                MAROON,
             );
-            tiled_box(
-                &mut body,
-                v(-0.09, 0.1, 0.08),
-                v(0.09, 0.24, 0.24),
-                shell,
-                0,
-            );
-            eye(bank, k, &mut body, 0.2, 0.24, 0.06, INK);
+            blob(&mut body, v(0.0, 0.09, 0.02), 0.07, 0.13, shell);
+            blob(&mut body, v(0.0, 0.1, 0.16), 0.08, 0.14, shell);
+            eye(bank, k, &mut body, 0.2, 0.2, 0.05, INK);
             for s in [-1.0f32, 1.0] {
+                // Mandibles.
                 k.bx(
                     bank,
                     &mut body,
-                    v(s * 0.05 - 0.02, 0.1, 0.24),
-                    v(s * 0.05 + 0.02, 0.13, 0.33),
+                    v(s * 0.04 - 0.015, 0.1, 0.22),
+                    v(s * 0.04 + 0.015, 0.13, 0.29),
                     MAROON,
                 );
                 k.bx(
                     bank,
                     &mut body,
-                    v(s * 0.04, 0.24, 0.18),
-                    v(s * 0.05, 0.36, 0.2),
+                    v(s * 0.02 - 0.01, 0.1, 0.27),
+                    v(s * 0.02 + 0.015, 0.12, 0.3),
+                    INK,
+                );
+                // Elbowed feelers: up, then forward.
+                k.bx(
+                    bank,
+                    &mut body,
+                    v(s * 0.035 - 0.008, 0.22, 0.18),
+                    v(s * 0.035 + 0.008, 0.33, 0.196),
+                    MAROON,
+                );
+                k.bx(
+                    bank,
+                    &mut body,
+                    v(s * 0.045 - 0.008, 0.32, 0.18),
+                    v(s * 0.045 + 0.008, 0.336, 0.3),
                     MAROON,
                 );
             }
-            k.bx(
-                bank,
-                &mut leg,
-                v(-0.012, -0.012, -0.012),
-                v(0.2, 0.012, 0.012),
-                MAROON,
-            );
-            (vec![0.06, 0.0, -0.06], 0.06, 0.14, false)
+            Bug {
+                body: std::mem::take(&mut body),
+                thigh: segment(bank, k, 0.14, 0.014, [CRIMSON, MAROON], false),
+                shin: segment(bank, k, 0.26, 0.011, [CRIMSON, MAROON], true),
+                thigh_len: 0.14,
+                shin_len: 0.26,
+                legs: vec![(0.05, 0.75), (0.02, 0.05), (-0.01, -0.7)],
+                hip_x: 0.05,
+                hip_y: 0.13,
+                knee: 0.75,
+                wing: None,
+                claw: None,
+                flies: false,
+            }
         }
         4 => {
-            // Frost tick: a flat oval shell studded with ice.
-            let shell = speck(bank, [WHITE, SKY, BLUE]);
-            lathe(
-                &mut body,
-                v(0.0, 0.05, 0.0),
-                &[
-                    (0.0, 0.0),
-                    (0.24, 0.02),
-                    (0.26, 0.08),
-                    (0.16, 0.15),
-                    (0.0, 0.17),
-                ],
-                8,
-                0.0,
-                shell,
-                false,
-            );
-            for (x, z, h) in [
-                (-0.08f32, -0.05f32, 0.1f32),
-                (0.08, -0.04, 0.08),
-                (0.0, 0.06, 0.12),
-                (0.0, -0.14, 0.07),
+            // Frost spider: pale as snow, crystals of ice growing from its back, eyes like
+            // cold coals.
+            let mut b = spider(bank, k, [WHITE, SKY, BLUE], AQUA, [SKY, SLATE], RED);
+            for (x, y, z, h) in [
+                (-0.06f32, 0.28f32, -0.28f32, 0.08f32),
+                (0.05, 0.29, -0.2, 0.07),
+                (0.0, 0.29, -0.34, 0.06),
             ] {
                 crystal(
                     bank,
                     k,
-                    &mut body,
-                    v(x, 0.18, z),
-                    v(x * 3.0, 1.0, z * 3.0),
+                    &mut b.body,
+                    v(x, y, z),
+                    v(x * 3.0, 1.0, (z + 0.23) * 3.0),
                     h,
                     [WHITE, SKY],
                 );
             }
-            k.bx(
-                bank,
-                &mut body,
-                v(-0.07, 0.04, 0.2),
-                v(0.07, 0.12, 0.3),
-                SLATE,
-            );
-            eye(bank, k, &mut body, 0.1, 0.3, 0.04, RED);
-            k.bx(
-                bank,
-                &mut leg,
-                v(-0.015, -0.015, -0.015),
-                v(0.16, 0.015, 0.015),
-                SLATE,
-            );
-            (vec![0.12, 0.02, -0.08, -0.18], 0.2, 0.08, false)
+            b
         }
         _ => {
-            // Scarab: a gold and teal dome with a horn.
+            // Scarab: a gold and teal dome, a head with a horn, and six sturdy legs.
             let shell = speck(bank, [GOLD, CLAY, RUST]);
             let jewel = speck(bank, [MINT, TEAL, DEEP_TEAL]);
             lathe(
                 &mut body,
-                v(0.0, 0.05, -0.02),
+                v(0.0, 0.08, -0.04),
                 &[
                     (0.0, 0.0),
-                    (0.22, 0.02),
-                    (0.24, 0.12),
-                    (0.16, 0.22),
-                    (0.0, 0.25),
+                    (0.17, 0.02),
+                    (0.19, 0.1),
+                    (0.13, 0.19),
+                    (0.0, 0.22),
                 ],
                 8,
                 0.0,
                 shell,
                 false,
             );
+            // The line where its wing cases meet.
             tiled_box(
                 &mut body,
-                v(-0.01, 0.12, -0.24),
-                v(0.01, 0.3, 0.2),
+                v(-0.012, 0.12, -0.22),
+                v(0.012, 0.31, 0.12),
                 jewel,
                 0,
             );
-            tiled_box(&mut body, v(-0.1, 0.06, 0.18), v(0.1, 0.16, 0.3), jewel, 0);
+            // Head and horn.
+            tiled_box(
+                &mut body,
+                v(-0.07, 0.08, 0.12),
+                v(0.07, 0.17, 0.22),
+                jewel,
+                0,
+            );
             crystal(
                 bank,
                 k,
                 &mut body,
-                v(0.0, 0.14, 0.28),
+                v(0.0, 0.15, 0.2),
                 v(0.0, 1.0, 0.8),
                 0.14,
                 [GOLD, CREAM],
             );
-            eye(bank, k, &mut body, 0.13, 0.3, 0.06, INK);
-            k.bx(
-                bank,
-                &mut leg,
-                v(-0.015, -0.015, -0.015),
-                v(0.18, 0.015, 0.015),
-                RUST,
-            );
-            (vec![0.1, 0.0, -0.1], 0.18, 0.1, false)
+            eye(bank, k, &mut body, 0.14, 0.22, 0.045, INK);
+            Bug {
+                body: std::mem::take(&mut body),
+                thigh: segment(bank, k, 0.11, 0.018, [RUST, MAROON], false),
+                shin: segment(bank, k, 0.21, 0.015, [RUST, MAROON], true),
+                thigh_len: 0.11,
+                shin_len: 0.21,
+                legs: vec![(0.08, 0.7), (0.0, 0.05), (-0.08, -0.65)],
+                hip_x: 0.12,
+                hip_y: 0.12,
+                knee: 0.55,
+                wing: None,
+                claw: None,
+                flies: false,
+            }
         }
-    };
-    let leg_len = leg.verts.iter().map(|v| v.pos.x).fold(0.0, f32::max);
-    Bug {
-        body,
-        leg,
-        wing,
-        claw,
-        hips,
-        hip_x,
-        hip_y,
-        leg_len,
-        flies,
     }
 }
 
@@ -1465,11 +1612,18 @@ mod tests {
         assert_eq!(m.bug.len(), KINDS);
         assert!(m.bug.iter().any(|b| b.flies && b.wing.is_some()));
         assert!(m.bug.iter().any(|b| b.claw.is_some()));
-        assert!(
-            m.bug
-                .iter()
-                .all(|b| !b.body.tris.is_empty() && !b.hips.is_empty())
-        );
+        for b in &m.bug {
+            assert!(!b.body.tris.is_empty() && !b.legs.is_empty());
+            // A walker's feet reach down to the floor from its knees.
+            let knee = b.hip_y + b.thigh_len * b.knee.sin();
+            assert!(b.flies || b.shin_len >= knee, "feet off the floor");
+        }
+        // Spiders (moss and frost) stand on eight legs, knees high, reaching out wide.
+        for b in [&m.bug[0], &m.bug[4]] {
+            assert_eq!(b.legs.len(), 4);
+            assert!(b.hip_y + b.thigh_len * b.knee.sin() > 0.3);
+            assert!(b.hip_x + b.thigh_len * b.knee.cos() + b.shin_len * 0.5 > 0.4);
+        }
         assert_eq!(m.ghost.len(), KINDS);
         assert_eq!(m.ghost_hat.len(), KINDS);
         assert_eq!(m.club.len(), KINDS);

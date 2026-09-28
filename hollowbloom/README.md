@@ -91,6 +91,7 @@ the slimes, the soap-bubble of a Ward spell and the glow of a spark are palette 
 | ![Mossy Burrows](docs/monsters-mossy.png) | ![Crystal Grotto](docs/monsters-crystal.png) |
 | ![Fungal Hollow](docs/monsters-fungal.png) | ![Ember Depths](docs/monsters-ember.png) |
 | ![Frost Caverns](docs/monsters-frost.png) | ![Sunken Ruins](docs/monsters-ruins.png) |
+| ![A bug for every biome: moss spider, glass mantis, spore moth, fire ant, frost spider and scarab](docs/bugs.png) | ![Moss and frost spiders up close, one scuttling](docs/spiders.png) |
 | ![King Slime, nearly three times life size](docs/guardian-giant.png) | ![Grub the Goblin King](docs/goblin-king.png) |
 | ![A guardian's hoard: chests and loot](docs/guardian-hoard.png) | ![A gleaming chest](docs/gleaming-chest.png) |
 
@@ -310,10 +311,11 @@ pause menu's **Controls** page shows the whole layout on a drawing of the Deck.
   crystal-studded, sprouting mushrooms, charred, frozen, and **mummies** in the ruins) that
   shamble with their arms out and lunge; **fat goblin brutes** with clubs that slam the ground
   and send out a shockwave; **skinny goblin sneaks** that circle, dart in to stab and throw
-  daggers; **bugs** (moss mites, glass mantises, flying spore moths, glowing fire ants, frost
-  ticks and scarabs) that skitter and pounce; and **skeletons** and **ghosts** with a look for
-  every biome, from mossy bones to a pharaoh's guard. They drop grave dust, goblin teeth
-  (goblins carry extra coin) and bug chitin, and townsfolk have quests for all of them.
+  daggers; **bugs** (long-legged moss spiders, glass mantises, flying spore moths, glowing fire
+  ants, icy frost spiders and scarabs) that scuttle and pounce; and **skeletons** and
+  **ghosts** with a look for every biome, from mossy bones to a pharaoh's guard. They drop
+  grave dust, goblin teeth (goblins carry extra coin) and bug chitin, and townsfolk have
+  quests for all of them.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope

@@ -2497,6 +2497,39 @@ pub fn monster_shots(dir: &str) {
             &format!("f{:02}_{name}", biome + 1),
         );
     }
+    // The bugs up close, one from each biome: the moss spider, glass mantis, spore moth,
+    // fire ant, frost spider and scarab.
+    descend(&mut game, &input, &audio, 4, false);
+    lineup(play(&mut game), &[Foe::Bug; 6], 0, 4);
+    tick(&mut game, &input, &audio, 1);
+    let focus = {
+        let p = play(&mut game);
+        hold_still(p);
+        for (i, f) in p.foes.iter_mut().enumerate() {
+            f.biome = i;
+            f.y = if f.flying() { 0.55 } else { 0.0 };
+        }
+        p.cam.dist = 7.8;
+        // A little right of the middle, so the map in the corner hides none of them.
+        let mid = p.foes.iter().map(|f| f.world_pos()).sum::<glam::Vec3>() / p.foes.len() as f32;
+        mid + glam::Vec3::new(0.45, 0.0, 0.0)
+    };
+    snap_on(&mut game, &mut r, &input, dir, "f14_bugs", Some(focus));
+    // And the two spiders closer still, one of them scuttling along.
+    let focus = {
+        let p = play(&mut game);
+        p.foes.retain(|f| f.biome == 0 || f.biome == 4);
+        let mid = (p.foes[0].pos + p.foes[1].pos) * 0.5;
+        for (k, f) in p.foes.iter_mut().enumerate() {
+            f.pos = mid + Vec2::new(if k == 0 { -0.7 } else { 0.7 }, 0.0);
+            f.yaw = if k == 0 { 0.6 } else { -0.35 };
+        }
+        p.foes[1].dir = Vec2::new(0.0, 1.0);
+        p.foes[1].anim = 0.3;
+        p.cam.dist = 4.2;
+        glam::Vec3::new(mid.x, 0.2, mid.y)
+    };
+    snap_on(&mut game, &mut r, &input, dir, "f15_spiders", Some(focus));
     // Under a full moon they glow red.
     descend(&mut game, &input, &audio, 24, false);
     lineup(play(&mut game), &families, 2, 24);

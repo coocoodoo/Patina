@@ -158,11 +158,11 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
             "Dune Sneak",
         ][b],
         Foe::Bug => [
-            "Moss Mite",
+            "Moss Spider",
             "Glass Mantis",
             "Spore Moth",
             "Fire Ant",
-            "Frost Tick",
+            "Frost Spider",
             "Scarab",
         ][b],
         Foe::Skeleton => [
@@ -229,7 +229,7 @@ impl Enemy {
         let mut b = base(foe);
         if foe == Foe::Bug {
             // Each biome's bug fights its own way: glass mantises cut deep, fire ants are
-            // quick, frost ticks and scarabs are hard to crack.
+            // quick, frost spiders and scarabs are hard to crack.
             let (h, d, sp) = [
                 (1.0, 1.0, 1.0),
                 (0.9, 1.35, 0.9),
@@ -1517,8 +1517,8 @@ impl Enemy {
         }
     }
 
-    /// A bug: its body, a leg at every hip on both sides skittering in a ripple, and wings
-    /// or claws for those that have them.
+    /// A bug: its body, jointed legs on both sides scuttling in step, and wings or claws
+    /// for those that have them.
     fn draw_bug(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts, b: usize) {
         let s = self.scale();
         let bug = &a.monsters.bug[b];
@@ -1540,28 +1540,42 @@ impl Enemy {
             * Mat4::from_scale(Vec3::splat(s));
         r.mesh(&a.bank, &bug.body, &m, o);
         let limbs = o.two_sided();
-        // Legs splay down so their tips just reach the floor (or dangle, for fliers).
-        let droop = if bug.flies {
-            1.2
-        } else {
-            (bug.hip_y / bug.leg_len.max(0.01)).clamp(0.0, 1.0).asin()
-        };
-        for (k, &z) in bug.hips.iter().enumerate() {
+        // Each leg is a thigh rising from the hip to a knee and a shin reaching from there
+        // down to the floor (or dangling, for fliers). They step in two alternating sets,
+        // a lifted foot swinging forwards while the planted ones push back.
+        for (k, &(z, splay)) in bug.legs.iter().enumerate() {
             for side in [-1.0f32, 1.0] {
-                let ph = self.anim * pace + k as f32 * PI + if side < 0.0 { PI } else { 0.0 };
-                let (fore, lift) = if bug.flies {
-                    (0.3, (self.anim * 3.0 + k as f32).sin() * 0.1)
+                let set = (k + usize::from(side > 0.0)) % 2;
+                let ph = self.anim * pace + set as f32 * PI;
+                let (swing, lift) = if bug.flies {
+                    (0.0, (self.anim * 3.0 + k as f32).sin() * 0.1)
                 } else if moving {
-                    (ph.sin() * 0.45, ph.cos().max(0.0) * 0.3)
+                    (ph.sin() * 0.3, ph.cos().max(0.0) * 0.3)
                 } else {
                     (0.0, 0.0)
                 };
-                let leg = m
+                let hip = m
                     * Mat4::from_translation(Vec3::new(side * bug.hip_x, bug.hip_y, z))
                     * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
-                    * Mat4::from_rotation_y(fore)
-                    * Mat4::from_rotation_z(lift - droop);
-                r.mesh(&a.bank, &bug.leg, &leg, &limbs);
+                    * Mat4::from_rotation_y(-(splay + swing));
+                let up = bug.knee + lift;
+                r.mesh(
+                    &a.bank,
+                    &bug.thigh,
+                    &(hip * Mat4::from_rotation_z(up)),
+                    &limbs,
+                );
+                let knee = Vec3::new(bug.thigh_len * up.cos(), bug.thigh_len * up.sin(), 0.0);
+                // Steep enough that the foot lands on the floor (a lifted one just above it).
+                let down = if bug.flies {
+                    1.3
+                } else {
+                    ((bug.hip_y + knee.y - lift * 0.15) / bug.shin_len)
+                        .clamp(0.0, 1.0)
+                        .asin()
+                };
+                let shin = hip * Mat4::from_translation(knee) * Mat4::from_rotation_z(-down);
+                r.mesh(&a.bank, &bug.shin, &shin, &limbs);
             }
         }
         if let Some(w) = &bug.wing {

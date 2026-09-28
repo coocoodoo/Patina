@@ -29,8 +29,8 @@ pub enum Foe {
     Brute,
     /// A skinny goblin: quick, stabs and darts away, and throws daggers.
     Sneak,
-    /// The biome's bug: moss mites, glass mantises, spore moths, fire ants, frost ticks
-    /// and scarabs.
+    /// The biome's bug: moss spiders, glass mantises, spore moths, fire ants, frost
+    /// spiders and scarabs.
     Bug,
 }
 
