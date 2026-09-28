@@ -2,8 +2,11 @@
 
 use glam::Vec3;
 
+use super::fish::{self, Hooked, Phase};
 use super::foes::boss_name;
 use super::gear::Class;
+use super::home::charm_title;
+use super::items::{Kind, Placeable};
 use super::menus::Menu;
 use super::play::Play;
 use super::player::HOTBAR;
@@ -177,7 +180,37 @@ impl Play {
                 c.panel(w - pw2 - 3, 40, pw2, 14, Style::Dark);
                 c.text_shadow(w - pw2 + 3, 43, name, CREAM, INK);
             }
+            Area::Home => {
+                // How charming the place is.
+                let ch = self.charisma();
+                let line = format!("{ch} {}", charm_title(ch));
+                let pw2 = c.text_width(&line) + 22;
+                c.panel(w - pw2 - 3, 40, pw2, 14, Style::Dark);
+                c.text_shadow(w - pw2 + 3, 43, "♥", PINK, INK);
+                c.text_shadow(w - pw2 + 13, 43, &line, CREAM, INK);
+            }
             _ => {}
+        }
+        self.draw_fishing_hud(c, a, cam);
+        // How the dish is coming along.
+        if let Some(k) = &self.cooking {
+            if let Some(s) = cam.project(k.at + Vec3::Y * 1.5) {
+                let (bx, by) = (s.x as i32 - 16, s.y as i32 - 4);
+                c.rect(bx - 1, by - 1, 34, 7, INK);
+                c.bar(
+                    bx,
+                    by,
+                    32,
+                    5,
+                    k.t / super::home::COOK_TIME,
+                    ORANGE,
+                    GOLD,
+                    SHADOW,
+                );
+                let name = super::items::RECIPES[k.recipe].out.def().name;
+                let tw = c.text_width(name);
+                c.text_outline(s.x as i32 - tw / 2, by - 12, name, CREAM, INK);
+            }
         }
 
         // Boss bar.
@@ -277,6 +310,26 @@ impl Play {
             let tw = c.text_width(&t);
             c.text_outline((w - tw) / 2, hy - 14, &t, WHITE, INK);
         }
+        if self.area == Area::Home && self.sel_name_t >= 1.6 && self.cooking.is_none() {
+            // What your hands can do about the house.
+            let held = p.held().map(|i| i.def().kind);
+            let t = match held {
+                Some(Kind::Place(Placeable::Furniture(_))) => Some("[E] Place   [T] Turn"),
+                Some(Kind::Place(_)) => Some("[E] Place"),
+                Some(Kind::Wallpaper(_) | Kind::Flooring(_)) => Some("[E] Redecorate"),
+                _ if self.target_ok => Some("[J] Pick up"),
+                _ => None,
+            };
+            if let Some(t) = t {
+                let y = if self.hint.is_some() {
+                    hy - 26
+                } else {
+                    hy - 14
+                };
+                let tw = c.text_width(t);
+                c.text_outline((w - tw) / 2, y, t, CREAM, INK);
+            }
+        }
 
         // Pickup toasts.
         let mut ty = h - 36;
@@ -327,6 +380,132 @@ impl Play {
                 let sw = c.text_width(&b.sub);
                 c.text_outline((w - sw) / 2, y + 20, &b.sub, GOLD, INK);
             }
+        }
+    }
+
+    /// Fishing: the cast power bar, the bite cue, the reeling meter and the catch.
+    fn draw_fishing_hud(&self, c: &mut Canvas, a: &Assets, cam: &Camera) {
+        let Some(f) = &self.fishing else { return };
+        let (w, h) = (c.w(), c.h());
+        let feet = cam.project(self.player.world_pos());
+        let head = cam.project(self.player.world_pos() + Vec3::Y * 1.3);
+        match f.phase {
+            Phase::Charge => {
+                let Some(s) = feet else { return };
+                let (bw, bx, by) = (36, s.x as i32 - 18, s.y as i32 + 8);
+                let col = if f.power > 0.9 {
+                    GOLD
+                } else if f.power > 0.5 {
+                    LIME
+                } else {
+                    GREEN
+                };
+                c.rect(bx - 1, by - 1, bw + 2, 7, INK);
+                c.bar(bx, by, bw, 5, f.power, col, CREAM, SHADOW);
+                if f.power > 0.9 {
+                    c.tiny(bx + bw + 14, by - 1, "MAX", GOLD, INK);
+                }
+            }
+            Phase::Bite => {
+                let Some(s) = head else { return };
+                if (self.time * 10.0).fract() < 0.7 {
+                    let bw = c.big_width("!", 3);
+                    c.text_big(s.x as i32 - bw / 2, s.y as i32 - 30, "!", 3, GOLD, INK);
+                }
+            }
+            Phase::Reel => {
+                let Some(s) = feet else { return };
+                let Some(Hooked::Fish(item, _)) = f.hooked else {
+                    return;
+                };
+                let th = 96;
+                let x0 = (s.x as i32 + 26).clamp(6, w - 34);
+                let y0 = (s.y as i32 - th - 12).clamp(18, h - th - 30);
+                c.panel(x0 - 4, y0 - 4, 32, th + 8, Style::Dark);
+                // The water, with the bar you steer.
+                c.rect(x0, y0, 16, th, DEEP_TEAL);
+                for k in (4..th).step_by(9) {
+                    c.rect(x0 + 2 + (k / 9) % 3, y0 + k, 6, 1, TEAL);
+                }
+                let (fish_y, zone, zone_h) = fish::reel_bar(f);
+                let inside = fish_y >= zone - 0.02 && fish_y <= zone + zone_h + 0.02;
+                let zt = y0 + th - ((zone + zone_h) * th as f32) as i32;
+                let zh = ((zone_h * th as f32) as i32).max(4);
+                let (zc, zhi) = if inside { (LIME, MINT) } else { (GREEN, LIME) };
+                c.rect(x0 + 1, zt, 14, zh, zc);
+                c.rect(x0 + 1, zt, 14, 1, zhi);
+                c.frame(x0 + 1, zt, 14, zh, INK);
+                // The fish, wriggling.
+                let icon = a.tex(a.icon(item.def().icon));
+                let fy = y0 + th - (fish_y * th as f32) as i32 - 4;
+                let wig = if (self.time * 8.0).fract() < 0.5 {
+                    0
+                } else {
+                    1
+                };
+                for sy in 0..8 {
+                    for sx in 0..8 {
+                        let col = icon.get(sx * 2, sy * 2);
+                        if col != CLEAR {
+                            c.px(x0 + 4 + sx + wig, fy + sy, col);
+                        }
+                    }
+                }
+                // How close you are to landing it.
+                let ph = (f.progress.clamp(0.0, 1.0) * th as f32) as i32;
+                let pc = if f.progress < 0.25 {
+                    if (self.time * 6.0).fract() < 0.5 {
+                        RED
+                    } else {
+                        SALMON
+                    }
+                } else if f.progress > 0.75 {
+                    GOLD
+                } else {
+                    ORANGE
+                };
+                c.rect(x0 + 19, y0, 5, th, SHADOW);
+                c.rect(x0 + 19, y0 + th - ph, 5, ph, pc);
+                c.frame(x0 + 18, y0 - 1, 7, th + 2, INK);
+                let tip = "Hold to reel";
+                let tw = c.text_width(tip);
+                c.text_outline(
+                    (x0 + 12 - tw / 2).clamp(2, w - tw - 2),
+                    y0 - 16,
+                    tip,
+                    CREAM,
+                    INK,
+                );
+            }
+            Phase::Caught => {
+                // Under the hero, clear of the catch held up high.
+                let Some(s) = feet else { return };
+                let Some(Hooked::Fish(item, size)) = f.hooked else {
+                    return;
+                };
+                let rare = fish::fish_def(item).map_or(0, |d| d.rarity);
+                let (x, y) = (s.x as i32, s.y as i32 + 20);
+                let name = item.def().name;
+                let tw = c.text_width(name);
+                c.text_outline(x - tw / 2, y, name, fish::rarity_color(rare), INK);
+                let sub = format!("{size} cm  {}", fish::rarity_name(rare));
+                let sw = c.text_width(&sub);
+                c.text_outline(x - sw / 2, y + 11, &sub, CREAM, INK);
+                let tag = if f.record {
+                    Some(("Record!", GOLD))
+                } else if f.new {
+                    Some(("New!", LIME))
+                } else {
+                    None
+                };
+                if let Some((t, col)) = tag {
+                    if (self.time * 6.0).fract() < 0.75 {
+                        let bw = c.text_width(t);
+                        c.text_outline(x - bw / 2, y + 22, t, col, INK);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 

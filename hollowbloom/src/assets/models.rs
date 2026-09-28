@@ -122,6 +122,10 @@ pub struct Look {
     pub scale: f32,
 }
 
+/// Where the arms hang from, before scaling: height and distance out from the middle.
+pub const SHOULDER: f32 = 0.43;
+pub const SHOULDER_X: f32 = 0.22;
+
 pub const HERO: Look = Look {
     hair: [GOLD, CLAY, RUST],
     skin: [PEACH, PEACH, SALMON],
@@ -314,9 +318,9 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
             leg,
         },
         hip: 0.18 * s,
-        shoulder: 0.43 * s,
+        shoulder: SHOULDER * s,
         neck: 0.43 * s,
-        shoulder_x: 0.22 * s,
+        shoulder_x: SHOULDER_X * s,
         hip_x: 0.08 * s,
     }
 }
@@ -460,6 +464,17 @@ pub struct Critters {
     pub mole: Mesh,
     pub cat: Mesh,
     pub cat_tail: Mesh,
+    /// Water folk: a bog frog (and a back leg), a drift jelly and a puffer.
+    pub frog: Mesh,
+    pub frog_leg: Mesh,
+    pub jelly_bell: Mesh,
+    pub jelly_core: Mesh,
+    pub jelly_threads: Mesh,
+    pub puffer: Mesh,
+    pub puffer_spikes: Mesh,
+    pub puffer_fin: Mesh,
+    pub frog_tex: TexId,
+    pub puffer_tex: TexId,
     /// Texture ids that palette variants swap.
     pub slime_tex: TexId,
     pub slime_core_tex: TexId,
@@ -1008,7 +1023,248 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         &Texture::new(16, 16, 0),
     );
 
+    // Bog frog: a squat body with a pale belly, bulging eyes on top and a wide smile.
+    let mut frog_t = Texture::new(16, 16, GREEN);
+    for y in 0..16 {
+        for x in 0..16 {
+            if y > 10 {
+                frog_t.set(x, y, LIME);
+            } else if y < 4 || (x * 7 + y * 3) % 11 == 0 {
+                frog_t.set(x, y, TEAL);
+            }
+        }
+    }
+    let frog_tex = bank.add(frog_t);
+    let mut frog = Mesh::new();
+    lathe(
+        &mut frog,
+        Vec3::ZERO,
+        &[
+            (0.0, 0.0),
+            (0.24, 0.02),
+            (0.3, 0.12),
+            (0.27, 0.23),
+            (0.17, 0.3),
+            (0.0, 0.32),
+        ],
+        8,
+        0.39,
+        frog_tex,
+        true,
+    );
+    for sx in [-1.0f32, 1.0] {
+        let c = Vec3::new(sx * 0.12, 0.3, 0.1);
+        skin_box(
+            &mut frog,
+            c - Vec3::new(0.065, 0.05, 0.065),
+            c + Vec3::new(0.065, 0.06, 0.065),
+            frog_tex,
+            &w4,
+        );
+        skin_box(
+            &mut frog,
+            c + Vec3::new(-0.04, -0.03, 0.06),
+            c + Vec3::new(0.04, 0.04, 0.075),
+            white,
+            &w4,
+        );
+        skin_box(
+            &mut frog,
+            c + Vec3::new(-0.02, -0.02, 0.074),
+            c + Vec3::new(0.02, 0.03, 0.085),
+            eye,
+            &w4,
+        );
+        // Front feet.
+        skin_box(
+            &mut frog,
+            Vec3::new(sx * 0.16 - 0.05, 0.0, 0.14),
+            Vec3::new(sx * 0.16 + 0.05, 0.05, 0.28),
+            frog_tex,
+            &w4,
+        );
+    }
+    skin_box(
+        &mut frog,
+        Vec3::new(-0.14, 0.13, 0.27),
+        Vec3::new(0.14, 0.15, 0.29),
+        eye,
+        &w4,
+    );
+    let mut frog_leg = Mesh::new();
+    skin_box(
+        &mut frog_leg,
+        Vec3::new(-0.05, -0.06, -0.18),
+        Vec3::new(0.05, 0.06, 0.04),
+        frog_tex,
+        &w4,
+    );
+    skin_box(
+        &mut frog_leg,
+        Vec3::new(-0.06, -0.08, -0.26),
+        Vec3::new(0.06, -0.04, -0.14),
+        frog_tex,
+        &w4,
+    );
+
+    // Drift jelly: a glassy bell, a soft glowing heart, and trailing threads.
+    let jelly_t = bank.add(jelly_skin([WHITE, LAVENDER, PURPLE]));
+    let mut jelly_bell = Mesh::new();
+    lathe(
+        &mut jelly_bell,
+        Vec3::ZERO,
+        &[
+            (0.31, -0.02),
+            (0.33, 0.07),
+            (0.29, 0.19),
+            (0.18, 0.28),
+            (0.0, 0.31),
+        ],
+        10,
+        0.31,
+        jelly_t,
+        false,
+    );
+    let mut heart_t = Texture::new(8, 8, PINK);
+    for (x, y) in [(1, 1), (5, 2), (3, 5)] {
+        heart_t.set(x, y, BLUSH);
+    }
+    let heart = bank.add(heart_t);
+    let mut jelly_core = Mesh::new();
+    lathe(
+        &mut jelly_core,
+        Vec3::ZERO,
+        &[(0.0, 0.03), (0.14, 0.07), (0.12, 0.15), (0.0, 0.19)],
+        6,
+        0.2,
+        heart,
+        false,
+    );
+    let mut thread_t = Texture::new(4, 16, LAVENDER);
+    for y in 0..16 {
+        thread_t.set(1, y, if y % 4 == 0 { WHITE } else { BLUSH });
+        if y > 11 {
+            thread_t.set(0, y, CLEAR);
+            thread_t.set(3, y, CLEAR);
+        }
+    }
+    let thread = bank.add(thread_t);
+    let mut jelly_threads = Mesh::new();
+    for k in 0..6 {
+        let a = k as f32 / 6.0 * std::f32::consts::TAU;
+        let r = if k % 2 == 0 { 0.2 } else { 0.12 };
+        let (x, z) = (a.cos() * r, a.sin() * r);
+        let (dx, dz) = (-a.sin() * 0.04, a.cos() * 0.04);
+        let len = if k % 2 == 0 { 0.5 } else { 0.38 };
+        jelly_threads.quad(
+            [
+                Vec3::new(x - dx, -len, z - dz),
+                Vec3::new(x + dx, -len, z + dz),
+                Vec3::new(x + dx, 0.0, z + dz),
+                Vec3::new(x - dx, 0.0, z - dz),
+            ],
+            UvRect::px(0, 0, 4, 16),
+            thread,
+        );
+    }
+
+    // Puffer: a round fish with big eyes, spines for when it blows itself up, and fins.
+    let mut puff_t = Texture::new(16, 16, SAND);
+    for y in 0..16 {
+        for x in 0..16 {
+            if y > 10 {
+                puff_t.set(x, y, CREAM);
+            } else if (x + y * 5) % 7 == 0 {
+                puff_t.set(x, y, KHAKI);
+            }
+        }
+    }
+    let puffer_tex = bank.add(puff_t);
+    let mut puffer = Mesh::new();
+    lathe(
+        &mut puffer,
+        Vec3::ZERO,
+        &[
+            (0.0, -0.24),
+            (0.17, -0.2),
+            (0.26, -0.06),
+            (0.25, 0.08),
+            (0.17, 0.2),
+            (0.0, 0.25),
+        ],
+        8,
+        0.39,
+        puffer_tex,
+        false,
+    );
+    eyes(&mut puffer, white, 0.06, 0.235, 0.1, 0.1);
+    for sx in [-1.0f32, 1.0] {
+        skin_box(
+            &mut puffer,
+            Vec3::new(sx * 0.1 - 0.02, 0.03, 0.262),
+            Vec3::new(sx * 0.1 + 0.02, 0.08, 0.272),
+            eye,
+            &w4,
+        );
+    }
+    skin_box(
+        &mut puffer,
+        Vec3::new(-0.03, -0.06, 0.24),
+        Vec3::new(0.03, -0.02, 0.27),
+        bank.add(tiles::solid(CRIMSON)),
+        &w4,
+    );
+    let tailfin = bank.add(tiles::solid(AQUA));
+    skin_box(
+        &mut puffer,
+        Vec3::new(-0.02, -0.08, -0.36),
+        Vec3::new(0.02, 0.08, -0.22),
+        tailfin,
+        &w4,
+    );
+    let spine = bank.add(tiles::solid(CREAM));
+    let mut puffer_spikes = Mesh::new();
+    for k in 0..14 {
+        let a = k as f32 * 2.4;
+        let up = ((k as f32 * 0.7).sin()) * 0.9;
+        let dir = Vec3::new(a.cos() * up.cos(), up.sin(), a.sin() * up.cos());
+        let mut sp = Mesh::new();
+        skin_box(
+            &mut sp,
+            Vec3::new(-0.012, 0.0, -0.012),
+            Vec3::new(0.012, 0.1, 0.012),
+            spine,
+            &w4,
+        );
+        let rot = glam::Quat::from_rotation_arc(Vec3::Y, dir.normalize_or_zero());
+        puffer_spikes.append(
+            &sp,
+            Mat4::from_translation(dir * 0.24) * Mat4::from_quat(rot),
+        );
+    }
+    let mut puffer_fin = Mesh::new();
+    puffer_fin.quad(
+        [
+            Vec3::new(0.0, -0.05, -0.02),
+            Vec3::new(0.0, -0.05, 0.08),
+            Vec3::new(0.0, 0.05, 0.08),
+            Vec3::new(0.0, 0.05, -0.02),
+        ],
+        UvRect::new(0.0, 0.0, 4.0, 4.0),
+        tailfin,
+    );
+
     Critters {
+        frog,
+        frog_leg,
+        jelly_bell,
+        jelly_core,
+        jelly_threads,
+        puffer,
+        puffer_spikes,
+        puffer_fin,
+        frog_tex,
+        puffer_tex,
         slime,
         slime_core,
         slime_face,

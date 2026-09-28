@@ -282,6 +282,54 @@ impl Play {
             Kind::Coin(_) => lines.push(line("Money", GOLD)),
             Kind::Gem => lines.push(line("Gem", AQUA)),
             Kind::Relic => lines.push(line("Treasure - Burrowby loves these", GOLD)),
+            Kind::Fish => {
+                if let Some(f) = super::fish::fish_def(s.item) {
+                    lines.push(line(
+                        format!("{} Fish", super::fish::rarity_name(f.rarity)),
+                        super::fish::rarity_color(f.rarity),
+                    ));
+                    for w in f.water {
+                        lines.push(line(format!("Lives in the {}", w.short()), SKY));
+                    }
+                    lines.push(line(f.when.label(), KHAKI));
+                    if let Some((_, cm)) = self.journal.records.iter().find(|(i, _)| *i == s.item) {
+                        lines.push(line(format!("Your biggest: {cm} cm"), GOLD));
+                    }
+                }
+            }
+            Kind::Place(super::items::Placeable::Furniture(f)) => {
+                let fd = f.def();
+                lines.push(line(
+                    format!("Furniture - {}x{} tiles", fd.size.0, fd.size.1),
+                    SKY,
+                ));
+                lines.push(line(format!("Charm +{}", fd.charm), PINK));
+                if fd.cap > 0 {
+                    lines.push(line(format!("Holds {} fish", fd.cap), AQUA));
+                }
+                if fd.use_ != super::home::Use::Nothing {
+                    lines.push(line(format!("Use: {}", super::home::use_hint(f)), KHAKI));
+                }
+            }
+            Kind::Place(super::items::Placeable::Rug(k)) => {
+                lines.push(line("Rug - covers 2x2 tiles", SKY));
+                let charm = super::home::RUGS[k as usize % super::home::RUGS.len()].0;
+                lines.push(line(format!("Charm +{charm}"), PINK));
+            }
+            Kind::Place(super::items::Placeable::WallArt(k)) => {
+                lines.push(line("Wall art - for the back wall", SKY));
+                let charm = super::home::ART[k as usize % super::home::ART.len()];
+                lines.push(line(format!("Charm +{charm}"), PINK));
+            }
+            Kind::Wallpaper(_) | Kind::Flooring(_) => {
+                let what = if matches!(d.kind, Kind::Wallpaper(_)) {
+                    "Wallpaper"
+                } else {
+                    "Flooring"
+                };
+                lines.push(line(format!("{what} - use it in your house"), SKY));
+                lines.push(line("Charm +3", PINK));
+            }
             Kind::Place(_) => lines.push(line("Placeable", SKY)),
             Kind::Material => lines.push(line("Material", KHAKI)),
             _ => lines.push(line("Special", LAVENDER)),
@@ -385,6 +433,10 @@ pub fn stat_icon(s: Stat) -> &'static str {
         Forage => "st_forage",
         Focus => "st_focus",
         Spirit => "st_spirit",
+        Lure => "st_lure",
+        Line => "st_line",
+        Treasure => "st_treasure",
+        Angler => "st_angler",
     }
 }
 
@@ -393,6 +445,6 @@ pub fn scroll_group_name(g: Group) -> &'static str {
     match g {
         Group::Weapon => "swords, wands and staffs",
         Group::Armor => "shields, hats, armor and boots",
-        Group::Tool => "hoes, cans, sickles, axes and pickaxes",
+        Group::Tool => "hoes, cans, sickles, axes, pickaxes and rods",
     }
 }

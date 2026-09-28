@@ -4,9 +4,11 @@
 use glam::{Mat4, Vec2, Vec3};
 
 use super::draw::{self, Outfit, Pose, Swing, draw_humanoid, flames, full_uv};
+use super::fish::{self, Hooked, Phase, Water};
 use super::fx::shot_colors;
 use super::gear::{Rarity, Slot};
-use super::items::{Kind, Stack};
+use super::home::{self, WINDOWS};
+use super::items::{Kind, Placeable, Stack};
 use super::play::Play;
 use super::player::ActKind;
 use super::town::Decor;
@@ -210,22 +212,38 @@ impl Play {
             self.area,
             &mut self.farm,
             &mut self.town,
+            &mut self.house.world,
             &mut self.level,
             &mut self.room,
         );
         draw::draw_world(r, a, world, &env, &lights);
         self.draw_decor(r, a);
+        if self.area == Area::Home {
+            self.draw_home(r, a);
+        }
         self.draw_bus(r, a, self.sky_night());
 
         // Target cursor.
-        if let (Some((tx, tz)), Some(item)) = (self.target, self.player.held()) {
-            let shows = match item.def().kind {
-                Kind::Gear(b) => super::player::ActKind::for_class(b.class)
-                    .is_some_and(|k| !matches!(k, ActKind::Slash | ActKind::Bolt | ActKind::Blast)),
-                Kind::Seed(_) | Kind::Place(_) => true,
-                _ => false,
+        if let Some((tx, tz)) = self.target {
+            let kind = self.player.held().map(|i| i.def().kind);
+            let shows = if self.area == Area::Home {
+                self.target_ok
+                    || matches!(
+                        kind,
+                        Some(Kind::Place(_) | Kind::Wallpaper(_) | Kind::Flooring(_))
+                    )
+            } else {
+                match kind {
+                    Some(Kind::Gear(b)) => {
+                        super::player::ActKind::for_class(b.class).is_some_and(|k| {
+                            !matches!(k, ActKind::Slash | ActKind::Bolt | ActKind::Blast)
+                        })
+                    }
+                    Some(Kind::Seed(_) | Kind::Place(_)) => true,
+                    _ => false,
+                }
             };
-            if shows && self.fade.is_none() {
+            if shows && self.fade.is_none() && self.cooking.is_none() {
                 let tex = if self.target_ok {
                     a.cursor
                 } else {
@@ -236,18 +254,27 @@ impl Play {
                 } else {
                     0.03
                 };
-                let pulse = 0.46 + (self.time * 6.0).sin() * 0.03;
+                let pulse = (self.time * 6.0).sin() * 0.03;
+                // Indoors the cursor covers the whole piece being placed or aimed at.
+                let (c, half) = self.cursor_span(tx, tz);
+                let mut at = Vec3::new(c.x, y, c.y);
+                if y > 1.0 {
+                    at.y = 1.02;
+                }
                 r.decal(
                     a.tex(tex),
                     UvRect::new(0.0, 0.0, 16.0, 16.0),
-                    Vec3::new(tx as f32 + 0.5, y, tz as f32 + 0.5),
-                    Vec2::splat(pulse),
+                    at,
+                    half + Vec2::splat(pulse),
                     &DrawOpts {
                         mode: Mode::Unlit,
                         zwrite: false,
                         ..Default::default()
                     },
                 );
+                if self.area == Area::Home && self.target_ok {
+                    self.draw_ghost(r, a, tx, tz);
+                }
             }
         }
 
@@ -301,6 +328,8 @@ impl Play {
 
         self.draw_folk(r, a);
         self.draw_player(r, a);
+        self.draw_fishing(r, a);
+        self.draw_cooking(r);
         // Jelly and ghosts go last, far to near, so whatever is behind them shows through.
         let mut clear: Vec<_> = self.foes.iter().filter(|f| f.translucent()).collect();
         clear.sort_by(|p, q| p.pos.y.total_cmp(&q.pos.y));
@@ -602,6 +631,11 @@ impl Play {
             pose.swing = Some((act.progress(), act.kind.swing()));
         } else if p.eat_t > 0.0 {
             pose.swing = Some((1.0 - p.eat_t / 0.6, Swing::Use));
+        } else if let Some(f) = &self.fishing {
+            pose.swing = Some((f.lift(self.time), Swing::Fish));
+        } else if self.cooking.is_some() {
+            // Stirring the pot.
+            pose.swing = Some(((self.time * 1.6).fract() * 0.5, Swing::Use));
         }
         let dressed = dress(a, &p.equip, p.held_stack());
         let fit = dressed.outfit(Some(&a.sprout));
@@ -670,4 +704,290 @@ impl Play {
             }
         }
     }
+
+    /// Where the cursor sits and how big it is: one tile, or everything a piece covers.
+    fn cursor_span(&self, tx: i32, tz: i32) -> (Vec2, Vec2) {
+        let one = (
+            Vec2::new(tx as f32 + 0.5, tz as f32 + 0.5),
+            Vec2::splat(0.46),
+        );
+        if self.area != Area::Home {
+            return one;
+        }
+        let span = |x: f32, z: f32, w: f32, d: f32| {
+            (
+                Vec2::new(x + w * 0.5, z + d * 0.5),
+                Vec2::new(w * 0.5 - 0.04, d * 0.5 - 0.04),
+            )
+        };
+        match self.player.held().map(|i| i.def().kind) {
+            Some(Kind::Place(Placeable::Furniture(f))) => {
+                let (rot, ax, az) = self.placement(f, tx, tz);
+                let (w, d) = home::turned(f, rot);
+                span(ax as f32, az as f32, w as f32, d as f32)
+            }
+            Some(Kind::Place(Placeable::Rug(_))) => {
+                let (rx, rz) = self.rug_anchor(tx, tz);
+                span(rx as f32, rz as f32, 2.0, 2.0)
+            }
+            Some(Kind::Place(_)) => one,
+            _ => {
+                let w = &self.house.world;
+                let (ax, az) = w.anchor(tx, tz);
+                if let Some(super::world::Obj::Furniture { f, rot, .. }) = w.obj(ax, az) {
+                    let (fw, fd) = home::turned(*f, *rot);
+                    return span(ax as f32, az as f32, fw as f32, fd as f32);
+                }
+                if w.obj(ax, az).is_none() {
+                    if let Some(rug) = self.house.rugs.iter().find(|r| r.covers(tx, tz)) {
+                        return span(rug.x as f32, rug.z as f32, 2.0, 2.0);
+                    }
+                }
+                one
+            }
+        }
+    }
+
+    /// A see-through preview of the piece in hand, where it would go.
+    fn draw_ghost(&self, r: &mut Renderer, a: &Assets, tx: i32, tz: i32) {
+        let Some(item) = self.player.held() else {
+            return;
+        };
+        let Kind::Place(pl) = item.def().kind else {
+            return;
+        };
+        let bob = (self.time * 3.0).sin() * 0.02 + 0.04;
+        match pl {
+            Placeable::Furniture(f) => {
+                let (rot, ax, az) = self.placement(f, tx, tz);
+                let m = Mat4::from_translation(home::center(f, rot, ax, az) + Vec3::Y * bob)
+                    * Mat4::from_rotation_y(rot as f32 * std::f32::consts::FRAC_PI_2);
+                r.mesh(
+                    &a.bank,
+                    &a.home.furn[f as usize],
+                    &m,
+                    &DrawOpts::default().glass(0.4).with_glow(1.0),
+                );
+            }
+            Placeable::Rug(k) => {
+                let tex = a.home.rugs[k as usize % a.home.rugs.len()];
+                let (rx, rz) = self.rug_anchor(tx, tz);
+                r.decal(
+                    a.tex(tex),
+                    UvRect::new(0.0, 0.0, 16.0, 16.0),
+                    Vec3::new(rx as f32 + 1.0, 0.02, rz as f32 + 1.0),
+                    Vec2::splat(0.95),
+                    &DrawOpts {
+                        zwrite: false,
+                        ..DrawOpts::default().glass(0.55)
+                    },
+                );
+            }
+            Placeable::WallArt(k) => {
+                if let Some(col) = self.art_spot(tx, tz) {
+                    let m = Mat4::from_translation(Vec3::new(col as f32 + 0.5, 0.0, 1.02));
+                    r.mesh(
+                        &a.bank,
+                        &a.home.art[k as usize % a.home.art.len()],
+                        &m,
+                        &DrawOpts::default().glass(0.55).with_glow(1.0),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Windows, pictures and rugs in the farmhouse.
+    fn draw_home(&self, r: &mut Renderer, a: &Assets) {
+        let night = self.sky_night() > 0.3;
+        let t = &a.town;
+        let flat = DrawOpts {
+            zwrite: false,
+            ..Default::default()
+        };
+        // The doormat.
+        let (dx, dz) = home::HOUSE_DOOR;
+        r.decal(
+            a.tex(t.rugs[2 % t.rugs.len()]),
+            UvRect::new(0.0, 0.0, 16.0, 16.0),
+            Vec3::new(dx as f32 + 0.5, 0.01, dz as f32 - 0.65),
+            Vec2::new(0.42, 0.3),
+            &flat,
+        );
+        for rug in &self.house.rugs {
+            let tex = a.home.rugs[rug.kind as usize % a.home.rugs.len()];
+            r.decal(
+                a.tex(tex),
+                UvRect::new(0.0, 0.0, 16.0, 16.0),
+                Vec3::new(rug.x as f32 + 1.0, 0.012, rug.z as f32 + 1.0),
+                Vec2::splat(0.96),
+                &flat,
+            );
+        }
+        for x in WINDOWS {
+            let m = Mat4::from_translation(Vec3::new(x as f32 + 0.5, 0.0, 1.01));
+            r.mesh(&a.bank, &t.window, &m, &DrawOpts::default());
+            let o = if night {
+                DrawOpts::default()
+            } else {
+                DrawOpts::default().with_mode(Mode::Unlit)
+            };
+            r.mesh(&a.bank, &t.window_glass, &m, &o);
+        }
+        for (col, kind) in &self.house.art {
+            let m = Mat4::from_translation(Vec3::new(*col as f32 + 0.5, 0.0, 1.01));
+            r.mesh(
+                &a.bank,
+                &a.home.art[*kind as usize % a.home.art.len()],
+                &m,
+                &DrawOpts::at(Vec3::new(*col as f32 + 0.5, 1.2, 1.5)),
+            );
+        }
+    }
+
+    /// Steam curling up off the pot, and the burner glowing under it.
+    fn draw_cooking(&self, r: &mut Renderer) {
+        let Some(c) = &self.cooking else { return };
+        let pot = c.at + Vec3::Y * 0.9;
+        r.halo(c.at + Vec3::Y * 0.7, 0.35, ORANGE, 0.5);
+        for i in 0..10 {
+            let k = (self.time * 0.9 + i as f32 * 0.1).fract();
+            let sway = (k * 7.0 + i as f32 * 1.7).sin() * 0.12 * k;
+            let q = pot + Vec3::new(sway + (i % 3) as f32 * 0.05 - 0.05, k * 0.9, 0.0);
+            if k < 0.85 || (self.time * 20.0 + i as f32).sin() > 0.0 {
+                r.point(
+                    q,
+                    if k < 0.4 { 2 } else { 1 },
+                    if i % 3 == 0 { CREAM } else { WHITE },
+                );
+            }
+        }
+        // Bubbles popping in the pan.
+        if (self.time * 9.0).sin() > 0.3 {
+            r.point(pot + Vec3::new(0.06, -0.02, 0.05), 1, GOLD);
+        }
+    }
+
+    /// The line, the bobber, rings on the water, and the catch dangling from the rod.
+    fn draw_fishing(&self, r: &mut Renderer, a: &Assets) {
+        let Some(f) = &self.fishing else { return };
+        let p = &self.player;
+        let tip = fish::rod_tip(p.world_pos(), p.yaw, f.lift(self.time));
+        let col = fish::line_color(p.held_stack());
+        let line = |r: &mut Renderer, from: Vec3, to: Vec3, sag: f32| {
+            let n = ((from.distance(to) * 40.0) as usize).clamp(6, 260);
+            for q in fish::line_points(from, to, sag, n) {
+                r.point(q, 1, col);
+            }
+        };
+        match f.phase {
+            Phase::Charge => {
+                // The bobber dangles from the tip, swinging as you wind up.
+                let sway = (self.time * 7.0).sin() * 0.06 * (0.3 + f.power);
+                let bob = tip + Vec3::new(sway, -0.26, 0.0);
+                line(r, tip, bob, 0.0);
+                draw_bobber(r, bob);
+            }
+            Phase::Caught => {
+                let Some(Hooked::Fish(item, _)) = f.hooked else {
+                    return;
+                };
+                // Held up high on a short line, flapping.
+                let flap = (self.time * 14.0).sin();
+                let at = tip - Vec3::Y * 0.62;
+                line(r, tip, at + Vec3::Y * 0.4, 0.0);
+                let id = a.icon(item.def().icon);
+                let uv = if flap > 0.0 {
+                    full_uv(a, id)
+                } else {
+                    UvRect::new(15.96, 0.0, 0.04, 16.0)
+                };
+                r.billboard(
+                    a.tex(id),
+                    uv,
+                    at,
+                    Vec2::splat(0.5),
+                    &DrawOpts::at(at).with_glow(0.9).with_tag(3),
+                );
+                let rare = fish::fish_def(item).map_or(0, |d| d.rarity);
+                if rare > 0 {
+                    let c = fish::rarity_color(rare);
+                    for i in 0..(2 + rare as usize * 2) {
+                        let ang = self.time * 3.0 + i as f32 * 1.3;
+                        let q = at
+                            + Vec3::new(
+                                ang.cos() * 0.34,
+                                0.25 + (ang * 1.7).sin() * 0.2,
+                                ang.sin() * 0.2,
+                            );
+                        r.point(q, 1, if i % 2 == 0 { c } else { WHITE });
+                    }
+                }
+                // Drips falling off it.
+                for i in 0..3 {
+                    let k = (self.time * 1.4 + i as f32 * 0.33).fract();
+                    let q = at + Vec3::new((i as f32 - 1.0) * 0.1, 0.1 - k * 1.1, 0.0);
+                    if q.y > 0.05 {
+                        r.point(q, 1, SKY);
+                    }
+                }
+            }
+            _ => {
+                let bob = f.bobber(self.time);
+                let sag = match f.phase {
+                    Phase::Wait => 0.2,
+                    Phase::Bite => 0.06,
+                    Phase::Fly => 0.04,
+                    _ => 0.01,
+                };
+                line(r, tip, bob, sag);
+                draw_bobber(r, bob);
+                if !matches!(f.phase, Phase::Wait | Phase::Bite | Phase::Reel) {
+                    return;
+                }
+                let lava = f.water == Some(Water::Lava);
+                let rip = if lava { [GOLD, ORANGE] } else { [WHITE, SKY] };
+                // Rings spreading out on the water, quicker when something's on the line.
+                let speed = if f.phase == Phase::Wait { 0.6 } else { 2.0 };
+                let y = f.to.y - 0.02;
+                for ring in 0..2 {
+                    let k = (self.time * speed + ring as f32 * 0.5).fract();
+                    let rad = 0.08 + k * 0.42;
+                    for i in 0..14 {
+                        if k > 0.65 && (i + ring) % 2 == 1 {
+                            continue;
+                        }
+                        let ang = i as f32 / 14.0 * std::f32::consts::TAU;
+                        let q = Vec3::new(
+                            f.bob.x + ang.cos() * rad,
+                            y,
+                            f.bob.z + ang.sin() * rad * 0.8,
+                        );
+                        r.point(q, 1, rip[(i + ring) % 2]);
+                    }
+                }
+                if f.phase != Phase::Wait {
+                    // Thrashing: droplets leaping up round the bobber.
+                    for i in 0..6 {
+                        let k = (self.time * 2.6 + i as f32 * 0.17).fract();
+                        let ang = i as f32 * 1.05 + (self.time * 0.7).floor();
+                        let q = Vec3::new(
+                            f.bob.x + ang.cos() * (0.1 + k * 0.25),
+                            y + (k * std::f32::consts::PI).sin() * 0.3,
+                            f.bob.z + ang.sin() * (0.1 + k * 0.2),
+                        );
+                        r.point(q, 1, rip[i % 2]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A little red and white float.
+fn draw_bobber(r: &mut Renderer, at: Vec3) {
+    r.point(at + Vec3::Y * 0.03, 2, RED);
+    r.point(at + Vec3::Y * 0.08, 2, WHITE);
+    r.point(at + Vec3::Y * 0.12, 1, RED);
 }

@@ -41,7 +41,14 @@ fn tick(game: &mut Game, input: &Input, audio: &Audio, frames: usize) {
 fn snap(game: &mut Game, r: &mut Renderer, input: &Input, dir: &Path, name: &str) {
     if let Some(p) = game.play_mut() {
         p.player.hurt = 0.0;
-        p.cam_pos = p.player.world_pos();
+        if p.area == crate::game::world::Area::Home {
+            // The house is framed like a diorama, as in the game.
+            let c = p.room_center();
+            p.cam_pos = c + (p.player.world_pos() - c) * glam::Vec3::new(0.15, 0.0, 0.08);
+            p.cam.dist = 17.5;
+        } else {
+            p.cam_pos = p.player.world_pos();
+        }
         p.cam.target = p.cam_pos;
         p.cam.update(W, H);
     }
@@ -1728,4 +1735,443 @@ pub fn folk_shots(dir: &str) {
     }
     tick(&mut game, &input, &audio, 20);
     snap(&mut game, &mut r, &input, dir, "f14_keepsake_in_the_hollow");
+}
+
+/// Runs frames with the input moving on between them, so presses and releases register.
+fn step(game: &mut Game, input: &mut Input, audio: &Audio, frames: usize) {
+    for _ in 0..frames {
+        tick(game, input, audio, 1);
+        input.end_frame(1.0 / 60.0);
+    }
+}
+
+/// A picture of the room you're in, framed the way the game frames it.
+fn snap_room(game: &mut Game, r: &mut Renderer, input: &Input, dir: &Path, name: &str) {
+    if let Some(p) = game.play_mut() {
+        let c = p.room_center();
+        p.cam_pos = c + (p.player.world_pos() - c) * glam::Vec3::new(0.15, 0.0, 0.08);
+        p.cam.target = p.cam_pos;
+        p.cam.dist = 17.5;
+        p.cam.update(W, H);
+    }
+    game.draw(r, input);
+    let path = dir.join(format!("{name}.png"));
+    match save_png(&path, &r.fb, 2) {
+        Ok(()) => println!("wrote {}", path.display()),
+        Err(e) => eprintln!("failed to write {}: {e}", path.display()),
+    }
+}
+
+/// Fishing, the farmhouse, cooking and the furniture shop.
+pub fn home_shots(dir: &str) {
+    use crate::game::dungeon::Foe;
+    use crate::game::fish::{Hooked, Phase};
+    use crate::game::foes::Enemy;
+    use crate::game::home::{self, Furn, Rug};
+    use crate::game::town::Place;
+    use crate::input::KeyCode;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let mut input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261001);
+    tick(&mut game, &input, &audio, 30);
+
+    // An afternoon by the farm pond with a coral rod from the Hollow.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.min = 960.0;
+        p.rain = false;
+        for z in 29..34 {
+            for x in 19..23 {
+                if p.farm.floor(x, z) != Floor::Water {
+                    p.farm.set_obj(x, z, None);
+                }
+            }
+        }
+        p.player.pos = Vec2::new(20.5, 31.5);
+        p.player.facing = Vec2::new(-1.0, 0.0);
+        p.player.inv.slots[0] = Some(fancy(
+            Item::CoralRod,
+            10,
+            &[(Stat::Angler, 9), (Stat::Lure, 11)],
+            &[(Stat::Luck, 3)],
+        ));
+        p.player.sel = 0;
+        p.toasts.clear();
+    }
+    input.key_event(KeyCode::KeyJ, true, false);
+    step(&mut game, &mut input, &audio, 22);
+    snap(&mut game, &mut r, &input, dir, "h01_winding_up_a_cast");
+    input.key_event(KeyCode::KeyJ, false, false);
+    step(&mut game, &mut input, &audio, 50);
+    {
+        let p = play(&mut game);
+        if let Some(f) = p.fishing.as_mut() {
+            f.bite_in = 30.0;
+        }
+    }
+    step(&mut game, &mut input, &audio, 40);
+    snap(&mut game, &mut r, &input, dir, "h02_line_in_the_pond");
+    {
+        let p = play(&mut game);
+        if let Some(f) = p.fishing.as_mut() {
+            f.bite_in = 0.0;
+        }
+    }
+    step(&mut game, &mut input, &audio, 3);
+    snap(&mut game, &mut r, &input, dir, "h03_a_bite");
+    {
+        let p = play(&mut game);
+        if let Some(f) = p.fishing.as_mut() {
+            f.hooked = Some(Hooked::Fish(Item::LilyKoi, 44));
+        }
+    }
+    input.key_event(KeyCode::KeyJ, true, false);
+    step(&mut game, &mut input, &audio, 1);
+    input.key_event(KeyCode::KeyJ, false, false);
+    step(&mut game, &mut input, &audio, 1);
+    // Reel for a while, keeping the koi mostly in the bar.
+    for k in 0..70 {
+        let hold = (k / 9) % 2 == 0;
+        input.key_event(KeyCode::KeyJ, hold, false);
+        {
+            let p = play(&mut game);
+            if let Some(f) = p.fishing.as_mut() {
+                if f.phase == Phase::Reel {
+                    f.fish_to = (f.zone + f.zone_h * 0.6).min(0.95);
+                    f.progress = f.progress.min(0.7);
+                }
+            }
+        }
+        step(&mut game, &mut input, &audio, 1);
+    }
+    snap(&mut game, &mut r, &input, dir, "h04_reeling_in");
+    input.key_event(KeyCode::KeyJ, true, false);
+    for _ in 0..400 {
+        let p = play(&mut game);
+        match p.fishing.as_mut() {
+            Some(f) if f.phase == Phase::Reel => {
+                f.fish_y = (f.zone + f.zone_h * 0.5).min(1.0);
+                f.fish_to = f.fish_y;
+            }
+            _ => break,
+        }
+        step(&mut game, &mut input, &audio, 1);
+    }
+    input.key_event(KeyCode::KeyJ, false, false);
+    step(&mut game, &mut input, &audio, 14);
+    snap(&mut game, &mut r, &input, dir, "h05_caught_a_lily_koi");
+    step(&mut game, &mut input, &audio, 120);
+
+    // Water folk round a pond deep in the Hollow.
+    let mut found = false;
+    for depth in [
+        12u32, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 3, 4, 5, 6,
+    ] {
+        descend(&mut game, &input, &audio, depth, false);
+        let p = play(&mut game);
+        let Some(l) = p.level.as_ref() else { continue };
+        let w = &l.world;
+        let mut spot = None;
+        'find: for z in 2..w.h - 2 {
+            for x in 2..w.w - 2 {
+                if w.floor(x, z) == Floor::Water
+                    && w.floor(x, z + 1) != Floor::Water
+                    && !w.blocked(x, z + 2)
+                    && w.floor(x, z + 2) != Floor::Water
+                {
+                    spot = Some((x, z));
+                    break 'find;
+                }
+            }
+        }
+        let Some((wx, wz)) = spot else { continue };
+        p.foes.clear();
+        p.drops.clear();
+        p.player.pos = Vec2::new(wx as f32 + 0.5, wz as f32 + 2.5);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        let biome = crate::game::dungeon::biome_for(depth);
+        let (px, pz) = p.player.tile();
+        let w = &p.level.as_ref().unwrap().world;
+        let mut open = Vec::new();
+        for dz in -3..=2 {
+            for dx in -4..=4 {
+                let (x, z) = (px + dx, pz + dz);
+                if (dx.abs() >= 2 || dz.abs() >= 2)
+                    && !w.blocked(x, z)
+                    && w.floor(x, z) != Floor::Water
+                {
+                    open.push((x, z));
+                }
+            }
+        }
+        for (i, foe) in [Foe::Frog, Foe::Jelly, Foe::Puffer, Foe::Frog]
+            .into_iter()
+            .enumerate()
+        {
+            let Some(&(x, z)) = open.get(i * 3 % open.len().max(1)) else {
+                break;
+            };
+            let mut f = Enemy::new(
+                foe,
+                x as f32 + 0.5,
+                z as f32 + 0.5,
+                depth,
+                biome,
+                false,
+                i as u32 * 5,
+            );
+            f.yaw = (p.player.pos.x - f.pos.x).atan2(p.player.pos.y - f.pos.y);
+            f.anim = i as f32 * 0.7;
+            p.foes.push(f);
+        }
+        found = true;
+        break;
+    }
+    if found {
+        tick(&mut game, &input, &audio, 2);
+        {
+            let p = play(&mut game);
+            for f in p.foes.iter_mut() {
+                f.alert = false;
+            }
+        }
+        snap(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "h06_water_folk_by_a_hollow_pond",
+        );
+    }
+
+    // Home, as you find it on the first morning.
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.fade = None;
+        p.level = None;
+        p.area = crate::game::world::Area::Farm;
+        p.clock.min = 480.0;
+        p.player.inv.slots[0] = None;
+        p.enter_house();
+        p.banner = None;
+        p.toasts.clear();
+        p.player.pos = Vec2::new(7.5, 8.2);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    }
+    tick(&mut game, &input, &audio, 5);
+    snap_room(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "h07_home_on_the_first_morning",
+    );
+
+    // Months later: a charming home.
+    {
+        let p = play(&mut game);
+        p.house = home::House::new();
+        let w = &mut p.house.world;
+        for z in 1..10 {
+            for x in 1..14 {
+                w.set_obj(x, z, None);
+            }
+        }
+        let pieces: &[(Furn, u8, i32, i32)] = &[
+            (Furn::Wardrobe, 0, 1, 1),
+            (Furn::CanopyBed, 0, 2, 1),
+            (Furn::FloorLamp, 0, 4, 1),
+            (Furn::Bookshelf, 0, 5, 1),
+            (Furn::Clock, 0, 6, 1),
+            (Furn::Fireplace, 0, 8, 1),
+            (Furn::Range, 0, 10, 1),
+            (Furn::Counter, 0, 12, 1),
+            (Furn::Icebox, 0, 13, 1),
+            (Furn::RoundTable, 0, 7, 5),
+            (Furn::Chair, 1, 6, 5),
+            (Furn::Chair, 3, 8, 5),
+            (Furn::Sofa, 0, 2, 4),
+            (Furn::Armchair, 1, 1, 6),
+            (Furn::Globe, 0, 4, 4),
+            (Furn::Piano, 0, 2, 8),
+            (Furn::FishTank, 0, 10, 4),
+            (Furn::FishBowl, 0, 12, 4),
+            (Furn::Telescope, 0, 13, 6),
+            (Furn::Fern, 0, 13, 8),
+            (Furn::Cactus, 0, 1, 8),
+            (Furn::Vase, 0, 9, 8),
+            (Furn::Plush, 0, 11, 8),
+            (Furn::Candelabra, 0, 4, 8),
+        ];
+        for &(f, rot, x, z) in pieces {
+            home::put(w, f, rot, x, z);
+        }
+        let tank = [
+            Item::LilyKoi,
+            Item::GoldenCarp,
+            Item::Bluegill,
+            Item::PrismGuppy,
+            Item::MoonJelly,
+            Item::RainbowTrout,
+        ];
+        if let Some(crate::game::world::Obj::Furniture { fish, .. }) = w.obj_mut(10, 4) {
+            fish.extend(tank);
+        }
+        if let Some(crate::game::world::Obj::Furniture { fish, .. }) = w.obj_mut(12, 4) {
+            fish.extend([Item::SunnyMinnow, Item::BubbleGoby]);
+        }
+        p.house.rugs = vec![
+            Rug {
+                x: 6,
+                z: 4,
+                kind: 0,
+            },
+            Rug {
+                x: 2,
+                z: 5,
+                kind: 2,
+            },
+            Rug {
+                x: 10,
+                z: 6,
+                kind: 3,
+            },
+        ];
+        p.house.art = vec![(7, 3), (12, 2), (1, 0)];
+        p.house.redecorate(5, 0);
+        for it in tank {
+            p.journal.fish.push(it);
+            p.journal.records.push((it, 40));
+        }
+        for it in [
+            Item::SunnyMinnow,
+            Item::BubbleGoby,
+            Item::PondPerch,
+            Item::BrookTrout,
+        ] {
+            p.journal.fish.push(it);
+        }
+        p.stats.caught = 57;
+        p.stats.cooked = 23;
+        p.clock.min = 700.0;
+        p.player.pos = Vec2::new(7.5, 7.6);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        p.toasts.clear();
+    }
+    tick(&mut game, &input, &audio, 3);
+    snap_room(&mut game, &mut r, &input, dir, "h08_a_charming_home");
+    {
+        let p = play(&mut game);
+        p.clock.min = 1310.0;
+    }
+    tick(&mut game, &input, &audio, 3);
+    snap_room(&mut game, &mut r, &input, dir, "h09_cozy_at_night");
+
+    // Carrying an armchair to its new spot.
+    {
+        let p = play(&mut game);
+        p.clock.min = 760.0;
+        p.player.inv.slots[1] = Some(Stack::new(Item::Armchair, 1));
+        p.player.sel = 1;
+        p.player.pos = Vec2::new(6.5, 8.5);
+        p.player.facing = Vec2::new(-1.0, 0.0);
+        p.sel_name_t = 5.0;
+    }
+    tick(&mut game, &input, &audio, 3);
+    snap_room(&mut game, &mut r, &input, dir, "h10_placing_an_armchair");
+
+    // Looking after the fish.
+    {
+        let p = play(&mut game);
+        p.player.inv.slots[1] = Some(Stack::new(Item::CrystalTetra, 2));
+        p.player.inv.slots[2] = Some(Stack::new(Item::SilverDace, 1));
+        p.player.pos = Vec2::new(10.5, 6.5);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        p.menu = Menu::Tank {
+            x: 10,
+            z: 4,
+            cursor: 1,
+        };
+    }
+    snap_room(&mut game, &mut r, &input, dir, "h11_the_fish_tank");
+
+    // Grilling a trout on the copper range.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.player.inv.add(Item::BrookTrout, 2);
+        p.player.inv.add(Item::Garlic, 2);
+        p.player.pos = Vec2::new(10.5, 2.4);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        let k = crate::game::items::RECIPES
+            .iter()
+            .position(|r| r.out == Item::GrilledTrout)
+            .unwrap_or(0);
+        let mut io = mk_io(&input, &audio);
+        p.start_cooking(k, (0, 0, 0), &mut io);
+    }
+    tick(&mut game, &input, &audio, 45);
+    snap_room(&mut game, &mut r, &input, dir, "h12_cooking_at_the_range");
+    tick(&mut game, &input, &audio, 60);
+
+    // The Fishdex.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Journal { tab: 3, sel: 4 };
+    }
+    snap_room(&mut game, &mut r, &input, dir, "h13_fishdex");
+
+    // Wren's shop, stocked for a charming home.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.leave_house();
+        p.clock.min = 720.0;
+        p.money = 12000;
+        p.enter_place(Place::Nook);
+        let (ex, ez) = p.room.as_ref().unwrap().exit;
+        p.player.pos = Vec2::new(ex as f32 + 0.5, ez as f32 - 3.5);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        p.banner = None;
+    }
+    tick(&mut game, &input, &audio, 30);
+    snap_room(&mut game, &mut r, &input, dir, "h14_wrens_cozy_nook");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::shop_at(Place::Nook);
+    }
+    snap_room(&mut game, &mut r, &input, dir, "h15_nook_decor");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.leave_place();
+        p.enter_place(Place::Smithy);
+        // Scrolled down to the fishing rods.
+        let rows = crate::game::shops::rows(p, Some(Place::Smithy), ShopTab::Goods);
+        let at = rows
+            .iter()
+            .position(|(s, _, _)| s.item == Item::BambooRod)
+            .unwrap_or(0);
+        p.menu = Menu::Shop {
+            at: Some(Place::Smithy),
+            tab: ShopTab::Goods,
+            cursor: at,
+            scroll: at.saturating_sub(1),
+        };
+    }
+    snap_room(&mut game, &mut r, &input, dir, "h16_rods_at_the_smithy");
 }

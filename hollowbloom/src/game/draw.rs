@@ -4,6 +4,7 @@ use std::f32::consts::PI;
 
 use glam::{Mat4, Vec2, Vec3};
 
+use super::home::{self, Furn};
 use super::items::{Item, Stack};
 use super::world::{Floor, Obj, World};
 use crate::assets::Assets;
@@ -26,6 +27,8 @@ pub struct Env {
     pub wind: f32,
     /// Where the hero is wading through the grass.
     pub push: Vec2,
+    /// Seconds left of a spin given to the house globe.
+    pub spin: f32,
 }
 
 impl Env {
@@ -76,7 +79,10 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
             if !lit {
                 continue;
             }
-            let base = Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+            let base = match o {
+                Obj::Furniture { f, rot, .. } => home::center(*f, *rot, x, z),
+                _ => Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5),
+            };
             if let Some((hgt, radius, power, warmth)) = o.light() {
                 let flicker = if matches!(o, Obj::Torch | Obj::Campfire) {
                     1.0 + ((env.time * 9.0 + (x * 7 + z * 13) as f32).sin() * 0.06)
@@ -340,6 +346,7 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
         }
         Obj::Sign { .. } => r.mesh(&a.bank, &p.sign, &at, &lit),
         Obj::Chest { .. } => r.mesh(&a.bank, &p.chest, &at, &lit),
+        Obj::Furniture { f, rot, fish } => draw_furniture(r, a, x, z, *f, *rot, fish, env),
         Obj::Lamp => {
             r.mesh(&a.bank, &p.lamp, &at, &lit);
             let cap = Mat4::from_translation(base + Vec3::new(0.0, 0.82, 0.0))
@@ -653,6 +660,146 @@ fn lit_opts(base: Vec3) -> DrawOpts {
     DrawOpts::at(base)
 }
 
+/// A piece of furniture in the house, with whatever moves on it: flames, a swinging
+/// pendulum, a spinning globe, fish swimming in their tank.
+#[allow(clippy::too_many_arguments)]
+fn draw_furniture(
+    r: &mut Renderer,
+    a: &Assets,
+    x: i32,
+    z: i32,
+    f: Furn,
+    rot: u8,
+    fish: &[Item],
+    env: &Env,
+) {
+    let h = &a.home;
+    let c = home::center(f, rot, x, z);
+    let turn = Mat4::from_rotation_y(rot as f32 * PI * 0.5);
+    let at = Mat4::from_translation(c) * turn;
+    // Local points on the piece, out in the room.
+    let here = |p: Vec3| c + turn.transform_vector3(p);
+    let lit = DrawOpts::at(c + Vec3::Y * 0.6);
+    let glow = DrawOpts::default().with_mode(Mode::Unlit);
+    r.mesh(&a.bank, &h.furn[f as usize], &at, &lit);
+    let seed = x * 7 + z * 3;
+    match f {
+        Furn::FloorLamp => r.mesh(&a.bank, &h.lamp_shade, &at, &glow),
+        Furn::Candelabra => {
+            for (lx, ly) in [(-0.22f32, 1.1f32), (0.0, 1.18), (0.22, 1.1)] {
+                flames(
+                    r,
+                    a,
+                    here(Vec3::new(lx, ly, 0.0)),
+                    0.16,
+                    env.time,
+                    seed + (lx * 9.0) as i32,
+                );
+            }
+        }
+        Furn::Fireplace => {
+            flames(
+                r,
+                a,
+                here(Vec3::new(-0.12, 0.08, -0.24)),
+                0.5,
+                env.time,
+                seed,
+            );
+            flames(
+                r,
+                a,
+                here(Vec3::new(0.14, 0.06, -0.2)),
+                0.42,
+                env.time,
+                seed + 2,
+            );
+            if (env.time * 3.0 + x as f32).sin() > 0.7 {
+                let k = (env.time * 1.7).fract();
+                r.point(here(Vec3::new(0.0, 0.3 + k * 0.6, -0.26)), 1, GOLD);
+            }
+        }
+        Furn::Stove | Furn::Range => {
+            // Embers flicker behind the oven door.
+            let doors: &[f32] = if f == Furn::Range {
+                &[-0.45, 0.45]
+            } else {
+                &[0.0]
+            };
+            for (i, dx) in doors.iter().enumerate() {
+                if (env.time * 7.0 + i as f32 * 2.0 + x as f32).sin() > 0.2 {
+                    r.point(here(Vec3::new(*dx, 0.32, 0.38)), 1, GOLD);
+                }
+            }
+        }
+        Furn::Clock => {
+            let swing = (env.time * PI).sin() * 0.28;
+            let m = Mat4::from_translation(here(Vec3::new(0.0, 1.26, 0.145)))
+                * turn
+                * Mat4::from_rotation_z(swing);
+            r.mesh(&a.bank, &h.pendulum, &m, &lit);
+        }
+        Furn::Globe => {
+            // Idles slowly; a spin whirls it round twice and settles exactly where it began.
+            let k = 4.0 * PI / 3.125;
+            let ang = env.time * 0.3 + k * (6.25 - env.spin * env.spin) * 0.5;
+            let m = Mat4::from_translation(here(Vec3::new(0.0, 0.66, 0.0)))
+                * turn
+                * Mat4::from_rotation_z(0.4)
+                * Mat4::from_rotation_y(ang);
+            r.mesh(&a.bank, &h.globe, &m, &lit);
+        }
+        Furn::FishTank | Furn::FishBowl => {
+            let tank = f == Furn::FishTank;
+            let (span, y0, dy, depth, size) = if tank {
+                (0.6f32, 0.64f32, 0.13f32, 0.16f32, 0.3f32)
+            } else {
+                (0.1, 0.6, 0.06, 0.05, 0.2)
+            };
+            let along = turn.transform_vector3(Vec3::X);
+            for (i, item) in fish.iter().enumerate() {
+                let fi = i as f32;
+                let speed = 0.5 + (i % 3) as f32 * 0.17;
+                let ph = env.time * speed + fi * 1.9 + seed as f32;
+                let lx = ph.sin() * span;
+                let dir = ph.cos();
+                let ly = y0 + (i % 3) as f32 * dy + (env.time * 1.3 + fi).sin() * 0.02;
+                let lz = depth * (((i * 5) % 4) as f32 / 1.5 - 1.0);
+                let id = a.icon(item.def().icon);
+                // Icons face right; turn the card round when swimming the other way.
+                let flip = along.dot(r.cam.right) * dir < 0.0;
+                let uv = if flip {
+                    UvRect::new(15.96, 0.0, 0.04, 16.0)
+                } else {
+                    full_uv(a, id)
+                };
+                r.billboard(
+                    a.tex(id),
+                    uv,
+                    here(Vec3::new(lx, ly, lz)),
+                    Vec2::splat(size),
+                    &DrawOpts::at(c + Vec3::Y * 0.8).with_glow(1.0),
+                );
+                // Now and then a bubble rises from a fish.
+                let b = (env.time * 0.6 + fi * 0.37).fract();
+                if b < 0.5 {
+                    let top = if tank { 1.08 } else { 0.8 };
+                    let by = ly + size * 0.5 + b * (top - ly - size * 0.5) * 2.0;
+                    r.point(here(Vec3::new(lx + 0.05, by.min(top), lz)), 1, WHITE);
+                }
+            }
+            let (water, glass) = if tank {
+                (&h.tank_water, &h.tank_glass)
+            } else {
+                (&h.bowl_water, &h.bowl_glass)
+            };
+            r.mesh(&a.bank, water, &at, &lit.glass(0.2).with_glow(0.8));
+            r.mesh(&a.bank, glass, &at, &lit.glass(0.55).with_glow(1.0));
+        }
+        _ => {}
+    }
+}
+
 /// What a shop's shelves hold, by the shop's goods.
 pub fn shelf_goods(var: u8) -> &'static [&'static str] {
     match var {
@@ -870,6 +1017,8 @@ pub enum Swing {
     Cast,
     /// A staff raised high and brought down.
     Raise,
+    /// Holding a fishing rod out, raised by the progress (0 level, 1 high over the shoulder).
+    Fish,
 }
 
 /// What a humanoid is wearing and holding.
@@ -977,6 +1126,7 @@ fn draw_body(
             let k = ease_out(t);
             (-3.0 + k * 1.9, 0.0, 0.0)
         }
+        Some((t, Swing::Fish)) => (-1.5 - t * 1.5, 0.0, 0.0),
         None if held.is_some() => (-0.95 + sw * 0.15, 0.1, 0.0),
         None => (sw * 0.6, 0.12, 0.0),
     };

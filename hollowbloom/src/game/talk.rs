@@ -5,6 +5,7 @@
 use glam::{Vec2, Vec3};
 
 use super::Io;
+use super::fish::{self, FISH};
 use super::folk::{FOLK, Taste, VILLAGERS, Villager};
 use super::gear::{Group, Rarity};
 use super::items::{Item, Kind, Stack};
@@ -145,6 +146,42 @@ fn presents(v: Villager) -> [Reward; 3] {
     }
 }
 
+/// What folk say about a charming home.
+const HOUSE_TALK: [&str; 6] = [
+    "I walked past your farmhouse last night. The windows were glowing. So cozy!",
+    "Wren says your house is the most charming in the valley. High praise!",
+    "Is it true you have fish in a tank? Can I visit them sometime?",
+    "Your home always smells of cooking. Makes me hungry just thinking about it.",
+    "You've got taste, farmer. Real taste.",
+    "Pip won't stop talking about your house. Something about 'Captain'?",
+];
+
+/// Something small folk bring a charming neighbour.
+fn charm_gift(v: Villager) -> Item {
+    match v {
+        Villager::Thistle => Item::FreshBread,
+        Villager::Rowan => Item::Feather,
+        Villager::Quill => Item::ManaTonic,
+        Villager::Hilde => Item::HealingTonic,
+        Villager::Garrick => Item::Bait,
+        Villager::Nix => Item::Sprinkler,
+        Villager::Opal => Item::Topaz,
+        Villager::Wren => Item::PottedFern,
+        Villager::Posy => Item::TomatoSeeds,
+        Villager::Mabel => Item::BlueberryMuffin,
+        Villager::Barley => Item::FishAndChips,
+        Villager::Fern => Item::PlumPudding,
+        Villager::Pip => Item::GlassMarble,
+        Villager::Juniper => Item::GlowcapSpores,
+        Villager::Bramble => Item::Popcorn,
+        Villager::Toby => Item::Feather,
+        Villager::Clank => Item::HealingTonic,
+        Villager::Mira => Item::MintTea,
+        Villager::Olive => Item::Rose,
+        Villager::Hazel => Item::SmallManaPotion,
+    }
+}
+
 const PRESENT_LINES: [&str; 3] = [
     "Oh, before I forget - I saw this and thought of you. Take it!",
     "You mean a lot to me, you know. I want you to have this.",
@@ -209,7 +246,24 @@ impl Play {
         }
         if !self.friends.talked[vi] {
             self.friends.talked[vi] = true;
-            let up = self.friends.add(who, 20);
+            // Folk who've heard about your lovely home sometimes bring a little something.
+            let charm = self.charisma();
+            if charm >= 20 && self.rng.chance(charm.min(80) as f32 / 320.0) {
+                let gift = charm_gift(who);
+                self.give(Stack::new(gift, 1));
+                self.toast_colored(
+                    format!("{} gave you {}!", who.name(), gift.def().name),
+                    Some(gift),
+                    0,
+                    PINK,
+                );
+                text = format!(
+                    "Everyone's talking about your lovely home! I brought you a little \
+                     something. {text}"
+                );
+            }
+            let n = self.charm_friend(20);
+            let up = self.friends.add(who, n);
             let at = self.folk[i].world_pos() + Vec3::Y * 1.2;
             self.fx.popup(at, "♥", PINK);
             if up {
@@ -240,6 +294,11 @@ impl Play {
     fn chat_line(&self, who: Villager) -> String {
         let d = who.def();
         let k = hash2(self.clock.day as i32, (self.time * 3.0) as i32, who as u32) as usize;
+        // A charming home gets talked about.
+        let charm = self.charisma();
+        if charm >= 30 && k % 5 == 1 {
+            return HOUSE_TALK[(k / 5) % HOUSE_TALK.len()].to_string();
+        }
         if self.friends.hearts(who) >= 6 && k % 3 == 0 {
             d.close[k % d.close.len()].to_string()
         } else {
@@ -307,7 +366,8 @@ impl Play {
                 self.player.inv.take_one(sel);
                 self.friends.gifted[who as usize] = true;
                 let taste = who.taste(s.item);
-                let up = self.friends.add(who, taste.points());
+                let n = self.charm_friend(taste.points());
+                let up = self.friends.add(who, n);
                 match taste {
                     Taste::Love | Taste::Like => io.audio.play(Sfx::Heart),
                     Taste::Hate => io.audio.play(Sfx::Denied),
@@ -842,12 +902,35 @@ impl Play {
             }
         }
         if input.pressed(Action::NextSlot) || input.pressed(Action::Inventory) {
-            tab = (tab + 1) % 3;
+            tab = (tab + 1) % 4;
             sel = 0;
         }
         if input.pressed(Action::PrevSlot) {
-            tab = (tab + 2) % 3;
+            tab = (tab + 3) % 4;
             sel = 0;
+        }
+        if tab == 3 {
+            let n = FISH.len();
+            if input.pressed_repeat(Action::Right) {
+                sel = (sel + 1) % n;
+            }
+            if input.pressed_repeat(Action::Left) {
+                sel = (sel + n - 1) % n;
+            }
+            if input.pressed_repeat(Action::Down) {
+                sel = (sel + DEX_COLS).min(n - 1);
+            }
+            if input.pressed_repeat(Action::Up) {
+                sel = sel.saturating_sub(DEX_COLS);
+            }
+            if input.mouse_moved {
+                for i in 0..n {
+                    let (x, y) = dex_cell(&l, i);
+                    if inside(input.mouse, x, y, 18, 18) {
+                        sel = i;
+                    }
+                }
+            }
         }
         if tab == 0 {
             let drop_btn = (l.px + l.pw - 58, l.py + l.ph - 26, 50, 11);
@@ -881,7 +964,13 @@ impl Play {
         let (w, h) = (c.w(), c.h());
         let l = super::menus::panel_layout(w, h);
         c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
-        tabs(c, &l, &["Quests", "Friends", "Records"], tab, &JOURNAL_TABS);
+        tabs(
+            c,
+            &l,
+            &["Quests", "Friends", "Records", "Fishdex"],
+            tab,
+            &JOURNAL_TABS,
+        );
         match tab {
             0 => {
                 if self.quests.is_empty() {
@@ -1000,6 +1089,7 @@ impl Play {
                 }
                 let _ = (FOLK, a);
             }
+            3 => self.draw_fishdex(c, a, &l, sel),
             _ => {
                 let j = &self.journal;
                 let dishes = super::items::ALL_ITEMS
@@ -1025,7 +1115,8 @@ impl Play {
                 line(c, "Crop almanac".into(), j.crops.len(), 38);
                 line(c, "Curio cabinet".into(), j.curios.len(), 19);
                 line(c, "Cookbook".into(), j.dishes.len(), dishes);
-                line(c, "Creature codex".into(), j.foes.len(), 10);
+                line(c, "Creature codex".into(), j.foes.len(), 13);
+                line(c, "Fishdex".into(), j.fish.len(), FISH.len());
                 let g = j.guardians.iter().filter(|d| **d <= 60).count();
                 line(c, "Guardians beaten".into(), g, 6);
                 line(c, "Story quests".into(), self.done.len(), QUESTS.len());
@@ -1036,7 +1127,15 @@ impl Play {
                     &format!("Lantern Guild: {rank} ({} marks)", self.marks),
                     TEAL,
                 );
-                y += 16;
+                y += 11;
+                let ch = self.charisma();
+                c.text(
+                    l.px + 10,
+                    y + 2,
+                    &format!("Home: charisma {ch} ({})", super::home::charm_title(ch)),
+                    PLUM,
+                );
+                y += 14;
                 c.text(l.px + 10, y, "Bramblewick", RUST);
                 y += 11;
                 for (i, bit) in [
@@ -1062,6 +1161,61 @@ impl Play {
                 }
             }
         }
+    }
+
+    /// Every fish there is: the ones you've caught in colour, the rest as shadows, and the
+    /// details of the one picked.
+    fn draw_fishdex(&self, c: &mut Canvas, a: &Assets, l: &super::menus::Layout, sel: usize) {
+        let j = &self.journal;
+        for (i, d) in FISH.iter().enumerate() {
+            let (x, y) = dex_cell(l, i);
+            let caught = j.fish.contains(&d.item);
+            c.panel(x, y, 18, 18, Style::Inset);
+            let icon = a.tex(a.icon(d.item.def().icon));
+            if caught {
+                c.sprite(icon, x + 1, y + 1);
+            } else {
+                c.sprite_map(icon, x + 1, y + 1, |_| ROSEWOOD);
+            }
+            if i == sel {
+                c.frame(x - 1, y - 1, 20, 20, RUST);
+            }
+        }
+        let rows = FISH.len().div_ceil(DEX_COLS) as i32;
+        let x = l.px + 10;
+        let mut y = l.py + 24 + rows * 20;
+        let Some(d) = FISH.get(sel) else { return };
+        let caught = j.fish.contains(&d.item);
+        let ink = [SHADOW, GREEN, BLUE, RUST][d.rarity.min(3) as usize];
+        let name = if caught { d.item.def().name } else { "???" };
+        c.text(x, y, name, INK);
+        let rare = fish::rarity_name(d.rarity);
+        let rw = c.text_width(rare);
+        c.text(l.px + l.pw - 10 - rw, y, rare, ink);
+        y += 11;
+        let waters: Vec<&str> = d.water.iter().map(|w| w.short()).collect();
+        c.text(x, y, &format!("Lives in: {}", waters.join(", ")), TEAL);
+        y += 10;
+        c.text(x, y, d.when.label(), ROSEWOOD);
+        y += 10;
+        let record = j.records.iter().find(|(i, _)| *i == d.item).map(|r| r.1);
+        let t = match record {
+            Some(cm) => format!("Your biggest: {cm} cm  (up to {} cm)", d.size.1),
+            None => "Not caught yet.".to_string(),
+        };
+        c.text(x, y, &t, if record.is_some() { INK } else { KHAKI });
+        c.text(
+            x,
+            l.py + l.ph - 14,
+            &format!(
+                "{}/{} kinds   {} caught   {} cooked",
+                j.fish.len(),
+                FISH.len(),
+                self.stats.caught,
+                self.stats.cooked
+            ),
+            SHADOW,
+        );
     }
 
     // --------------------------------------------------------------------------------------
@@ -1153,7 +1307,18 @@ enum BoardRow {
     Notice(super::quests::Request),
 }
 
-pub const JOURNAL_TABS: [i32; 3] = [44, 46, 48];
+pub const JOURNAL_TABS: [i32; 4] = [44, 46, 48, 48];
+
+/// Fish per row in the Fishdex.
+const DEX_COLS: usize = 11;
+
+/// Where a fish's box is in the Fishdex.
+fn dex_cell(l: &super::menus::Layout, i: usize) -> (i32, i32) {
+    (
+        l.px + 8 + (i % DEX_COLS) as i32 * 20,
+        l.py + 21 + (i / DEX_COLS) as i32 * 20,
+    )
+}
 
 pub const PORTRAIT: i32 = 44;
 

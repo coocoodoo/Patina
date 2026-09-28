@@ -85,6 +85,8 @@ fn class_weight(c: Class) -> f32 {
         Class::Legs | Class::Feet => 0.9,
         Class::Hoe | Class::Can | Class::Sickle => 0.3,
         Class::Axe | Class::Pickaxe => 0.35,
+        // Rods come from the water folk and treasure chests (see `random_rod`).
+        Class::Rod => 0.0,
     }
 }
 
@@ -94,7 +96,7 @@ pub fn pick_base(depth: u32, group: Option<Group>, rng: &mut Rng) -> Item {
     let mut items = Vec::new();
     let mut weights = Vec::new();
     for (item, b) in gear_bases() {
-        if group.is_some_and(|g| b.class.group() != g) {
+        if group.is_some_and(|g| b.class.group() != g) || b.class == Class::Rod {
             continue;
         }
         let lvl = b.lvl as f32;
@@ -120,6 +122,52 @@ pub fn random_gear(depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
     let item = pick_base(depth, None, rng);
     let level = (depth as i32 + rng.range(-2, 3)).max(1) as u16;
     roll_gear(item, level, f.luck + depth as f32 * 0.004, rng)
+}
+
+/// A fishing rod from the Hollow: mostly the colourful kinds you can't buy, with better
+/// rolls than anything on Garrick's shelf.
+pub fn random_rod(depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
+    let d = depth.max(1) as f32;
+    let mut items = Vec::new();
+    let mut weights = Vec::new();
+    for (item, b) in gear_bases() {
+        if b.class != Class::Rod || b.lvl as f32 > d + 6.0 {
+            continue;
+        }
+        let shop = matches!(item, Item::BambooRod | Item::WillowRod | Item::OakRod);
+        let gap = (d - b.lvl as f32).max(0.0) / 10.0;
+        items.push(item);
+        weights.push(if shop { 0.3 } else { 1.0 } / (1.0 + gap * gap));
+    }
+    let item = items[rng.weighted(&weights)];
+    let level = (depth as i32 + rng.range(-1, 3)).max(1) as u16;
+    roll_gear(item, level, f.luck + 0.35 + depth as f32 * 0.004, rng)
+}
+
+/// A chest fished up from the bottom: coins, and often something shiny.
+pub fn sunken_treasure(depth: u32, lava: bool, f: Fortune, rng: &mut Rng) -> Vec<Stack> {
+    let d = depth.max(1);
+    let mut out = Vec::new();
+    let c = (12.0 + d as f32 * 3.5) * rng.range_f(0.7, 1.5) * f.greed;
+    out.extend(coin_stacks(c.round() as u64));
+    if rng.chance(0.5) {
+        out.push(Stack::new(random_gem(d, rng), 1));
+    }
+    if rng.chance(0.25 + f.luck * 0.1) {
+        out.push(Stack::new(random_relic(d, rng), 1));
+    }
+    if rng.chance(0.14 + f.luck * 0.1) {
+        out.push(random_rod(d, f, rng));
+    }
+    if rng.chance(0.12) {
+        out.push(random_scroll(d, f, rng));
+    }
+    if lava {
+        out.push(Stack::new(Item::EmberOre, 2 + rng.below(3) as u16));
+    } else if rng.chance(0.4) {
+        out.push(Stack::new(Item::Bait, 3 + rng.below(4) as u16));
+    }
+    out
 }
 
 /// A random scroll for a depth.
@@ -242,6 +290,26 @@ pub fn foe_loot(
             roll(o, rng, Item::Ectoplasm, 0.5, 1, 1);
             roll(o, rng, Item::WispDust, 0.2, 1, 1);
         }
+        Foe::Frog => {
+            roll(o, rng, Item::Bait, 0.6, 2, 4);
+            roll(o, rng, Item::Seaweed, 0.25, 1, 2);
+            roll(o, rng, Item::Crayfish, 0.15, 1, 1);
+        }
+        Foe::Jelly => {
+            roll(o, rng, Item::SlimeGel, 0.45, 1, 2);
+            roll(o, rng, Item::Seaweed, 0.3, 1, 2);
+            roll(o, rng, Item::MoonJelly, 0.08, 1, 1);
+        }
+        Foe::Puffer => {
+            roll(o, rng, Item::Bait, 0.35, 1, 3);
+            roll(o, rng, Item::GeodePuffer, 0.1, 1, 1);
+            roll(o, rng, Item::Crystal, 0.2, 1, 1);
+        }
+    }
+    // The water folk hoard fishing rods, better ones than any shop sells.
+    let watery = matches!(foe, Foe::Crab | Foe::Frog | Foe::Jelly | Foe::Puffer);
+    if watery && rng.chance(if boss { 1.0 } else { 0.1 + f.luck * 0.1 }) {
+        out.push(random_rod(depth + if boss { 3 } else { 0 }, f, rng));
     }
     let d = depth.max(1);
     // Coins: copper up top, silver deeper, gold from guardians.
@@ -338,6 +406,17 @@ pub fn chest_loot(depth: u32, biome: usize, f: Fortune, rng: &mut Rng) -> Vec<St
     }
     if rng.chance(0.25) {
         out.push(Stack::new(Item::Feather, 1));
+    }
+    // Delvers who drowned their sorrows left their rods behind.
+    if rng.chance(0.22 + f.luck * 0.1) {
+        out.push(random_rod(
+            d + 1,
+            Fortune {
+                luck: f.luck + 0.2,
+                ..f
+            },
+            rng,
+        ));
     }
     // A potion or two, bigger the deeper you go.
     if rng.chance(0.5) {

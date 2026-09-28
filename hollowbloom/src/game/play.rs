@@ -73,6 +73,10 @@ pub enum Trans {
     Enter(Place),
     /// Back out into the street.
     Leave,
+    /// In or out of the farmhouse.
+    House {
+        enter: bool,
+    },
 }
 
 pub struct Fade {
@@ -110,6 +114,17 @@ pub struct Play {
     pub town: World,
     /// The inside of the building you're in.
     pub room: Option<Room>,
+    /// Inside the farmhouse: furniture, rugs, pictures, wallpaper.
+    pub house: super::home::House,
+    /// A line in the water.
+    pub fishing: Option<super::fish::Fishing>,
+    /// A dish on the stove.
+    pub cooking: Option<super::home::Cooking>,
+    /// The globe spinning, the day the fire last warmed you and the day you last saw a
+    /// shooting star.
+    pub house_spin: f32,
+    pub warmed: u32,
+    pub stargazed: u32,
     /// Town projects finished (bits from `town`).
     pub restored: u32,
     pub bus: Option<Bus>,
@@ -200,6 +215,10 @@ pub struct Stats {
     pub casts: u32,
     #[serde(default)]
     pub brewed: u32,
+    #[serde(default)]
+    pub caught: u32,
+    #[serde(default)]
+    pub cooked: u32,
 }
 
 impl Play {
@@ -212,6 +231,12 @@ impl Play {
             farm,
             town: town::generate(0),
             room: None,
+            house: super::home::House::new(),
+            fishing: None,
+            cooking: None,
+            house_spin: 0.0,
+            warmed: 0,
+            stargazed: 0,
             restored: 0,
             bus: None,
             door_push: 0.0,
@@ -307,7 +332,14 @@ impl Play {
     }
 
     pub fn world(&self) -> &World {
-        area_world(self.area, &self.farm, &self.town, &self.level, &self.room)
+        area_world(
+            self.area,
+            &self.farm,
+            &self.town,
+            &self.house.world,
+            &self.level,
+            &self.room,
+        )
     }
 
     pub fn world_mut(&mut self) -> &mut World {
@@ -315,6 +347,7 @@ impl Play {
             self.area,
             &mut self.farm,
             &mut self.town,
+            &mut self.house.world,
             &mut self.level,
             &mut self.room,
         )
@@ -376,6 +409,20 @@ impl Play {
 
     pub fn env(&self) -> Env {
         match self.area {
+            Area::Home => {
+                // Daylight through the windows, lamps and the fire after dark.
+                let night = self.sky_night();
+                Env {
+                    ambient: 0.84 - night * 0.3,
+                    warmth: 4.8 + night * 1.2,
+                    clear: INK,
+                    time: self.time,
+                    night: 1.0,
+                    wind: 0.0,
+                    push: self.player.pos,
+                    spin: self.house_spin,
+                }
+            }
             Area::Inside(_) => Env {
                 ambient: 0.8,
                 warmth: 4.6,
@@ -384,6 +431,7 @@ impl Play {
                 night: 1.0,
                 wind: 0.0,
                 push: self.player.pos,
+                spin: 0.0,
             },
             Area::Farm | Area::Town => {
                 const KEYS: [(f32, f32, f32); 9] = [
@@ -426,6 +474,7 @@ impl Play {
                     // Blustery in the rain, calmer at night.
                     wind: if self.rain { 1.6 } else { 1.0 - night * 0.35 },
                     push: self.player.pos,
+                    spin: 0.0,
                 }
             }
             Area::Hollow { depth } => {
@@ -438,6 +487,7 @@ impl Play {
                     night: 1.0,
                     wind: 0.0,
                     push: self.player.pos,
+                    spin: 0.0,
                 }
             }
         }
@@ -455,6 +505,13 @@ impl Play {
             Area::Inside(place) => {
                 let tr = [0, -3, 2, -2, -5, 3, 4, 1, 5, -1, 0, 6][place as usize];
                 (Some(Song::Shop), tr, 1.0)
+            }
+            Area::Home => {
+                if self.clock.min > 1170.0 {
+                    (Some(Song::Night), -2, 0.9)
+                } else {
+                    (Some(Song::Haven), 2, 0.95)
+                }
             }
             Area::Farm => {
                 if self.clock.min > 1170.0 {
@@ -628,13 +685,14 @@ impl Play {
         p.hp = p.max_hp();
         p.mana = p.max_mana() as f32;
         p.water = p.can_capacity();
-        let (dx, dz) = MARKS.door;
-        p.pos = Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);
         p.facing = Vec2::new(0.0, 1.0);
         p.act = None;
+        self.player.pos = self.bedside();
         self.level = None;
         self.room = None;
         self.bus = None;
+        self.fishing = None;
+        self.cooking = None;
         self.foes.clear();
         self.shots.clear();
         self.bolts.clear();
@@ -642,7 +700,7 @@ impl Play {
         self.zaps.clear();
         self.drops.clear();
         p_ward_off(&mut self.player);
-        self.area = Area::Farm;
+        self.area = Area::Home;
         self.cam_pos = self.player.world_pos();
         self.last_summary = Some(super::menus::Summary {
             day: self.clock.day,
@@ -698,8 +756,10 @@ impl Play {
                     Trans::Bus { to_town } => self.ride_bus(to_town),
                     Trans::Enter(place) => self.enter_place(place),
                     Trans::Leave => self.leave_place(),
+                    Trans::House { enter: true } => self.enter_house(),
+                    Trans::House { enter: false } => self.leave_house(),
                 }
-                if !matches!(action, Trans::Enter(_) | Trans::Leave) {
+                if !matches!(action, Trans::Enter(_) | Trans::Leave | Trans::House { .. }) {
                     io.audio.play(Sfx::Stairs);
                 }
             }
@@ -773,8 +833,18 @@ impl Play {
             if self.last_hour >= 0 && self.in_town() && self.restored & super::town::CLOCK != 0 {
                 io.audio.play_at(Sfx::Bell, 0.5, 1.0);
             }
+            // Your own grandfather clock chimes too.
+            let clock = self
+                .house
+                .pieces()
+                .iter()
+                .any(|p| p.2 == super::home::Furn::Clock);
+            if self.last_hour >= 0 && self.area == Area::Home && clock {
+                io.audio.play_at(Sfx::Bell, 0.3, 1.3);
+            }
             self.last_hour = hour;
         }
+        self.house_spin = (self.house_spin - dt).max(0.0);
         if self.clock.min >= DAY_END {
             self.clock.min = DAY_END;
             self.toast("You're exhausted... you collapse.", None, 0);
@@ -806,7 +876,11 @@ impl Play {
         }
 
         self.player.refresh();
-        self.update_player(io);
+        if self.cooking.is_some() {
+            self.update_cooking(io);
+        } else {
+            self.update_player(io);
+        }
         self.update_doors(io);
         self.update_folk(dt, true);
         self.update_foes(io);
@@ -889,7 +963,7 @@ impl Play {
                 t.x = t.x.clamp(10.5, w - 10.5);
                 t.z = t.z.clamp(7.0, h - 3.5);
             }
-            Area::Inside(_) => {
+            Area::Inside(_) | Area::Home => {
                 // Rooms are small dioramas: the camera stands back and leans a little
                 // towards you.
                 let c = self.room_center();
@@ -897,7 +971,7 @@ impl Play {
             }
             _ => {}
         }
-        self.cam.dist = if matches!(self.area, Area::Inside(_)) {
+        self.cam.dist = if matches!(self.area, Area::Inside(_) | Area::Home) {
             17.5
         } else {
             15.5
@@ -921,8 +995,14 @@ impl Play {
         p.eat_t = (p.eat_t - dt).max(0.0);
         let mut mv = input.move_axis();
         let busy = p.act.is_some();
+        let still = self.fishing.as_ref().is_some_and(|f| f.holds_still());
+        if still {
+            mv = Vec2::ZERO;
+        }
         // Dodge roll.
-        if input.pressed(Action::Dodge) && p.dodge_cd <= 0.0 && p.dodge <= 0.0 {
+        if input.pressed(Action::Dodge) && p.dodge_cd <= 0.0 && p.dodge <= 0.0 && !still {
+            self.fishing = None;
+            let p = &mut self.player;
             let dir = if mv.length_squared() > 0.0 {
                 mv
             } else {
@@ -936,7 +1016,14 @@ impl Play {
             self.fx
                 .burst(p.world_pos() + Vec3::Y * 0.05, 6, &[SAND, WHITE], 1.5, 0.8);
         }
-        let world = area_world(self.area, &self.farm, &self.town, &self.level, &self.room);
+        let world = area_world(
+            self.area,
+            &self.farm,
+            &self.town,
+            &self.house.world,
+            &self.level,
+            &self.room,
+        );
         let p = &mut self.player;
         if p.dodge > 0.0 {
             p.dodge -= dt;
@@ -1000,6 +1087,15 @@ impl Play {
         }
         // Aim at the tile in front (or under the mouse) before acting on it.
         self.update_target(io);
+        // The rod has a rhythm of its own: winding up, waiting, reeling.
+        if self.update_fishing(io) {
+            return;
+        }
+        // Turning the next piece of furniture before it goes down.
+        if self.area == Area::Home && input.key_pressed(KeyCode::KeyT) {
+            self.house.turn = (self.house.turn + 1) % 4;
+            io.audio.play_at(Sfx::UiMove, 0.6, 1.2);
+        }
         // Start actions.
         let p = &self.player;
         if p.act.is_none() && p.dodge <= 0.0 {
@@ -1064,6 +1160,9 @@ impl Play {
     }
 
     fn can_act_on(&self, (x, z): (i32, i32)) -> bool {
+        if self.area == Area::Home {
+            return self.house_act_ok(x, z);
+        }
         if self.in_town() {
             return false;
         }
@@ -1131,6 +1230,15 @@ impl Play {
     }
 
     fn can_place(&self, pl: Placeable, x: i32, z: i32) -> bool {
+        if self.area == Area::Home {
+            return self.house_target_ok(pl, x, z);
+        }
+        if matches!(
+            pl,
+            Placeable::Furniture(_) | Placeable::Rug(_) | Placeable::WallArt(_)
+        ) {
+            return false;
+        }
         let w = self.world();
         if !w.inside(x, z) || w.wall(x, z) != Wall::None {
             return false;
@@ -1198,7 +1306,11 @@ impl Play {
             Obj::Fountain { .. } => "Make a wish",
             Obj::WishTree { .. } => "Touch the Wishing Tree",
             Obj::Well => "Peek in",
-            Obj::House => "Sleep",
+            Obj::House => "Go inside",
+            // Plain decor has nothing to do with E (J picks it up; the HUD says so).
+            Obj::Furniture { f, .. } if f.def().use_ == super::home::Use::Nothing => return None,
+            Obj::Furniture { f, .. } if self.area == Area::Home => super::home::use_hint(*f),
+            Obj::Furniture { .. } => "Admire",
             Obj::Bin => "Ship items",
             Obj::Hollow => "Enter the Hollow",
             Obj::Stall => "Shop",
@@ -1221,10 +1333,15 @@ impl Play {
     // --------------------------------------------------------------------------------------
 
     fn use_held(&mut self, io: &mut Io) {
+        let tile = self.target.unwrap_or(self.player.tile());
+        if self.area == Area::Home {
+            // Empty hands can still pick things up about the house.
+            self.house_use(tile, true, io);
+            return;
+        }
         let Some(item) = self.player.held() else {
             return;
         };
-        let tile = self.target.unwrap_or(self.player.tile());
         let dir = self.player.facing;
         let kind = item.class().and_then(ActKind::for_class);
         let Some(kind) = kind else {
@@ -1274,7 +1391,7 @@ impl Play {
     }
 
     /// Non-tool items: plant, place, eat, special.
-    fn use_item(&mut self, item: Item, (x, z): (i32, i32), io: &mut Io) {
+    pub(crate) fn use_item(&mut self, item: Item, (x, z): (i32, i32), io: &mut Io) {
         let sel = self.player.sel;
         match item.def().kind {
             Kind::Seed(crop) => {
@@ -1302,6 +1419,15 @@ impl Play {
                 }
             }
             Kind::Place(pl) => {
+                if matches!(
+                    pl,
+                    Placeable::Furniture(_) | Placeable::Rug(_) | Placeable::WallArt(_)
+                ) && self.area != Area::Home
+                {
+                    self.toast("That goes inside your house.", None, 0);
+                    io.audio.play(Sfx::Denied);
+                    return;
+                }
                 if !self.can_place(pl, x, z) {
                     io.audio.play(Sfx::Denied);
                     if self.area != Area::Farm
@@ -1336,6 +1462,7 @@ impl Play {
                     Placeable::FlowerPot => w.set_obj(x, z, Some(Obj::FlowerPot { var: 0 })),
                     Placeable::Bench => w.set_obj(x, z, Some(Obj::Bench)),
                     Placeable::EnchantTable => w.set_obj(x, z, Some(Obj::EnchantTable)),
+                    Placeable::Furniture(_) | Placeable::Rug(_) | Placeable::WallArt(_) => {}
                 }
                 io.audio.play(Sfx::Place);
                 self.fx
@@ -1364,6 +1491,19 @@ impl Play {
             }
             Kind::Scroll(_) => {
                 self.toast("Bind scrolls at an enchanting table.", None, 0);
+            }
+            Kind::Fish => {
+                if self.nag <= 0.0 {
+                    self.nag = 2.0;
+                    self.toast(
+                        "Cook it at your stove, or show it off in a fish tank!",
+                        None,
+                        0,
+                    );
+                }
+            }
+            Kind::Wallpaper(_) | Kind::Flooring(_) => {
+                self.toast("Use it inside your house.", None, 0);
             }
             Kind::Feather => {
                 if let Area::Hollow { .. } = self.area {
@@ -1526,6 +1666,18 @@ impl Play {
             return;
         }
         let Some((tx, tz)) = self.target else { return };
+        // Indoors, a piece in hand goes down before anything nearby gets used.
+        if self.area == Area::Home {
+            let placing = match self.player.held().map(|i| i.def().kind) {
+                Some(Kind::Place(pl)) => self.house_target_ok(pl, tx, tz),
+                Some(Kind::Wallpaper(_) | Kind::Flooring(_)) => true,
+                _ => false,
+            };
+            if placing {
+                self.house_use((tx, tz), false, io);
+                return;
+            }
+        }
         // Check the target tile, then the tile we stand on, then anything adjacent.
         let mut cands = vec![(tx, tz)];
         let (px, pz) = self.player.tile();
@@ -1556,6 +1708,10 @@ impl Play {
             return;
         }
         // Nothing there: use the held item (eat, plant, place).
+        if self.area == Area::Home {
+            self.house_use((tx, tz), false, io);
+            return;
+        }
         if let Some(item) = self.player.held() {
             if item.class().and_then(ActKind::for_class).is_none() {
                 self.use_item(item, (tx, tz), io);
@@ -1570,13 +1726,19 @@ impl Play {
         };
         match obj {
             Obj::House => {
-                self.menu = Menu::dialog_choice(
-                    "Your cozy bed is waiting. Go to sleep and end the day?",
-                    vec![
-                        ("Sleep", super::menus::Choice::Sleep),
-                        ("Not yet", super::menus::Choice::Close),
-                    ],
-                );
+                self.go_indoors(io);
+                return true;
+            }
+            Obj::Furniture { .. } if self.area == Area::Home => {
+                return self.use_furniture(ax, az, io);
+            }
+            Obj::Furniture { .. } => {
+                // A piece on display in Wren's shop.
+                if self.nag <= 0.0 {
+                    self.nag = 1.5;
+                    self.toast("On display - Wren sells these at the counter.", None, 0);
+                }
+                return true;
             }
             Obj::Bin => self.menu = Menu::Ship { cursor: 0 },
             Obj::Stall => {
@@ -2594,7 +2756,14 @@ impl Play {
 
     fn update_drops(&mut self, io: &mut Io) {
         let dt = io.dt;
-        let world = area_world(self.area, &self.farm, &self.town, &self.level, &self.room);
+        let world = area_world(
+            self.area,
+            &self.farm,
+            &self.town,
+            &self.house.world,
+            &self.level,
+            &self.room,
+        );
         let ppos = self.player.pos;
         let mut picked: Vec<usize> = Vec::new();
         for (i, d) in self.drops.iter_mut().enumerate() {

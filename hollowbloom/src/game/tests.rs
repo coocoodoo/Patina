@@ -372,8 +372,21 @@ fn save_and_load_round_trip() {
             items: vec![Some(Stack::new(Item::Bone, 4)), None],
         }),
     );
+    // The house, its tank and the Fishdex come along too.
+    super::home::put(&mut p.house.world, super::home::Furn::FishTank, 0, 3, 7);
+    if let Some(Obj::Furniture { fish, .. }) = p.house.world.obj_mut(3, 7) {
+        fish.push(Item::GoldenCarp);
+    }
+    p.house.redecorate(3, 2);
+    p.journal.fish.push(Item::GoldenCarp);
+    p.journal.records.push((Item::GoldenCarp, 50));
+    let charm = p.charisma();
     super::save::write(&p).expect("save");
     let q = super::save::read().expect("load");
+    assert_eq!(q.charisma(), charm);
+    assert_eq!(q.house.fish_kept(), 1);
+    assert_eq!((q.house.paper, q.house.floor), (3, 2));
+    assert_eq!(q.journal.records, vec![(Item::GoldenCarp, 50)]);
     assert_eq!(q.money, 1234);
     assert_eq!(q.clock.day, 7);
     assert_eq!(q.deepest, 23);
@@ -395,7 +408,8 @@ fn fainting_sends_you_home() {
     let day = s.play.clock.day;
     s.play.player.hp = 0;
     s.frames(90);
-    assert_eq!(s.play.area, Area::Farm);
+    // You wake up in your own bed.
+    assert_eq!(s.play.area, Area::Home);
     assert_eq!(s.play.clock.day, day + 1);
     assert_eq!(s.play.money, 450, "a tenth of your money is lost");
     assert!(s.play.player.hp > 0);
@@ -1215,7 +1229,12 @@ fn talking_and_gifts_make_friends() {
         .play
         .talk_choice(Villager::Olive, super::talk::Say::Gift, &mut io);
     let after = s.play.friends.points[Villager::Olive as usize];
-    assert_eq!(after - before, 80, "Olive loves sunflowers");
+    // A loved gift, grown a little by how charming your home is.
+    assert_eq!(
+        (after - before) as i32,
+        s.play.charm_friend(80),
+        "Olive loves sunflowers"
+    );
     assert_eq!(s.play.player.inv.count(Item::Sunflower), 2);
     let (_, choices) = reply.expect("she answers");
     assert!(
@@ -1810,4 +1829,270 @@ fn spells_and_ward_save_with_the_game() {
     let back: super::spells::Spellbook = serde_json::from_str(&json).unwrap();
     assert_eq!(back.known, p.spells.known);
     assert_eq!(back.slots, p.spells.slots);
+}
+
+// ------------------------------------------------------------------------------------------
+// Fishing, cooking and the house
+// ------------------------------------------------------------------------------------------
+
+use super::fish::{Hooked, Phase, Water};
+use super::home::{Furn, HOUSE_DOOR};
+
+/// A little pond just north of the hero, and a rod in hand.
+fn by_a_pond(s: &mut Sim) {
+    for z in 12..19 {
+        for x in 30..38 {
+            clear_farm_tile(&mut s.play, x, z);
+        }
+    }
+    for z in 12..16 {
+        for x in 32..36 {
+            s.play.farm.set_floor(x, z, Floor::Water);
+        }
+    }
+    s.stand(34, 16, Vec2::new(0.0, -1.0));
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::BambooRod, 1));
+    s.select(5);
+}
+
+#[test]
+fn fishing_casts_hooks_and_lands_a_fish() {
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    by_a_pond(&mut s);
+    let energy = s.play.player.energy;
+    // Wind up, then let go.
+    s.input.key_event(KeyCode::KeyJ, true, false);
+    s.frames(20);
+    assert_eq!(
+        s.play.fishing.as_ref().map(|f| f.phase),
+        Some(Phase::Charge)
+    );
+    assert!(s.play.fishing.as_ref().unwrap().power > 0.3);
+    s.input.key_event(KeyCode::KeyJ, false, false);
+    s.frames(40);
+    let f = s.play.fishing.as_ref().expect("the line is out");
+    assert_eq!(f.phase, Phase::Wait, "the bobber settles on the water");
+    assert_eq!(f.water, Some(Water::Pond));
+    assert!(
+        s.play.player.energy < energy,
+        "casting takes a little energy"
+    );
+    // Something bites.
+    s.play.fishing.as_mut().unwrap().bite_in = 0.0;
+    s.frames(1);
+    assert_eq!(s.play.fishing.as_ref().unwrap().phase, Phase::Bite);
+    s.play.fishing.as_mut().unwrap().hooked = Some(Hooked::Fish(Item::PondPerch, 20));
+    s.tap(KeyCode::KeyJ, 0);
+    assert_eq!(s.play.fishing.as_ref().unwrap().phase, Phase::Reel);
+    // Keep it inside the bar until it's landed.
+    s.input.key_event(KeyCode::KeyJ, true, false);
+    for _ in 0..900 {
+        match s.play.fishing.as_mut() {
+            Some(f) if f.phase == Phase::Reel => {
+                f.fish_y = (f.zone + f.zone_h * 0.5).min(1.0);
+                f.fish_to = f.fish_y;
+            }
+            _ => break,
+        }
+        s.frames(1);
+    }
+    s.input.key_event(KeyCode::KeyJ, false, false);
+    assert_eq!(s.play.player.inv.count(Item::PondPerch), 1);
+    assert!(s.play.journal.fish.contains(&Item::PondPerch));
+    assert_eq!(s.play.stats.caught, 1);
+    let f = s.play.fishing.as_ref().expect("holding it up");
+    assert_eq!(f.phase, Phase::Caught);
+    assert!(f.new, "a new kind for the Fishdex");
+    // Walking away puts the rod down.
+    s.frames(120);
+    assert!(s.play.fishing.is_none());
+}
+
+#[test]
+fn a_dry_cast_catches_nothing_and_a_fish_gets_away() {
+    let mut s = Sim::new();
+    by_a_pond(&mut s);
+    // Facing away from the water.
+    s.play.player.facing = Vec2::new(0.0, 1.0);
+    s.tap(KeyCode::KeyJ, 50);
+    assert!(s.play.fishing.is_none(), "nothing bites on dry land");
+    assert_eq!(s.play.stats.caught, 0);
+    // Back to the pond; this time the bite is missed.
+    s.play.player.facing = Vec2::new(0.0, -1.0);
+    s.tap(KeyCode::KeyJ, 40);
+    s.play.fishing.as_mut().unwrap().bite_in = 0.0;
+    s.frames(90);
+    assert!(s.play.fishing.is_none(), "it got away");
+    assert_eq!(s.play.stats.caught, 0);
+}
+
+#[test]
+fn rods_are_plain_in_the_smithy_but_rolled_in_the_hollow() {
+    let s = Sim::new();
+    let stock = super::shops::goods(&s.play, Place::Smithy);
+    assert!(stock.iter().any(|(i, _)| *i == Item::BambooRod));
+    assert!(stock.iter().any(|(i, _)| *i == Item::Bait));
+    let mut rng = crate::util::Rng::new(9);
+    let mut better = 0;
+    for _ in 0..200 {
+        let r = super::loot::random_rod(30, super::loot::Fortune::plain(), &mut rng);
+        assert_eq!(r.item.class(), Some(super::gear::Class::Rod));
+        let g = r.gear.expect("rolled");
+        if g.affixes().count() > 0 {
+            better += 1;
+        }
+    }
+    assert!(better > 100, "most dungeon rods come with stats ({better})");
+}
+
+#[test]
+fn cooking_needs_a_stove_and_takes_a_moment() {
+    let mut s = Sim::new();
+    s.play.player.inv.add_stack(Stack::new(Item::PondPerch, 1));
+    s.play.player.inv.add_stack(Stack::new(Item::Potato, 2));
+    let k = super::items::RECIPES
+        .iter()
+        .position(|r| r.out == Item::FishAndChips)
+        .expect("a recipe for fish and chips");
+    s.stand(20, 20, Vec2::new(0.0, 1.0));
+    let mut io = frame_io(&s.input, &s.audio);
+    assert!(
+        !s.play.start_cooking(k, (0, 0, 0), &mut io),
+        "no stove out in the field"
+    );
+    s.play.enter_house();
+    s.play.player.pos = Vec2::new(10.5, 2.5);
+    let mut io = frame_io(&s.input, &s.audio);
+    assert!(s.play.start_cooking(k, (0, 0, 0), &mut io));
+    s.frames(30);
+    assert!(s.play.cooking.is_some(), "still sizzling");
+    assert_eq!(s.play.player.inv.count(Item::FishAndChips), 0);
+    s.frames(90);
+    assert!(s.play.cooking.is_none());
+    assert_eq!(s.play.player.inv.count(Item::FishAndChips), 1);
+    assert_eq!(s.play.player.inv.count(Item::PondPerch), 0);
+    assert_eq!(s.play.player.inv.count(Item::Potato), 0);
+    assert_eq!(s.play.stats.cooked, 1);
+}
+
+#[test]
+fn home_through_the_door_and_back() {
+    let mut s = Sim::new();
+    let (dx, dz) = super::farm::MARKS.door;
+    s.stand(dx, dz + 1, Vec2::new(0.0, -1.0));
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.go_indoors(&mut io);
+    s.frames(90);
+    assert_eq!(s.play.area, Area::Home);
+    // Out through the front door.
+    let (hx, hz) = HOUSE_DOOR;
+    s.play.player.pos = Vec2::new(hx as f32 + 0.5, hz as f32 - 0.6);
+    s.input.key_event(KeyCode::KeyS, true, false);
+    s.frames(40);
+    s.input.key_event(KeyCode::KeyS, false, false);
+    s.frames(60);
+    assert_eq!(s.play.area, Area::Farm);
+}
+
+#[test]
+fn furnishing_the_house_makes_it_charming() {
+    let mut s = Sim::new();
+    s.play.enter_house();
+    s.frames(5);
+    let before = s.play.charisma();
+    let price = s.play.buy_price(1000);
+    // A sofa, set down facing you.
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::Sofa, 1));
+    s.select(5);
+    s.stand(4, 7, Vec2::new(0.0, -1.0));
+    s.tap(KeyCode::KeyE, 2);
+    assert!(
+        matches!(
+            s.play.house.world.obj(4, 6),
+            Some(Obj::Furniture { f: Furn::Sofa, .. })
+        ),
+        "the sofa is down"
+    );
+    assert!(s.play.house.world.blocked(5, 6), "it covers two tiles");
+    assert_eq!(s.play.player.inv.count(Item::Sofa), 0);
+    let after = s.play.charisma();
+    assert!(after > before, "charisma {before} -> {after}");
+    assert!(s.play.buy_price(1000) < price, "shops are kinder");
+    // A fish tank, turned with T before it goes down, with fish in it.
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::FishTank, 1));
+    s.stand(10, 8, Vec2::new(-1.0, 0.0));
+    s.tap(KeyCode::KeyT, 1);
+    s.tap(KeyCode::KeyE, 2);
+    let (tx, tz) = s
+        .play
+        .house
+        .pieces()
+        .iter()
+        .find(|p| p.2 == Furn::FishTank)
+        .map(|p| (p.0, p.1))
+        .expect("the tank is down");
+    let with_tank = s.play.charisma();
+    s.play.player.inv.slots[6] = Some(Stack::new(Item::Bluegill, 1));
+    s.play.player.inv.slots[7] = Some(Stack::new(Item::LilyKoi, 1));
+    let mut io = frame_io(&s.input, &s.audio);
+    assert!(s.play.tank_add(tx, tz, 6, &mut io));
+    assert!(s.play.tank_add(tx, tz, 7, &mut io));
+    assert_eq!(s.play.house.fish_kept(), 2);
+    assert!(s.play.charisma() > with_tank, "fish make it lovelier");
+    // Picking the sofa back up returns it.
+    s.select(9);
+    s.play.player.inv.slots[9] = None;
+    s.stand(4, 7, Vec2::new(0.0, -1.0));
+    s.tap(KeyCode::KeyJ, 2);
+    assert_eq!(s.play.player.inv.count(Item::Sofa), 1);
+    assert!(s.play.house.world.obj(4, 6).is_none());
+}
+
+#[test]
+fn the_nook_saves_its_grandest_pieces_for_charming_homes() {
+    let mut s = Sim::new();
+    let stock = super::shops::goods(&s.play, Place::Nook);
+    assert!(stock.iter().any(|(i, _)| *i == Item::FishTank));
+    assert!(!stock.iter().any(|(i, _)| *i == Item::Piano));
+    // Fill the place with lovely things.
+    let pieces = [
+        Furn::Piano,
+        Furn::Fireplace,
+        Furn::CanopyBed,
+        Furn::Clock,
+        Furn::Sofa,
+        Furn::Range,
+        Furn::Telescope,
+        Furn::Bookshelf,
+    ];
+    let mut x = 1;
+    for f in pieces {
+        super::home::put(&mut s.play.house.world, f, 0, x, 7);
+        x += f.def().size.0;
+    }
+    assert!(s.play.charisma() >= 50, "charisma {}", s.play.charisma());
+    let stock = super::shops::goods(&s.play, Place::Nook);
+    assert!(stock.iter().any(|(i, _)| *i == Item::Piano));
+}
+
+#[test]
+fn water_folk_drop_rods_now_and_then() {
+    let mut rng = crate::util::Rng::new(3);
+    let mut rods = 0;
+    for _ in 0..400 {
+        let loot = super::loot::foe_loot(
+            super::dungeon::Foe::Jelly,
+            false,
+            1,
+            12,
+            super::loot::Fortune::plain(),
+            &mut rng,
+        );
+        rods += loot
+            .iter()
+            .filter(|s| s.item.class() == Some(super::gear::Class::Rod))
+            .count();
+    }
+    assert!(rods > 10, "{rods} rods from 400 jellies");
 }

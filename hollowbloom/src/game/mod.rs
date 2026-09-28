@@ -5,10 +5,12 @@ pub mod draw;
 pub mod dungeon;
 pub mod enchant;
 pub mod farm;
+pub mod fish;
 pub mod foes;
 pub mod folk;
 pub mod fx;
 pub mod gear;
+pub mod home;
 pub mod hud;
 pub mod items;
 pub mod loot;
@@ -251,6 +253,7 @@ impl Game {
                     night: 0.0,
                     wind: 1.0,
                     push: glam::Vec2::new(29.5, 11.5),
+                    spin: 0.0,
                 };
                 draw::draw_world(r, a, &mut t.farm, &env, &[]);
                 // The hero, idling by the house.

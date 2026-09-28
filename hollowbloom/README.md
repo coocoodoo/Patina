@@ -9,7 +9,9 @@ treasures you find, and grow them into a farm that helps you go deeper. Every te
 guardian watches over a waystone that can take you home. Down the road, a bus runs to
 **Bramblewick**, where twenty villagers have shops to keep, stories to tell and more than a
 hundred things they would love a hand with. Learn **spells** from the town's spellwright,
-**brew potions** in three sizes, and watch the grass ripple in the breeze.
+**brew potions** in three sizes, and watch the grass ripple in the breeze. Cast a line for
+**41 kinds of fish**, cook them on the stove in your **farmhouse**, and fill it with furniture:
+a charming home gets you better prices, warmer friends and some very special quests.
 
 Everything you see is low-poly 3D with pixel-art textures, drawn by a small software renderer
 that **can only ever produce the 32 colours of the
@@ -43,6 +45,18 @@ the slimes, the soap-bubble of a Ward spell and the glow of a spark are palette 
 | ![Starfall](docs/starfall.png) | ![Frost Nova](docs/frost-nova.png) |
 | ![Ward](docs/ward.png) | ![Bloom waters and quickens the crops](docs/bloom.png) |
 
+**Fishing, your farmhouse and the furniture shop**
+
+| | |
+| --- | --- |
+| ![A line in the farm pond](docs/fishing.png) | ![Reeling in: keep the fish in the green bar](docs/reeling.png) |
+| ![A perfect catch](docs/catch.png) | ![Frogs, jellies and puffers round a pond in the Hollow](docs/water-folk.png) |
+| ![Your farmhouse on the first morning](docs/home.png) | ![A charming home, months later](docs/home-charming.png) |
+| ![Cozy at night](docs/home-night.png) | ![Placing an armchair](docs/placing.png) |
+| ![The fish tank](docs/fish-tank.png) | ![Cooking at the copper range](docs/cooking.png) |
+| ![The Fishdex](docs/fishdex.png) | ![Wren's Cozy Nook](docs/cozy-nook.png) |
+| ![Furniture for sale](docs/nook-shop.png) | ![Plain rods at the smithy](docs/rods.png) |
+
 **Bramblewick**
 
 ![Bramblewick from above](docs/town.png)
@@ -69,8 +83,10 @@ install: it is a single executable.
 | --- | --- | --- |
 | Move | WASD / arrows | |
 | Use tool, attack, shoot | J or Z | left click (aims at the cursor) |
+| Fish: wind up and cast, hook, reel | hold J and let go; J on a bite; hold J to reel | left click |
 | Cast your two spells | Q / R | (aims at the cursor) |
 | Interact, talk, harvest, eat, place, wear | E or K | right click |
+| At home: turn a piece before placing it / pick it back up | T / J | left click picks up |
 | Dodge roll | Space or Shift | |
 | Hotbar | 1-9, 0, [ / ] | wheel |
 | Bag, worn gear, stats / crafting | Tab or I / C | right click wears armour |
@@ -91,9 +107,10 @@ install: it is a single executable.
   strange seeds from every biome of the Hollow: Mossberries and Bunnyroots, Prism Pears and
   Geode Gourds, Puffballs, Jelly Shrooms and Truffles, Flame Tulips, Lava Lemons and Magma
   Melons, Snow Peas, Ice Plums and Frost Mint, Starfruit, Ghost Peppers and Ancient Grain.
-* **Cook** them into two dozen dishes. The good ones give a **buff** for a few minutes:
-  Garlic Bread for damage, Strawberry Shortcake for luck, Frost Mint Tea for mana, Lava
-  Lemonade to set things on fire...
+* **Cook** them into 41 dishes on the **stove** in your house (or the campfire at any
+  waystone). The good ones give a **buff** for a few minutes: Garlic Bread for damage,
+  Strawberry Shortcake for luck, Frost Mint Tea for mana, Lava Lemonade to set things on
+  fire...
 * **Ship** anything in the bin by the house and the money arrives overnight, or trade with
   Burrowby the mole at his stall. His stock grows the deeper you have been.
 * Tools cost **energy**; food restores health and energy. Stay up past 2am and you will
@@ -119,14 +136,15 @@ install: it is a single executable.
   Guild, and **ten specialist shops**, each with its own shelves, **specials rolled fresh
   every morning**, and better prices for the things it deals in:
   * **Petalplate Armory** (Hilde): helmets, chest armour, leg armour, boots and shields.
-  * **Sprig & Steel** (Garrick): swords, wands and staffs.
+  * **Sprig & Steel** (Garrick): swords, wands, staffs, and plain fishing rods and bait.
   * **Tinkerbolt Tools** (Nix): hoes, cans, sickles, axes, pickaxes and sprinklers.
   * **Moonquill Scriptorium** (Elder Quill): weapon, armour and tool scrolls, tonics, wish
     stars, and an enchanting table.
   * **Sproutling Seeds** (Posy): every seed in the valley, and rarer ones the deeper you go.
   * **Honeycrumb Bakery** (Mabel), **The Sleepy Snail** tavern (Barley): food with buffs.
   * **Glimmer & Gold** (Opal): gems and curios, and 50% more for any you sell her.
-  * **Cozy Nook** (Wren): lamps, benches, chests, paths and other furniture.
+  * **Cozy Nook** (Wren): furniture for your house, rugs, pictures, wallpaper and floors
+    (her grandest pieces only for charming homes), plus lamps, benches, chests and paths.
   * **The Lantern Guild** (Captain Rowan): delving supplies and guild spoils.
   * **Starfall Spellery** (Hazel): spells, the attuning circle, potions and potion herbs.
 * **Twenty villagers** with their own looks, outfits, voices and **daily schedules**: they
@@ -134,11 +152,12 @@ install: it is a single executable.
   evening and go home at night. Talk to them (they chatter in little blips, with their
   portrait in the talk box), **give gifts** (each has things they love, like and hate) and
   your **friendship** grows to ten hearts, with presents at three, six and nine.
-* **121 hand-written story quests**, five to ten from everyone in town, unlocking as you
-  make friends and go deeper: find **keepsakes** lost in the Hollow (Albert's locket on floors
+* **150 hand-written story quests**, five to ten from everyone in town, unlocking as you
+  make friends, go deeper and make your home more charming: find **keepsakes** lost in the Hollow (Albert's locket on floors
   2-5, Toby's mailbag, Quill's spectacles...), gather **quest drops** from creatures (slime
   hearts, bat fangs, glow oil from wisps, wishing leaves from the deep), slay, reach floors,
-  beat guardians, grow and harvest, cook, enchant, ship, and **deliver** letters and parcels.
+  beat guardians, grow and harvest, cook, enchant, ship, fish, fill your Fishdex, furnish
+  your house, and **deliver** letters and parcels.
   Keepsakes and quest drops **only exist while the quest is open**, and a guardian **returns
   to its floor** for anyone who needs something it carries. A **!** marks someone with a
   request and a **?** someone you can hand one in to.
@@ -151,8 +170,59 @@ install: it is a single executable.
   (it blesses you with luck once a day).
 * Endless extras: **three new notices every day** on the plaza's **request board**, **guild
   bounties** that earn marks and promotions through six **Lantern Guild ranks**, and
-  **collections** to complete (every crop, every curio, every dish, every creature). The
-  journal (L) keeps track of it all.
+  **collections** to complete (every crop, every curio, every dish, every creature, every
+  fish). The journal (L) keeps track of it all.
+
+### Fishing
+
+* Buy a **Bamboo Rod** (or a Willow or Sturdy Oak one) and **bait** from Garrick at Sprig &
+  Steel, stand by water and **hold J**: a power bar swings up and down while you wind up, and
+  letting go throws the line. When the bobber is pulled under and a **!** pops up, press J to
+  hook the fish, then **hold J to raise the green bar and let go to sink it**, keeping the
+  fish inside until the catch meter fills. Stay with it the whole way for a **perfect** catch
+  (and a bigger fish). Walk off, or get hit, and it's gone.
+* **41 fish** in eight waters, each with its own shape, colours and markings: the farm pond,
+  Bramblewick's stream, and pools in every biome of the Hollow (ponds turn up in bigger cave
+  rooms now), even the **lava** of the Ember Depths if your rod can take the heat. Some only
+  bite by day, at night or in the rain; rarer fish fight harder, darting, sinking, floating or
+  thrashing about. Now and then you'll hook junk, or a **sunken treasure chest**.
+* **Rods are gear**, with Reel Power and their own stats: **Bite Speed**, **Line Strength**,
+  **Treasure Find** and **Rare Fish**, besides haste, luck and coin find, and tool scrolls
+  enchant them. The smithy only sells plain ones. The other nine, up to the Leviathan Rod,
+  come from the Hollow with **better rolls and brighter colours**: dropped by the **water
+  folk** (bog frogs, drift jellies and puffers that live round underground ponds), found in
+  **treasure chests**, and fished up in sunken treasure.
+* The journal's **Fishdex** shows every fish you've caught, shadows of the rest (with where
+  and when they bite) and your biggest of each. Cook your catch into **14 fish dishes**, from
+  Fish & Chips and Seaweed Sushi to the Emperor's Platter, or keep them in a tank at home.
+
+### Your farmhouse, furniture and charisma
+
+* Walk up to your front door to **go inside**. The house starts with a bed, a little stove, a
+  counter, a table for tea and a rug, and everything in it can be moved.
+* **Place furniture anywhere inside**: hold a piece and press E. **T turns it** and a
+  see-through preview shows where it will go; J picks it back up. Rugs go on the floor,
+  pictures on the back wall, and **wallpaper** and **flooring** redo the whole room.
+* **Wren's Cozy Nook** sells it all: beds and a canopy bed, a stove and a copper range, counters,
+  an icebox, tables and chairs, an armchair and a sofa, bookshelves, a wardrobe, a dresser,
+  lamps, a candelabra, a fireplace, plants, a grandfather clock, a piano, a globe, a telescope,
+  a plush bunny, a fish bowl and a **fish tank**, plus rugs, pictures, wallpapers and floors.
+  A few simple pieces can be crafted too.
+* Furniture does things: sleep in the bed, **cook at the stove** (a copper range sometimes
+  makes a second helping), sit down, play the piano, spin the globe, look at the stars through
+  the telescope (a little luck for the night), warm up by the fire (regeneration), and the
+  clock chimes the hours. Put your fish in a **tank** (six) or a **bowl** (two) and watch
+  them swim.
+* **Charisma**: every piece makes your home more charming (the first two of a kind count most,
+  so variety beats fifty chairs), fish in tanks add more, and so do new wallpaper and floors.
+  Your charisma (Plain, Cozy, Charming, Delightful, Dazzling) shows in the corner at home, and:
+  * shopkeepers treat you well: **up to 20% off** everything, and **up to 10% more** when
+    you sell;
+  * **friendships grow faster** (up to 60%), and villagers bring you little **gifts** and
+    gossip about your lovely home;
+  * Wren saves her **grandest pieces** (the fireplace, the copper range, the canopy bed, the
+    piano) for homes that will do them justice;
+  * and it opens **home quests** with the best rewards in town.
 
 ### The Hollow (endless and procedural)
 
@@ -162,7 +232,8 @@ install: it is a single executable.
 * The biome changes every ten floors (Mossy Burrows, Crystal Grotto, Fungal Hollow, Ember
   Depths, Frost Caverns, Sunken Ruins) and then cycles, tougher each time. Each biome has its
   own creatures (slimes, bats, shroomlings, crystal crabs, wisps, beetles, imps, skeletons,
-  golems, ghosts), its own ores and its own **seeds**. Slimes are wobbly **see-through jelly**
+  golems, ghosts, and bog frogs, drift jellies and puffers round the ponds), its own ores and
+  its own **seeds**. Slimes are wobbly **see-through jelly**
   with a nucleus and bubbles floating inside; ghosts are translucent too.
 * Steel on stone throws **sparks** that glow and light up the cave around them: mining rock
   and ore, blades glancing off walls, hitting crabs, beetles, skeletons and golems, and
@@ -171,7 +242,8 @@ install: it is a single executable.
   Frost Colossus, the Bone Warden) blocks the stairs and a **waystone**. Defeat it, touch the
   waystone, and you can go home. The Hollow's entrance on your farm then lets you start from
   any waystone you have attuned.
-* Fainting in the Hollow sends you home the next morning, a tenth of your money lighter. A
+* Fainting in the Hollow sends you home: you wake in your own bed the next morning, a tenth
+  of your money lighter. A
   Homeward Feather gets you out early.
 
 ### Magic: spells and potions
@@ -209,18 +281,19 @@ install: it is a single executable.
 
 ### Loot, gear and enchanting
 
-* **123 weapons, pieces of armour and tools**, every one of them cute: swords (from a Twig
+* **135 weapons, pieces of armour, tools and fishing rods**, every one of them cute: swords (from a Twig
   Sword, a Carrot Blade and the Hero's Baguette to the Starlight Sword), **wands** that shoot
   magic bolts and **staffs** that set off blasts (both use mana), **shields** (a Pot Lid, a
   Turtle Shell, a Mushroom Shield...), **headgear** (Straw Hat, Flower Crown, Cat-Ear, Frog and
   Bunny Hoods, a Wizard Hat, a Miner's Hat with a lamp...), **chest armour**, **leg armour**,
   **boots** (Rain Boots, Frog and Bunny Slippers, Feather Boots...) and farming **tools**
-  (hoes, watering cans shaped like ducks, teapots and frogs, sickles, axes, pickaxes).
+  (hoes, watering cans shaped like ducks, teapots and frogs, sickles, axes, pickaxes), and
+  **fishing rods** from bamboo to coral, jellyfish, starlight and leviathan.
   Everything you wear shows up on your little farmer.
 * Every piece has an **item level** from where it was found, a rolled base value, an innate
-  bonus and up to four **random stats** out of 28 (damage, crit, speed, heartsip, burn, chill
+  bonus and up to four **random stats** out of 32 (damage, crit, speed, heartsip, burn, chill
   and shock, defense, max HP, energy and mana, regeneration, move speed, dodge, block, thorns,
-  luck, coin find, tool power, reach, water, bounty, growth, forage...). Its **rarity**
+  luck, coin find, tool power, reach, water, bounty, growth, forage, bite speed, rare fish...). Its **rarity**
   (Common, Uncommon, Rare, Epic, Legendary) comes from how good those rolls are; rare finds
   glow on the ground with a beam of light.
 * **Enchanting scrolls** drop in the Hollow (or are scribed from gems). Weapon, armour and

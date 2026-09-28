@@ -3,6 +3,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::gear::{self, Affix, Class, Gear, Group, Rarity, Stat};
+use super::home::Furn;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Placeable {
@@ -19,6 +20,12 @@ pub enum Placeable {
     FlowerPot,
     Bench,
     EnchantTable,
+    /// Furniture for inside the house.
+    Furniture(Furn),
+    /// A rug laid on the house floor (see `home::RUGS`).
+    Rug(u8),
+    /// A picture hung on the back wall of the house (see `home::ART`).
+    WallArt(u8),
 }
 
 /// A base item of gear: what it is, the level it first turns up at, its strength in percent
@@ -73,6 +80,12 @@ pub enum Kind {
         mana: i32,
         energy: i32,
     },
+    /// A catch from the water (see `fish::FISH`).
+    Fish,
+    /// Papers the house walls in a style (`Wall::Paper`).
+    Wallpaper(u8),
+    /// Lays a new floor in the house (see `home::FLOORS`).
+    Flooring(u8),
 }
 
 pub struct ItemDef {
@@ -300,6 +313,22 @@ items! {
     SunflowerCookies = "sunflower_cookies", "Sunflower Cookies", "sunflower_cookies", 20, 190, feast(30, 70, S::Greed, 25, 240), "Crunchy, golden and good for business.";
     PearCrumble = "pear_crumble", "Prism Pear Crumble", "pear_crumble", 20, 260, feast(60, 60, S::Block, 8, 240), "Glitters when the light hits it.";
 
+    // Cooking with fish.
+    FishAndChips = "fish_and_chips", "Fish & Chips", "fish_and_chips", 20, 180, feast(60, 50, S::Damage, 5, 240), "Crispy, golden and wrapped in paper.";
+    GrilledTrout = "grilled_trout", "Grilled Trout", "grilled_trout", 20, 190, feast(55, 45, S::Regen, 3, 240), "Smoky, flaky and served with garlic.";
+    MinnowFritters = "minnow_fritters", "Minnow Fritters", "minnow_fritters", 20, 120, feast(40, 50, S::Swift, 8, 180), "Crunchy little bites. Eat them hot!";
+    Sushi = "sushi", "Seaweed Sushi", "sushi", 20, 230, Kind::Food { hp: 40, energy: 50, mana: 30, buff: Some(Buff { stat: S::Wisdom, val: 20, secs: 240 }) }, "Neatly rolled and very clever.";
+    FishStew = "fish_stew", "Fisherman's Stew", "fish_stew", 20, 260, feast(70, 60, S::Vitality, 20, 300), "A big warm bowl after a long day on the water.";
+    CarpCurry = "carp_curry", "Carp Curry", "carp_curry", 20, 250, feast(80, 60, S::Burn, 12, 240), "Hot enough to boil the pond.";
+    SalmonSteak = "salmon_steak", "Salmon Steak", "salmon_steak", 20, 520, feast(110, 80, S::Crit, 10, 300), "Pink, peppery and perfectly seared.";
+    CrayfishBoil = "crayfish_boil", "Crayfish Boil", "crayfish_boil", 20, 220, feast(60, 60, S::Defense, 6, 240), "Messy. Worth it.";
+    CaveSkewer = "cave_skewer", "Cavefish Skewer", "cave_skewer", 20, 210, feast(50, 40, S::Spirit, 4, 240), "Glowcaps and cavefish on a stick.";
+    Ceviche = "ceviche", "Crystal Ceviche", "ceviche", 20, 300, feast(60, 70, S::Crit, 8, 240), "Zingy lemon and glittering fish.";
+    SmeltPie = "smelt_pie", "Snow Smelt Pie", "smelt_pie", 20, 380, feast(80, 60, S::Chill, 16, 240), "Little fish peeking out of the crust.";
+    EelKebab = "eel_kebab", "Lava Eel Kebab", "eel_kebab", 20, 560, feast(90, 70, S::Burn, 20, 300), "Still sizzling from the lava.";
+    FishTacos = "fish_tacos", "Fish Tacos", "fish_tacos", 20, 330, feast(55, 55, S::Haste, 8, 240), "Rainbow trout, corn and tomato. Fiesta!";
+    EmperorPlatter = "emperor_platter", "Emperor's Platter", "emperor_platter", 20, 2400, feast(220, 160, S::Luck, 25, 420), "Golden carp and truffles, fit for a king.";
+
     // Weapons: swords.
     TwigSword = "twig_sword", "Twig Sword", "twig_sword", 1, 8, g(Sword, 1, 85, None), "A stick with big dreams.";
     Sword0 = "sword0", "Rusty Sword", "sword0", 1, 10, g(Sword, 1, 95, None), "Old, but it remembers how to fight.";
@@ -449,6 +478,20 @@ items! {
     Pick4 = "pick4", "Crystal Pickaxe", "pick4", 1, 900, g(Pickaxe, 36, 112, Some(S::Haste)), "Cuts rock like butter.";
     Pick5 = "pick5", "Ember Pickaxe", "pick5", 1, 1600, g(Pickaxe, 48, 118, Some(S::Power)), "Nothing is too hard.";
 
+    // Tools: fishing rods. Garrick sells the plain ones; the Hollow's water folk carry the rest.
+    BambooRod = "bamboo_rod", "Bamboo Rod", "bamboo_rod", 1, 20, g(Rod, 1, 100, None), "Springy bamboo, some string and a hopeful hook.";
+    WillowRod = "willow_rod", "Willow Rod", "willow_rod", 1, 90, g(Rod, 6, 102, Some(S::Lure)), "Bends like a dancer. Fish love a dancer.";
+    OakRod = "oak_rod", "Sturdy Oak Rod", "oak_rod", 1, 220, g(Rod, 14, 105, Some(S::Line)), "It has never once snapped, and it's very proud of that.";
+    CoralRod = "coral_rod", "Coral Rod", "coral_rod", 1, 300, g(Rod, 8, 106, Some(S::Angler)), "Grown, not carved, in a pool under the Grotto.";
+    KelpRod = "kelp_rod", "Kelpie Rod", "kelp_rod", 1, 360, g(Rod, 12, 106, Some(S::Lure)), "Smells of the sea. Fish follow it like a song.";
+    PearlRod = "pearl_rod", "Pearl Rod", "pearl_rod", 1, 520, g(Rod, 18, 108, Some(S::Treasure)), "A pearl for a reel. Sunken things come to it.";
+    CrystalRod = "crystal_rod", "Crystal Rod", "crystal_rod", 1, 800, g(Rod, 24, 110, Some(S::Angler)), "Its line glitters, and rare fish can't resist.";
+    JellyRod = "jelly_rod", "Jellyfish Rod", "jelly_rod", 1, 950, g(Rod, 28, 110, Some(S::Line)), "Wobbly, stretchy and impossible to snap.";
+    EmberRod = "ember_rod", "Ember Rod", "ember_rod", 1, 1400, g(Rod, 34, 114, Some(S::Treasure)), "Heat-proof. Fish in lava, if you dare.";
+    FrostRod = "frost_rod", "Frost Rod", "frost_rod", 1, 1700, g(Rod, 44, 116, Some(S::Lure)), "Cold enough to keep your catch fresh.";
+    StarRod = "star_rod", "Starlight Rod", "star_rod", 1, 2600, g(Rod, 52, 120, Some(S::Angler)), "Casts a line of starlight. Heat-proof, too.";
+    LeviathanRod = "leviathan_rod", "Leviathan Rod", "leviathan_rod", 1, 4000, g(Rod, 60, 125, Some(S::Line)), "Made from one scale of something very, very big. Heat-proof.";
+
     // Scrolls, one enchantment each.
     WeaponScroll = "weapon_scroll", "Weapon Scroll", "weapon_scroll", 1, 40, Kind::Scroll(Group::Weapon), "Bind it to a sword, wand or staff at an enchanting table.";
     ArmorScroll = "armor_scroll", "Armor Scroll", "armor_scroll", 1, 40, Kind::Scroll(Group::Armor), "Bind it to a shield, hat, armor or boots at an enchanting table.";
@@ -470,6 +513,56 @@ items! {
     FlowerPot = "flower_pot", "Flower Pot", "flower_pot", 20, 20, Kind::Place(P::FlowerPot), "A little colour for the porch.";
     Bench = "bench", "Bench", "bench", 20, 30, Kind::Place(P::Bench), "Sit a while.";
     EnchantTable = "enchant_table", "Enchanting Table", "enchant_table", 5, 300, Kind::Place(P::EnchantTable), "Binds scroll enchantments to your gear.";
+
+    // Furniture and decor for the house. Everything you place raises your charisma.
+    CozyBed = "cozy_bed", "Cozy Bed", "cozy_bed", 5, 300, Kind::Place(P::Furniture(Furn::Bed)), "A patchwork quilt and a very soft pillow. Sleep here.";
+    CanopyBed = "canopy_bed", "Canopy Bed", "canopy_bed", 5, 1800, Kind::Place(P::Furniture(Furn::CanopyBed)), "Curtains, posts and dreams fit for royalty.";
+    WoodStove = "wood_stove", "Wood Stove", "wood_stove", 5, 250, Kind::Place(P::Furniture(Furn::Stove)), "A little iron stove. Cook your dishes here.";
+    CopperRange = "copper_range", "Copper Range", "copper_range", 5, 2200, Kind::Place(P::Furniture(Furn::Range)), "A gleaming kitchen range. Sometimes cooks a second helping.";
+    KitchenCounter = "kitchen_counter", "Kitchen Counter", "kitchen_counter", 10, 110, Kind::Place(P::Furniture(Furn::Counter)), "Somewhere to chop, knead and lean.";
+    Icebox = "icebox", "Icebox", "icebox", 5, 240, Kind::Place(P::Furniture(Furn::Icebox)), "Keeps the milk cold and the cheese honest.";
+    RoundTable = "round_table", "Round Table", "round_table", 10, 100, Kind::Place(P::Furniture(Furn::RoundTable)), "Perfect for tea for two.";
+    DiningTable = "dining_table", "Dining Table", "dining_table", 5, 280, Kind::Place(P::Furniture(Furn::DiningTable)), "Seats the whole family, and a cat.";
+    WoodenChair = "wooden_chair", "Wooden Chair", "wooden_chair", 20, 45, Kind::Place(P::Furniture(Furn::Chair)), "Four legs, one back, no complaints.";
+    Armchair = "armchair", "Armchair", "armchair", 10, 300, Kind::Place(P::Furniture(Furn::Armchair)), "It hugs you back.";
+    Sofa = "sofa", "Comfy Sofa", "sofa", 5, 750, Kind::Place(P::Furniture(Furn::Sofa)), "Big enough for a nap and a half.";
+    Bookshelf = "bookshelf", "Bookshelf", "bookshelf", 10, 380, Kind::Place(P::Furniture(Furn::Bookshelf)), "Full of stories. Some of them are about you.";
+    Wardrobe = "wardrobe", "Wardrobe", "wardrobe", 5, 330, Kind::Place(P::Furniture(Furn::Wardrobe)), "No, there's no secret kingdom in the back. Probably.";
+    Dresser = "dresser", "Dresser", "dresser", 10, 200, Kind::Place(P::Furniture(Furn::Dresser)), "Drawers for socks and secrets.";
+    FloorLamp = "floor_lamp", "Floor Lamp", "floor_lamp", 10, 150, Kind::Place(P::Furniture(Furn::FloorLamp)), "A warm pool of light for reading corners.";
+    Candelabra = "candelabra", "Candelabra", "candelabra", 10, 320, Kind::Place(P::Furniture(Furn::Candelabra)), "Three little flames, very elegant.";
+    Fireplace = "fireplace", "Stone Fireplace", "fireplace", 5, 1600, Kind::Place(P::Furniture(Furn::Fireplace)), "Crackles all night. Warm your hands for a while.";
+    PottedFern = "potted_fern", "Potted Fern", "potted_fern", 20, 60, Kind::Place(P::Furniture(Furn::Fern)), "Green, leafy and easy to please.";
+    PottedCactus = "potted_cactus", "Potted Cactus", "potted_cactus", 20, 70, Kind::Place(P::Furniture(Furn::Cactus)), "Low maintenance. High attitude.";
+    FlowerVase = "flower_vase", "Flower Vase", "flower_vase", 20, 100, Kind::Place(P::Furniture(Furn::Vase)), "Fresh flowers on a little stand.";
+    GrandfatherClock = "grandfather_clock", "Grandfather Clock", "grandfather_clock", 5, 860, Kind::Place(P::Furniture(Furn::Clock)), "Tick, tock. It chimes on the hour.";
+    Piano = "piano", "Upright Piano", "piano", 5, 2900, Kind::Place(P::Furniture(Furn::Piano)), "Plays a little tune when you sit down at it.";
+    Globe = "globe", "Globe", "globe", 10, 250, Kind::Place(P::Furniture(Furn::Globe)), "Give it a spin. The whole world, at your fingertips.";
+    Telescope = "telescope", "Telescope", "telescope", 5, 600, Kind::Place(P::Furniture(Furn::Telescope)), "Look at the stars on a clear night. You might get lucky.";
+    PlushBunny = "plush_bunny", "Plush Bunny", "plush_bunny", 20, 60, Kind::Place(P::Furniture(Furn::Plush)), "Squeak! Very huggable.";
+    FishBowl = "fish_bowl", "Fish Bowl", "fish_bowl", 10, 150, Kind::Place(P::Furniture(Furn::FishBowl)), "A round little bowl for two fish.";
+    FishTank = "fish_tank", "Fish Tank", "fish_tank", 5, 800, Kind::Place(P::Furniture(Furn::FishTank)), "A glass tank for six fish. They'll love it.";
+    RoundRug = "round_rug", "Round Rug", "round_rug", 10, 130, Kind::Place(P::Rug(0)), "A soft, round rug. Lay it anywhere on the floor.";
+    StripedRug = "striped_rug", "Striped Rug", "striped_rug", 10, 160, Kind::Place(P::Rug(1)), "Blue and white, like a summer awning.";
+    StarRug = "star_rug", "Starry Rug", "star_rug", 10, 230, Kind::Place(P::Rug(2)), "A night sky for your feet.";
+    FishRug = "fish_rug", "Fish Rug", "fish_rug", 10, 200, Kind::Place(P::Rug(3)), "Shaped like a very flat, very happy fish.";
+    MeadowPainting = "meadow_painting", "Meadow Painting", "meadow_painting", 10, 200, Kind::Place(P::WallArt(0)), "Hang it on the back wall of your house.";
+    SunsetPainting = "sunset_painting", "Sunset Painting", "sunset_painting", 10, 260, Kind::Place(P::WallArt(1)), "Golden hour, all day long.";
+    StarryPainting = "starry_painting", "Starry Night", "starry_painting", 10, 400, Kind::Place(P::WallArt(2)), "Swirly stars. Painted by a very sleepy artist.";
+    TrophyFish = "trophy_fish", "Trophy Fish", "trophy_fish", 10, 500, Kind::Place(P::WallArt(3)), "The one that didn't get away. Hang it with pride.";
+    CozyWallpaper = "cozy_wallpaper", "Cozy Wallpaper", "cozy_wallpaper", 10, 50, Kind::Wallpaper(8), "Warm stripes. Use it in your house to re-paper the walls.";
+    MintWallpaper = "mint_wallpaper", "Mint Wallpaper", "mint_wallpaper", 10, 90, Kind::Wallpaper(2), "Fresh mint stripes. Use it in your house.";
+    StarryWallpaper = "starry_wallpaper", "Starry Wallpaper", "starry_wallpaper", 10, 120, Kind::Wallpaper(3), "Purple as midnight, sprinkled with stars.";
+    HoneyWallpaper = "honey_wallpaper", "Honey Panels", "honey_wallpaper", 10, 110, Kind::Wallpaper(4), "Golden wood panels. Very snug.";
+    BlossomWallpaper = "blossom_wallpaper", "Blossom Wallpaper", "blossom_wallpaper", 10, 110, Kind::Wallpaper(5), "Little pink flowers everywhere.";
+    OceanWallpaper = "ocean_wallpaper", "Ocean Wallpaper", "ocean_wallpaper", 10, 130, Kind::Wallpaper(6), "Deep teal, like the bottom of the pond.";
+    RoseWallpaper = "rose_wallpaper", "Rose Wallpaper", "rose_wallpaper", 10, 110, Kind::Wallpaper(7), "Peachy-pink with tiny roses.";
+    OakFloor = "oak_floor", "Oak Floor", "oak_floor", 10, 50, Kind::Flooring(0), "Honest wooden boards. Use it in your house.";
+    CheckerFloor = "checker_floor", "Checkered Tiles", "checker_floor", 10, 110, Kind::Flooring(1), "Like a cafe, or a very big board game.";
+    RedCarpet = "red_carpet", "Red Carpet", "red_carpet", 10, 130, Kind::Flooring(2), "Roll it out. You're a star.";
+    VioletCarpet = "violet_carpet", "Violet Carpet", "violet_carpet", 10, 130, Kind::Flooring(3), "Soft and purple, like a wizard's study.";
+    TealCarpet = "teal_carpet", "Teal Carpet", "teal_carpet", 10, 130, Kind::Flooring(4), "Deep teal with golden flecks.";
+    StoneFloor = "stone_floor", "Stone Floor", "stone_floor", 10, 90, Kind::Flooring(5), "Cool cobbles, like a castle kitchen.";
 
     // Special.
     Feather = "feather", "Homeward Feather", "feather", 20, 150, FeatherK, "Use in the Hollow to float back home.";
@@ -526,6 +619,53 @@ items! {
     SmallEnergyPotion = "small_energy_potion", "Small Energy Potion", "ep_potion_s", 30, 30, potion(0, 0, 45), "Zesty! Restores 45 energy.";
     EnergyPotion = "energy_potion", "Medium Energy Potion", "ep_potion_m", 30, 90, potion(0, 0, 110), "Restores 110 energy at once.";
     LargeEnergyPotion = "large_energy_potion", "Large Energy Potion", "ep_potion_l", 30, 250, potion(15, 0, 250), "Liquid sunshine. Restores 250 energy and a little health.";
+
+    // Fishing: bait, what comes up with the fish, and the fish themselves (see `fish::FISH`).
+    Bait = "bait", "Bait", "bait", 99, 3, Material, "Wriggly! Fish bite much sooner while you carry some.";
+    Seaweed = "seaweed", "Seaweed", "seaweed", 99, 8, Material, "Salty and slippery. Good in sushi.";
+    SoggyBoot = "soggy_boot", "Soggy Boot", "soggy_boot", 99, 1, Material, "Somebody is walking around with one boot.";
+    TinCan = "tin_can", "Tin Can", "tin_can", 99, 2, Material, "Rattly, rusty rubbish.";
+    SunnyMinnow = "sunny_minnow", "Sunny Minnow", "sunny_minnow", 99, 18, Kind::Fish, "A tiny flicker of gold that loves warm, shallow water.";
+    PondPerch = "pond_perch", "Pond Perch", "pond_perch", 99, 35, Kind::Fish, "Striped, spiky and very fond of worms.";
+    Bluegill = "bluegill", "Bluegill", "bluegill", 99, 32, Kind::Fish, "Blue in the face, gold in the belly.";
+    MudCarp = "mud_carp", "Mud Carp", "mud_carp", 99, 60, Kind::Fish, "Wise, whiskery and in no hurry at all.";
+    LilyKoi = "lily_koi", "Lily Koi", "lily_koi", 99, 190, Kind::Fish, "It naps under lily pads and dreams in colour.";
+    BubbleGoby = "bubble_goby", "Bubble Goby", "bubble_goby", 99, 55, Kind::Fish, "Blows bubbles when it rains. Only when it rains.";
+    MoonlitCatfish = "moonlit_catfish", "Moonlit Catfish", "moonlit_catfish", 99, 160, Kind::Fish, "Comes out after dark to look at the moon.";
+    GoldenCarp = "golden_carp", "Golden Carp", "golden_carp", 99, 950, Kind::Fish, "The pond's oldest resident. Legend says it grants wishes.";
+    BrookTrout = "brook_trout", "Brook Trout", "brook_trout", 99, 55, Kind::Fish, "Speckled like a pebbly stream.";
+    RainbowTrout = "rainbow_trout", "Rainbow Trout", "rainbow_trout", 99, 110, Kind::Fish, "Every colour of a rain shower.";
+    RiverChub = "river_chub", "River Chub", "river_chub", 99, 30, Kind::Fish, "Round, cheerful and not very bright.";
+    PebbleLoach = "pebble_loach", "Pebble Loach", "pebble_loach", 99, 45, Kind::Fish, "It pretends to be a pebble. It is not a pebble.";
+    SilverDace = "silver_dace", "Silver Dace", "silver_dace", 99, 40, Kind::Fish, "Quick as a wink and twice as shiny.";
+    StripedBass = "striped_bass", "Striped Bass", "striped_bass", 99, 140, Kind::Fish, "Strong, stripy and stubborn.";
+    StormSalmon = "storm_salmon", "Storm Salmon", "storm_salmon", 99, 330, Kind::Fish, "Leaps upstream when the rain comes down.";
+    MoonfinEel = "moonfin_eel", "Moonfin Eel", "moonfin_eel", 99, 380, Kind::Fish, "Its fins glow like a crescent moon. Night only.";
+    BramblePike = "bramble_pike", "Bramble Pike", "bramble_pike", 99, 210, Kind::Fish, "A toothy lurker in the reeds.";
+    BlindCavefish = "blind_cavefish", "Blind Cavefish", "blind_cavefish", 99, 70, Kind::Fish, "Has never seen the sun, and doesn't miss it.";
+    MossyPike = "mossy_pike", "Mossy Pike", "mossy_pike", 99, 150, Kind::Fish, "Moss grows on its back. It doesn't mind.";
+    GlowwormEel = "glowworm_eel", "Glowworm Eel", "glowworm_eel", 99, 270, Kind::Fish, "Lights up the underground pools.";
+    Crayfish = "crayfish", "Crayfish", "crayfish", 99, 60, Kind::Fish, "Pinchy! Lovely boiled with corn.";
+    CrystalTetra = "crystal_tetra", "Crystal Tetra", "crystal_tetra", 99, 90, Kind::Fish, "You can see right through it. Rude to stare, though.";
+    PrismGuppy = "prism_guppy", "Prism Guppy", "prism_guppy", 99, 170, Kind::Fish, "Splits the light into rainbows with its tail.";
+    GeodePuffer = "geode_puffer", "Geode Puffer", "geode_puffer", 99, 230, Kind::Fish, "Puffs up into a spiky gem when startled.";
+    DiamondRay = "diamond_ray", "Diamond Ray", "diamond_ray", 99, 500, Kind::Fish, "Glides like a kite made of ice.";
+    SporeSnapper = "spore_snapper", "Spore Snapper", "spore_snapper", 99, 110, Kind::Fish, "Snaps at glowing spores. And fingers.";
+    JellyAngelfish = "jelly_angelfish", "Jelly Angelfish", "jelly_angelfish", 99, 240, Kind::Fish, "Wobbly fins, graceful as a dancer.";
+    TruffleCatfish = "truffle_catfish", "Truffle Catfish", "truffle_catfish", 99, 540, Kind::Fish, "Its whiskers can smell a truffle a mile away.";
+    MoonJelly = "moon_jelly", "Moon Jelly", "moon_jelly", 99, 200, Kind::Fish, "Not a fish at all. Very pretty anyway.";
+    LavaEel = "lava_eel", "Lava Eel", "lava_eel", 99, 320, Kind::Fish, "Swims through molten rock like it's bathwater.";
+    MagmaGoby = "magma_goby", "Magma Goby", "magma_goby", 99, 270, Kind::Fish, "Tiny, fiery and absolutely furious.";
+    CinderCarp = "cinder_carp", "Cinder Carp", "cinder_carp", 99, 440, Kind::Fish, "Covered in glowing embers. Handle with mittens.";
+    PhoenixKoi = "phoenix_koi", "Phoenix Koi", "phoenix_koi", 99, 1900, Kind::Fish, "Reborn in the lava every hundred years.";
+    SnowSmelt = "snow_smelt", "Snow Smelt", "snow_smelt", 99, 120, Kind::Fish, "Smells faintly of cucumber and snow.";
+    IcePike = "ice_pike", "Ice Pike", "ice_pike", 99, 290, Kind::Fish, "Sharp as an icicle and twice as cold.";
+    FrostChar = "frost_char", "Frost Char", "frost_char", 99, 270, Kind::Fish, "Pink as a winter sunset.";
+    AuroraTrout = "aurora_trout", "Aurora Trout", "aurora_trout", 99, 720, Kind::Fish, "Shimmers with the northern lights.";
+    GhostFish = "ghost_fish", "Ghost Fish", "ghost_fish", 99, 230, Kind::Fish, "Boo. (It's shy.)";
+    BoneFish = "bone_fish", "Bone Fish", "bone_fish", 99, 310, Kind::Fish, "All bones and no manners.";
+    Coelacanth = "coelacanth", "Ancient Coelacanth", "coelacanth", 99, 920, Kind::Fish, "It was old when the ruins were new.";
+    StarSturgeon = "star_sturgeon", "Star Sturgeon", "star_sturgeon", 99, 2300, Kind::Fish, "Its scales map the stars of a forgotten sky.";
 }
 
 impl Serialize for Item {
@@ -1158,6 +1298,12 @@ recipes! {
     Home: Sprinkler x 1 <= [CopperOre 5, IronOre 2];
     Home: QualitySprinkler x 1 <= [IronOre 5, GoldOre 2, Crystal 1];
     Home: CrystalSprinkler x 1 <= [GoldOre 5, Crystal 4, FrostGem 1];
+    Home: WoodenChair x 1 <= [Wood 8];
+    Home: RoundTable x 1 <= [Wood 12];
+    Home: KitchenCounter x 1 <= [Wood 10, Stone 4];
+    Home: Bookshelf x 1 <= [Wood 25, Fiber 6];
+    Home: PottedFern x 1 <= [Stone 3, Fiber 6];
+    Home: FishBowl x 1 <= [Crystal 2, Stone 4];
 
     // Kitchen.
     Kitchen: HealingTonic x 1 <= [CaveCarrot 2, SlimeGel 2];
@@ -1187,6 +1333,20 @@ recipes! {
     Kitchen: PumpkinPie x 1 <= [SporePumpkin 1, CrystalBerry 2];
     Kitchen: TruffleRisotto x 1 <= [Truffle 1, AncientGrain 2, Garlic 1];
     Kitchen: StarfruitTart x 1 <= [Starfruit 1, Wheat 2, JellyShroom 1];
+    Kitchen: FishAndChips x 1 <= [PondPerch 1, Potato 2];
+    Kitchen: GrilledTrout x 1 <= [BrookTrout 1, Garlic 1];
+    Kitchen: MinnowFritters x 2 <= [SunnyMinnow 3, Wheat 1];
+    Kitchen: Sushi x 2 <= [SilverDace 1, Seaweed 2, Wheat 1];
+    Kitchen: FishStew x 1 <= [Bluegill 1, Tomato 1, Cabbage 1];
+    Kitchen: CarpCurry x 1 <= [MudCarp 1, EmberPepper 1];
+    Kitchen: SalmonSteak x 1 <= [StormSalmon 1, Garlic 1];
+    Kitchen: CrayfishBoil x 1 <= [Crayfish 3, Corn 1];
+    Kitchen: CaveSkewer x 1 <= [BlindCavefish 2, Glowcap 1];
+    Kitchen: Ceviche x 1 <= [CrystalTetra 2, LavaLemon 1];
+    Kitchen: SmeltPie x 1 <= [SnowSmelt 2, Wheat 2];
+    Kitchen: EelKebab x 1 <= [LavaEel 1, EmberPepper 1];
+    Kitchen: FishTacos x 1 <= [RainbowTrout 1, Corn 1, Tomato 1];
+    Kitchen: EmperorPlatter x 1 <= [GoldenCarp 1, Truffle 1];
 
     // Tools.
     Tools: Sickle x 1 <= [Wood 3, Stone 4];
@@ -1211,6 +1371,7 @@ recipes! {
     Tools: EmberHoe x 1 <= [EmberOre 14, Crystal 6];
     Tools: Axe5 x 1 <= [EmberOre 14, Crystal 6];
     Tools: Pick5 x 1 <= [EmberOre 14, Crystal 6];
+    Tools: Bait x 5 <= [Fiber 2, SlimeGel 1];
 
     // Weapons and armour.
     Gear: TwigWand x 1 <= [Wood 3, Spore 1];

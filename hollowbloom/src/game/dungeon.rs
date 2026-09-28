@@ -19,6 +19,10 @@ pub enum Foe {
     Skeleton,
     Golem,
     Ghost,
+    /// Water folk: they live by the underground ponds.
+    Frog,
+    Jelly,
+    Puffer,
 }
 
 pub struct Spawn {
@@ -47,18 +51,25 @@ pub fn is_waystone_floor(depth: u32) -> bool {
 /// Enemies that live in a biome, with weights.
 pub fn biome_foes(biome: usize) -> &'static [(Foe, f32)] {
     match biome {
-        0 => &[(Foe::Slime, 4.0), (Foe::Bat, 2.0), (Foe::Shroom, 2.5)],
+        0 => &[
+            (Foe::Slime, 4.0),
+            (Foe::Bat, 2.0),
+            (Foe::Shroom, 2.5),
+            (Foe::Frog, 0.8),
+        ],
         1 => &[
             (Foe::Slime, 3.0),
             (Foe::Crab, 2.5),
             (Foe::Wisp, 1.5),
             (Foe::Bat, 1.0),
+            (Foe::Puffer, 0.8),
         ],
         2 => &[
             (Foe::Shroom, 3.0),
             (Foe::Slime, 2.0),
             (Foe::Beetle, 2.5),
             (Foe::Bat, 1.0),
+            (Foe::Jelly, 0.8),
         ],
         3 => &[
             (Foe::Slime, 2.5),
@@ -71,13 +82,26 @@ pub fn biome_foes(biome: usize) -> &'static [(Foe, f32)] {
             (Foe::Crab, 2.0),
             (Foe::Wisp, 2.0),
             (Foe::Golem, 1.0),
+            (Foe::Jelly, 0.8),
         ],
         _ => &[
             (Foe::Skeleton, 3.0),
             (Foe::Ghost, 2.0),
             (Foe::Golem, 1.5),
             (Foe::Wisp, 1.0),
+            (Foe::Puffer, 0.8),
         ],
+    }
+}
+
+/// Who lives around the underground ponds of a biome.
+pub fn pond_foes(biome: usize) -> &'static [Foe] {
+    match biome {
+        0 => &[Foe::Frog, Foe::Frog, Foe::Crab],
+        1 => &[Foe::Crab, Foe::Puffer, Foe::Jelly],
+        2 => &[Foe::Frog, Foe::Jelly],
+        4 => &[Foe::Jelly, Foe::Puffer, Foe::Crab],
+        _ => &[Foe::Puffer, Foe::Jelly],
     }
 }
 
@@ -482,6 +506,42 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
             }
         }
     }
+    // Underground ponds, with the water folk living round them. A pond never cuts the way to
+    // the stairs.
+    let mut ponds = Vec::new();
+    if biome != 3 {
+        for (i, room) in rooms.iter().enumerate() {
+            if i == start_room || room.w < 7 || room.h < 6 || !r.chance(0.4) {
+                continue;
+            }
+            let (cx, cz) = room.center();
+            let (px, pz) = (cx + r.range(-1, 2), cz + r.range(-1, 1));
+            let mut dug = Vec::new();
+            for dz in -1..=1 {
+                for dx in -2..=2 {
+                    let (x, z) = (px + dx, pz + dz);
+                    let edge = dx.abs() == 2 && dz != 0;
+                    if !edge
+                        && world.wall(x, z) == Wall::None
+                        && world.obj(x, z).is_none()
+                        && !keep_clear(x, z)
+                        && world.floor(x, z) == Floor::Cave
+                    {
+                        world.set_floor(x, z, Floor::Water);
+                        dug.push((x, z));
+                    }
+                }
+            }
+            if dug.len() < 4 || !reachable(&world, start, stairs) {
+                for (x, z) in dug {
+                    world.set_floor(x, z, Floor::Cave);
+                }
+            } else {
+                ponds.push((px, pz));
+            }
+        }
+    }
+
     // Treasure chests in quiet corners.
     let chests = 1 + usize::from(r.chance(0.45)) + usize::from(is_waystone_floor(depth));
     let mut placed = 0;
@@ -523,6 +583,28 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
                 if !world.blocked(x, z) && !keep_clear(x, z) {
                     spawns.push(Spawn {
                         foe: foes[r.weighted(&weights)].0,
+                        x: x as f32 + 0.5,
+                        z: z as f32 + 0.5,
+                        boss: false,
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    // Water folk by the ponds.
+    let folk = pond_foes(biome);
+    for &(px, pz) in &ponds {
+        for _ in 0..1 + r.below(2) {
+            if spawns.len() >= cap + 3 {
+                break;
+            }
+            for _ in 0..12 {
+                let x = px + r.range(-3, 4);
+                let z = pz + r.range(-2, 3);
+                if !world.blocked(x, z) && !keep_clear(x, z) {
+                    spawns.push(Spawn {
+                        foe: folk[r.below(folk.len())],
                         x: x as f32 + 0.5,
                         z: z as f32 + 0.5,
                         boss: false,
@@ -642,6 +724,35 @@ fn near_corridor(w: &World, x: i32, z: i32) -> bool {
     (horiz && vert) || open8 < 7
 }
 
+/// Can you walk from one tile to another (around water, lava and anything solid)?
+pub fn reachable(w: &World, from: (i32, i32), to: (i32, i32)) -> bool {
+    let mut seen = vec![false; (w.w * w.h) as usize];
+    let mut q = std::collections::VecDeque::new();
+    if !w.inside(from.0, from.1) {
+        return false;
+    }
+    seen[w.idx(from.0, from.1)] = true;
+    q.push_back(from);
+    while let Some((x, z)) = q.pop_front() {
+        if (x, z) == to {
+            return true;
+        }
+        for (dx, dz) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let (nx, nz) = (x + dx, z + dz);
+            // The stairs themselves count as open.
+            let open = (nx, nz) == to || !w.blocked(nx, nz);
+            if w.inside(nx, nz) && open {
+                let i = w.idx(nx, nz);
+                if !seen[i] {
+                    seen[i] = true;
+                    q.push_back((nx, nz));
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Walking distance from a tile to every tile (u32::MAX where unreachable).
 pub fn flood(w: &World, from: (i32, i32)) -> Vec<u32> {
     let mut dist = vec![u32::MAX; (w.w * w.h) as usize];
@@ -681,9 +792,35 @@ mod tests {
             let dist = flood(&a.world, a.start);
             let i = a.world.idx(a.stairs.0, a.stairs.1);
             assert_ne!(dist[i], u32::MAX, "stairs unreachable on floor {depth}");
+            if depth % 10 != 0 && biome_for(depth) != 3 {
+                assert!(
+                    reachable(&a.world, a.start, a.stairs),
+                    "a pond blocks the way on floor {depth}"
+                );
+            }
             assert!(!a.world.blocked(a.start.0, a.start.1));
             assert_eq!(a.waystone.is_some(), depth % 10 == 0);
         }
+    }
+
+    #[test]
+    fn ponds_turn_up_with_water_folk_around_them() {
+        let mut ponds = 0;
+        let mut folk = 0;
+        for depth in 1..40 {
+            let l = generate(9, depth, false);
+            if biome_for(depth) == 3 {
+                continue;
+            }
+            ponds += l.world.floor.iter().filter(|f| **f == Floor::Water).count();
+            folk += l
+                .spawns
+                .iter()
+                .filter(|s| matches!(s.foe, Foe::Frog | Foe::Jelly | Foe::Puffer))
+                .count();
+        }
+        assert!(ponds > 40, "only {ponds} pond tiles");
+        assert!(folk > 5, "only {folk} water folk");
     }
 
     #[test]

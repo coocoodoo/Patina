@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::items::Item;
 use super::world::{Area, Floor, Obj, Wall, World};
 use crate::palette::*;
 use crate::util::{Rng, hash2};
@@ -235,16 +236,17 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         floor: Floor::Planks,
         open: (480.0, 1200.0),
         goods: 7,
+        // Digits are furniture on display (see `display_piece`).
         layout: &[
             "##W##P#L#P##W##",
             "#s.s...K...s.s#",
             "#....CCCCC....#",
-            "#.............#",
+            "#4...........5#",
             "#l..f.....f..l#",
-            "#.............#",
+            "#1..7......3..#",
             "#q....___....q#",
             "#j...........j#",
-            "#.............#",
+            "#8..........6.#",
             "       D       ",
         ],
     },
@@ -1081,6 +1083,29 @@ pub struct Room {
 /// `o` oven, `a` anvil, `u` cauldron, `g` gem case, `n` tinker's bench, `i` seed bins,
 /// `d` desk, `R` bounty board, `T` taps, `l` lamp, `f` flower pot, `q` chest, `j` bench,
 /// `_` rug, `D` the door out, and spaces are nothing at all.
+/// Furniture Wren shows off in her shop, by layout digit, and the fish in any tank.
+fn display_piece(ch: char) -> Option<(super::home::Furn, &'static [Item])> {
+    use super::home::Furn;
+    Some(match ch {
+        '1' => (Furn::Sofa, &[]),
+        '3' => (
+            Furn::FishTank,
+            &[
+                Item::LilyKoi,
+                Item::Bluegill,
+                Item::SunnyMinnow,
+                Item::PrismGuppy,
+            ],
+        ),
+        '4' => (Furn::Clock, &[]),
+        '5' => (Furn::Bookshelf, &[]),
+        '6' => (Furn::Piano, &[]),
+        '7' => (Furn::Globe, &[]),
+        '8' => (Furn::Fern, &[]),
+        _ => return None,
+    })
+}
+
 pub fn room(place: Place) -> Room {
     let def = place.def();
     let rows = def.layout;
@@ -1156,6 +1181,15 @@ pub fn room(place: Place) -> Room {
                 }
                 'D' => {
                     exit = (x, z);
+                    None
+                }
+                '0'..='9' => {
+                    if let Some((f, fish)) = display_piece(ch) {
+                        super::home::put(&mut world, f, 0, x, z);
+                        if let Some(Obj::Furniture { fish: f_in, .. }) = world.obj_mut(x, z) {
+                            f_in.extend_from_slice(fish);
+                        }
+                    }
                     None
                 }
                 _ => None,

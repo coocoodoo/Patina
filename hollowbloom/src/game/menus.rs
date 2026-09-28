@@ -116,6 +116,13 @@ pub enum Menu {
     },
     /// Quest complete!
     Cheer,
+    /// A fish tank in the house: the fish in it and your bag.
+    Tank {
+        x: i32,
+        z: i32,
+        /// 0..cap the tank, cap.. the bag.
+        cursor: usize,
+    },
     Ship {
         cursor: usize,
     },
@@ -551,11 +558,16 @@ impl Play {
         io.audio.play(Sfx::UiBack);
     }
 
-    /// Crafts a recipe: gear and scrolls come out freshly rolled.
-    fn craft(&mut self, r: &Recipe, io: &Io) -> bool {
+    /// Crafts a recipe: gear and scrolls come out freshly rolled. Dishes go on the stove
+    /// instead (see `home::Cooking`).
+    fn craft(&mut self, r: &Recipe, book: (usize, usize, usize), io: &mut Io) -> bool {
         if !r.can_craft(&self.player.inv) {
             io.audio.play(Sfx::Denied);
             return false;
+        }
+        if r.cat == super::items::Cat::Kitchen {
+            let k = RECIPES.iter().position(|x| std::ptr::eq(x, r)).unwrap_or(0);
+            return self.start_cooking(k, book, io);
         }
         for (item, k) in r.needs {
             self.player.inv.take(*item, *k as u32);
@@ -994,17 +1006,23 @@ impl Play {
                             || lclick && inside(mouse, bx, by, bw, bh);
                         if craft_now {
                             if let Some(r) = list.get(recipe) {
-                                self.craft(r, io);
+                                self.craft(r, (cat, recipe, scroll), io);
                             }
                         }
                     }
                 }
-                Menu::Inventory {
-                    tab,
-                    cursor,
-                    recipe,
-                    scroll,
-                    cat,
+                if self.cooking.is_some() {
+                    // Off to the stove; the book opens again when the dish is done.
+                    self.return_held();
+                    Menu::None
+                } else {
+                    Menu::Inventory {
+                        tab,
+                        cursor,
+                        recipe,
+                        scroll,
+                        cat,
+                    }
                 }
             }
             Menu::Chest { x, z, mut cursor } => {
@@ -1070,6 +1088,7 @@ impl Play {
             Menu::Journal { tab, sel } => self.update_journal(io, tab, sel),
             Menu::Spells { tab, sel } => self.update_spellery(io, tab, sel),
             Menu::Cheer => self.update_cheer(io),
+            Menu::Tank { x, z, cursor } => self.update_tank(io, x, z, cursor),
             Menu::Shop {
                 at,
                 mut tab,
@@ -1145,9 +1164,13 @@ impl Play {
                             if !sold && self.money >= price && self.player.inv.can_fit_stack(&stack)
                             {
                                 self.money -= price;
-                                // Plain gear off the shelf still gets its own rolls.
+                                // Plain gear off the shelf still gets its own rolls, except
+                                // fishing rods: the shop's are plain, the Hollow's are not.
                                 let stack = match (stack.item.base(), stack.gear) {
-                                    (Some(b), Some(g)) if g.affixes.iter().all(|a| a.is_none()) => {
+                                    (Some(b), Some(g))
+                                        if g.affixes.iter().all(|a| a.is_none())
+                                            && b.class != super::gear::Class::Rod =>
+                                    {
                                         loot::roll_gear(stack.item, b.lvl, 0.0, &mut self.rng)
                                     }
                                     _ => stack,
@@ -1186,7 +1209,7 @@ impl Play {
                         if let Some(s) = self.player.inv.slots[i] {
                             if can_sell(&s) {
                                 let n = if one { 1 } else { s.n };
-                                let v = s.unit_price() * n as u64 * shops::buy_rate(at, &s) / 100;
+                                let v = s.unit_price() * n as u64 * self.sell_rate(at, &s) / 100;
                                 self.money += v;
                                 self.stats.earned += v;
                                 self.player.inv.slots[i] = if s.n > n {
@@ -1316,7 +1339,15 @@ impl Play {
     }
 
     /// Shows the tooltip for a stack beside a slot.
-    fn tip_at(&self, c: &mut Canvas, a: &Assets, l: &Layout, sx: i32, sy: i32, s: &Stack) {
+    pub(crate) fn tip_at(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        l: &Layout,
+        sx: i32,
+        sy: i32,
+        s: &Stack,
+    ) {
         let w = c.w();
         if l.px + l.pw + 150 < w {
             self.stack_tooltip(c, a, l.px + l.pw + 4, sy - 4, s);
@@ -1332,9 +1363,55 @@ impl Play {
             Menu::Summary => {
                 let Some(s) = &self.last_summary else { return };
                 c.shade(0, 0, w, h, 2);
-                let l = center(w, h, 190, 120);
-                c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 let title = format!("Day {}", s.day);
+                let slept = if s.fainted {
+                    ("You were found asleep in the Hollow...", CRIMSON)
+                } else if s.passed_out {
+                    ("You fell asleep on your feet.", CRIMSON)
+                } else {
+                    ("You slept soundly.", SHADOW)
+                };
+                // The rest of the night's news, one line each.
+                let mut news: Vec<(String, u8)> =
+                    vec![(format!("{} crops grew overnight", s.grown), TEAL)];
+                if s.ready > 0 {
+                    news.push((format!("{} are ready to harvest!", s.ready), GREEN));
+                }
+                if s.sprouted > 0 {
+                    news.push((
+                        format!("{} weeds and bushes sprang up on the farm", s.sprouted),
+                        ROSEWOOD,
+                    ));
+                }
+                news.push((
+                    if s.rain {
+                        "It's raining - the crops are watered."
+                    } else {
+                        "The sun is out."
+                    }
+                    .into(),
+                    INDIGO,
+                ));
+                // The box grows to fit its widest line (and wraps anything wider than the
+                // screen allows).
+                let label = "Shipped goods sold for ";
+                let money_w = c.text_width(label) + 4 + money_width(c, s.earned);
+                let widest = news
+                    .iter()
+                    .map(|(t, _)| c.text_width(t))
+                    .chain([c.text_width(slept.0), money_w, c.big_width(&title, 2)])
+                    .max()
+                    .unwrap_or(0);
+                let pw = (widest + 24).clamp(190, (w - 16).max(190));
+                let mut rows: Vec<(String, u8)> = Vec::new();
+                for (t, col) in std::iter::once((slept.0.to_string(), slept.1)).chain(news) {
+                    for part in c.font.wrap(&t, pw - 16) {
+                        rows.push((part.to_string(), col));
+                    }
+                }
+                let ph = 34 + (rows.len() as i32 + 1) * 11 + 22;
+                let l = center(w, h, pw, ph);
+                c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 c.text_big(
                     l.px + (l.pw - c.big_width(&title, 2)) / 2,
                     l.py + 8,
@@ -1344,49 +1421,17 @@ impl Play {
                     RUST,
                 );
                 let mut y = l.py + 34;
-                let mut line = |c: &mut Canvas, t: String, col: u8| {
-                    c.text_center(l.px + l.pw / 2, y, &t, col);
+                for (i, (t, col)) in rows.iter().enumerate() {
+                    c.text_center(l.px + l.pw / 2, y, t, *col);
                     y += 11;
-                };
-                if s.fainted {
-                    line(c, "You were found asleep in the Hollow...".into(), CRIMSON);
-                } else if s.passed_out {
-                    line(c, "You fell asleep on your feet.".into(), CRIMSON);
-                } else {
-                    line(c, "You slept soundly.".into(), SHADOW);
-                }
-                // Earnings with coins.
-                let label = "Shipped goods sold for ";
-                let tw = c.text_width(label) + money_width(c, s.earned);
-                let x0 = l.px + (l.pw - tw) / 2;
-                let lw = c.text(x0, y, label, RUST);
-                draw_money(c, a, x0 + lw + 4, y, s.earned, RUST);
-                y += 11;
-                let mut line = |c: &mut Canvas, t: String, col: u8| {
-                    c.text_center(l.px + l.pw / 2, y, &t, col);
-                    y += 11;
-                };
-                line(c, format!("{} crops grew overnight", s.grown), TEAL);
-                if s.ready > 0 {
-                    line(c, format!("{} are ready to harvest!", s.ready), GREEN);
-                }
-                if s.sprouted > 0 {
-                    line(
-                        c,
-                        format!("{} weeds and bushes sprang up on the farm", s.sprouted),
-                        KHAKI,
-                    );
-                }
-                line(
-                    c,
-                    if s.rain {
-                        "It's raining - the crops are watered."
-                    } else {
-                        "The sun is out."
+                    // Earnings, with coins, straight after how you slept.
+                    if i == 0 {
+                        let x0 = l.px + (l.pw - money_w) / 2;
+                        let lw = c.text(x0, y, label, RUST);
+                        draw_money(c, a, x0 + lw + 4, y, s.earned, RUST);
+                        y += 11;
                     }
-                    .into(),
-                    INDIGO,
-                );
+                }
                 c.text_center(
                     l.px + l.pw / 2,
                     l.py + l.ph - 14,
@@ -1581,6 +1626,7 @@ impl Play {
             Menu::Journal { tab, sel } => self.draw_journal(c, a, *tab, *sel),
             Menu::Spells { tab, sel } => self.draw_spellery(c, a, *tab, *sel, mouse),
             Menu::Cheer => self.draw_cheer(c, a),
+            Menu::Tank { x, z, cursor } => self.draw_tank(c, a, *x, *z, *cursor, mouse),
             Menu::Ship { cursor } => {
                 let l = panel_layout(w, h);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
@@ -1891,7 +1937,11 @@ impl Play {
             c.text(dx + 18, y + 2, &format!("{have}/{k}"), col);
             y += 16;
         }
-        let note = if r.out.base().is_some() {
+        let kitchen = r.cat == super::items::Cat::Kitchen;
+        let stove = self.stove_near().is_some();
+        let note = if kitchen && !stove {
+            "Cook it at the stove in your house (or a waystone campfire).".to_string()
+        } else if r.out.base().is_some() {
             format!(
                 "Comes out at level {} with random stats.",
                 crafted_level(self, r.out)
@@ -1905,14 +1955,21 @@ impl Play {
         for (k, t) in desc.iter().take(3).enumerate() {
             c.text(dx, y + k as i32 * 9, t, SHADOW);
         }
-        let ok = r.can_craft(&self.player.inv);
+        let has = r.can_craft(&self.player.inv);
+        let ok = has && (!kitchen || stove);
         let (bx, by, bw, bh) = craft_button(l);
         c.rect(bx, by, bw, bh, if ok { GREEN } else { KHAKI });
         c.frame(bx, by, bw, bh, INK);
+        let label = match (kitchen, stove, has) {
+            (true, false, _) => "Needs a stove",
+            (true, true, true) => "Cook (E)",
+            (_, _, true) => "Craft (E)",
+            _ => "Missing items",
+        };
         c.text_center(
             bx + bw / 2,
             by + 3,
-            if ok { "Craft (E)" } else { "Missing items" },
+            label,
             if ok { WHITE } else { ROSEWOOD },
         );
         // Hovering a gear recipe shows what the base item is like.
@@ -2036,7 +2093,7 @@ impl Play {
                 if let Some(s) = self.player.inv.slots[i] {
                     let y = g.y + g.h() + 8;
                     if can_sell(&s) {
-                        let rate = shops::buy_rate(at, &s);
+                        let rate = self.sell_rate(at, &s);
                         let t = format!("{} x{} -", s.name(), s.n);
                         let tw = c.text(l.px + 10, y, &t, INK);
                         let mw = draw_money(c, a, l.px + 14 + tw, y, s.value() * rate / 100, RUST);

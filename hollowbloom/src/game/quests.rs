@@ -68,6 +68,18 @@ pub enum Goal {
     Brew(u16),
     /// Train any one spell up to this level.
     Mastery(u8),
+    /// Catch this many fish.
+    Fish(u16),
+    /// Catch this many different kinds of fish.
+    Fishdex(u16),
+    /// Make your home this charming.
+    Charm(u32),
+    /// Have this many pieces of furniture in your house.
+    Furnish(u16),
+    /// Keep this many fish in your tanks.
+    Tank(u16),
+    /// Cook this many dishes at a stove.
+    Cook(u16),
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -103,6 +115,8 @@ pub struct QuestDef {
     pub depth: u32,
     pub hearts: u8,
     pub day: u32,
+    /// How charming your home must be before they'll ask.
+    pub charm: u32,
 }
 
 const Q: QuestDef = QuestDef {
@@ -117,6 +131,7 @@ const Q: QuestDef = QuestDef {
     depth: 0,
     hearts: 0,
     day: 0,
+    charm: 0,
 };
 
 /// Bits for a set of villagers.
@@ -1926,6 +1941,491 @@ pub static QUESTS: &[QuestDef] = &[
         hearts: 6,
         ..Q
     },
+    // ---------------------------------------------------------------- Fishing with Garrick
+    QuestDef {
+        key: "garrick_fishing",
+        giver: V::Garrick,
+        title: "Quiet Waters",
+        ask: "...You fish? Should. Quiet work. Grab a bamboo rod off my rack - cheap - and \
+              catch five fish. Any kind. The pond on your farm's full of them. Hold to wind \
+              up, let go to cast. When it bites, strike.",
+        thanks: "Five. Good. You've got the patience. Here - a willow rod. Bends better. And \
+                 bait. Fish can't resist a wriggle.",
+        goal: Fish(5),
+        reward: &[
+            Coins(400),
+            gear(Item::WillowRod, UNCOMMON),
+            item(Item::Bait, 10),
+            Friend(V::Garrick, 40),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "garrick_koi",
+        giver: V::Garrick,
+        title: "The Pond's Jewel",
+        ask: "There's a koi in your pond. White and orange, naps under the lilies. Only \
+              comes up by day. Bring me one. I want to paint it. ...Don't tell anyone I paint.",
+        thanks: "Look at those colours. ...Right. Painting. Here, take this before I say \
+                 something soppy.",
+        goal: Bring(Item::LilyKoi, 1),
+        reward: &[Coins(1200), item(Item::Bait, 15), item(Item::TrophyFish, 1)],
+        after: "garrick_fishing",
+        ..Q
+    },
+    QuestDef {
+        key: "garrick_river",
+        giver: V::Garrick,
+        title: "Upstream",
+        ask: "The stream by the park has trout, bass, chub, loach. Different water, different \
+              fish. Catch eight different kinds and you'll know what I mean.",
+        thanks: "Eight kinds. You're learning the water. This oak rod's never snapped. \
+                 Take it.",
+        goal: Fishdex(8),
+        reward: &[
+            Coins(1500),
+            gear(Item::OakRod, RARE),
+            Friend(V::Garrick, 40),
+        ],
+        after: "garrick_koi",
+        ..Q
+    },
+    QuestDef {
+        key: "garrick_deep",
+        giver: V::Garrick,
+        title: "Fish in the Dark",
+        ask: "Delvers talk about ponds down in the Hollow. Eels that glow. Frogs that guard \
+              them. Bring me a glowworm eel and I'll believe it.",
+        thanks: "It glows. It actually glows. ...The Hollow's full of surprises. So are you. \
+                 Here: a crystal rod. Found it in a frog's hoard. Long story.",
+        goal: Bring(Item::GlowwormEel, 1),
+        reward: &[
+            Coins(2500),
+            gear(Item::CrystalRod, RARE),
+            item(Item::Bait, 20),
+        ],
+        after: "garrick_river",
+        depth: 5,
+        ..Q
+    },
+    QuestDef {
+        key: "garrick_golden",
+        giver: V::Garrick,
+        title: "The Golden Carp",
+        ask: "Your pond has an old carp. Golden. Older than the town. I hooked it once, forty \
+              years ago, and let it go. Catch it. Show me it's still there.",
+        thanks: "...Still there. Still golden. Thank you. This rod was meant for a fish like \
+                 that. It's yours now.",
+        goal: Bring(Item::GoldenCarp, 1),
+        reward: &[
+            Coins(8000),
+            gear(Item::LeviathanRod, LEGEND),
+            item(Item::WishStar, 1),
+        ],
+        after: "garrick_river",
+        hearts: 4,
+        ..Q
+    },
+    QuestDef {
+        key: "garrick_lava",
+        giver: V::Garrick,
+        title: "Fire Fishing",
+        ask: "They say eels swim in the lava down in the Ember Depths. You'd need a rod \
+              that won't burn. The frogs and crabs down there hoard them. Bring me two lava \
+              eels.",
+        thanks: "Hot. Very hot. ...Ow. Worth it. Here - you've earned this.",
+        goal: Bring(Item::LavaEel, 2),
+        reward: &[
+            Coins(6000),
+            Scroll(Group::Tool, EPIC),
+            item(Item::EelKebab, 3),
+            item(Item::Fireplace, 1),
+        ],
+        after: "garrick_deep",
+        depth: 31,
+        ..Q
+    },
+    QuestDef {
+        key: "garrick_master",
+        giver: V::Garrick,
+        title: "Master Angler",
+        ask: "Thirty kinds of fish. Pond, stream, every pool in the Hollow, even the lava. \
+              Do that and there's nothing left I can teach you.",
+        thanks: "Thirty. You're a master angler now. Better than me. ...Don't let it go to \
+                 your head. This is the finest rod I ever saw. Take it.",
+        goal: Fishdex(30),
+        reward: &[
+            Coins(20000),
+            gear(Item::StarRod, LEGEND),
+            item(Item::HeartCrystal, 1),
+            Friend(V::Garrick, 100),
+        ],
+        after: "garrick_golden",
+        hearts: 6,
+        ..Q
+    },
+    // ---------------------------------------------------------------- Cooking at home
+    QuestDef {
+        key: "barley_fishfry",
+        giver: V::Barley,
+        title: "Fish Fry Friday",
+        ask: "Friday's fish fry night at the Snail, and my supplier's gone fishing - \
+              without me! Could you catch three pond perch?",
+        thanks: "Perch! Proper perch! The regulars will cry. Have some fish and chips on \
+                 the house.",
+        goal: Bring(Item::PondPerch, 3),
+        reward: &[
+            Coins(600),
+            item(Item::FishAndChips, 3),
+            Friend(V::Barley, 40),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "barley_stove",
+        giver: V::Barley,
+        title: "Chef at Home",
+        ask: "A farmer who cooks is a farmer who thrives! Cook ten dishes on your own stove \
+              at home and I'll send you something special for that kitchen of yours.",
+        thanks: "Ten dishes! You're a proper chef now. I've had a copper range sitting in my \
+                 cellar - it's yours. Sometimes it cooks a second helping, if it likes you.",
+        goal: Cook(10),
+        reward: &[
+            Coins(1000),
+            item(Item::CopperRange, 1),
+            Friend(V::Barley, 60),
+        ],
+        after: "barley_fishfry",
+        ..Q
+    },
+    QuestDef {
+        key: "mabel_oven",
+        giver: V::Mabel,
+        title: "A Baker's Kitchen",
+        ask: "Every good kitchen starts with a warm stove, dearie. Cook five dishes on yours \
+              and I'll give you a little something for the counter.",
+        thanks: "Five dishes! You've got flour on your nose - that's how I know it's true. \
+                 Here, for your kitchen.",
+        goal: Cook(5),
+        reward: &[
+            Coins(500),
+            item(Item::KitchenCounter, 2),
+            item(Item::FlowerVase, 1),
+            Friend(V::Mabel, 40),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "fern_stew",
+        giver: V::Fern,
+        title: "Grandma's Stew",
+        ask: "My late husband made the best fisherman's stew. Bluegill, tomato, cabbage. \
+              Would you cook two bowls for an old lady? I'd give anything to taste it again.",
+        thanks: "Oh... it tastes just like his. Thank you, dear. Take his old clock - it \
+                 always kept better time in a happy house.",
+        goal: Bring(Item::FishStew, 2),
+        reward: &[
+            Coins(800),
+            item(Item::GrandfatherClock, 1),
+            Friend(V::Fern, 80),
+        ],
+        ..Q
+    },
+    // ---------------------------------------------------------------- Home, sweet home
+    QuestDef {
+        key: "wren_home",
+        giver: V::Wren,
+        title: "Make It Cozy",
+        ask: "Have you looked inside your farmhouse lately? Let's make it cozy! Hold a piece \
+              of furniture and use it inside to set it down - T turns it. Get your home to \
+              20 charisma and come and tell me.",
+        thanks: "Twenty! I can feel the coziness from here. Here's an armchair for reading \
+                 in, and a rug to put under it.",
+        goal: Charm(20),
+        reward: &[
+            Coins(600),
+            item(Item::Armchair, 1),
+            item(Item::StripedRug, 1),
+            Friend(V::Wren, 40),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "wren_furnish",
+        giver: V::Wren,
+        title: "Room to Breathe",
+        ask: "A house needs things in it to feel lived in. Fourteen pieces of furniture - \
+              tables, chairs, lamps, plants, anything!",
+        thanks: "Fourteen pieces and it still has room to breathe? You've got an eye for this. \
+                 A bookshelf and a lamp, for your reading corner.",
+        goal: Furnish(14),
+        reward: &[
+            Coins(1000),
+            item(Item::Bookshelf, 1),
+            item(Item::FloorLamp, 1),
+        ],
+        after: "wren_home",
+        ..Q
+    },
+    QuestDef {
+        key: "wren_charming",
+        giver: V::Wren,
+        title: "A Charming Home",
+        ask: "Everyone's talking about your house! Let's make them talk more. Reach 30 \
+              charisma - new wallpaper and floors help, and so do fish in a tank.",
+        thanks: "Thirty! The whole town wants an invitation now. Here's a sofa big enough \
+                 for all of them, and a starry rug.",
+        goal: Charm(30),
+        reward: &[
+            Coins(3000),
+            item(Item::Sofa, 1),
+            item(Item::StarRug, 1),
+            Friend(V::Wren, 60),
+        ],
+        after: "wren_furnish",
+        charm: 15,
+        ..Q
+    },
+    QuestDef {
+        key: "wren_dazzling",
+        giver: V::Wren,
+        title: "Dazzling!",
+        ask: "I've never said this to anyone: I think your home could be the finest in the \
+              valley. Sixty charisma. Dazzle me.",
+        thanks: "Dazzling. Truly. I've been saving these for a home like yours - my very best \
+                 bed, and a piano. Play me something sometime?",
+        goal: Charm(60),
+        reward: &[
+            Coins(10000),
+            item(Item::CanopyBed, 1),
+            item(Item::Piano, 1),
+            Friend(V::Wren, 100),
+        ],
+        after: "wren_charming",
+        charm: 40,
+        ..Q
+    },
+    QuestDef {
+        key: "thistle_home",
+        giver: V::Thistle,
+        title: "Home of the Year",
+        ask: "Every year Bramblewick awards the Golden Doormat to the loveliest home in the \
+              valley. Word is yours might win! Get it to 65 charisma before the judges visit.",
+        thanks: "The Golden Doormat goes to... you! Hollowbloom Farm, home of the year! The \
+                 whole council agreed - well, Clank abstained, he prefers castles.",
+        goal: Charm(65),
+        reward: &[
+            Coins(20000),
+            item(Item::HeartCrystal, 2),
+            item(Item::WishStar, 1),
+            Friend(V::Thistle, 100),
+        ],
+        after: "thistle_hello",
+        charm: 45,
+        ..Q
+    },
+    QuestDef {
+        key: "pip_fishbowl",
+        giver: V::Pip,
+        title: "Fishy Friends",
+        ask: "Do you have fish? Real ones? In a tank? Can you get three? I want to name \
+              them. I've already picked names. They're all called Captain.",
+        thanks: "Captain, Captain and Captain! They're perfect! Here's my duck and my boat - \
+                 your fish need toys too!",
+        goal: Tank(3),
+        reward: &[
+            Coins(500),
+            item(Item::RubberDuck, 1),
+            item(Item::ToyBoat, 1),
+            Friend(V::Pip, 60),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "pip_crayfish",
+        giver: V::Pip,
+        title: "Pinchy!",
+        ask: "My friend says crayfish can pinch through a boot. I need to see. For science. \
+              Can you catch three?",
+        thanks: "They DO pinch! Ow! Science is amazing. Here, this is my best marble.",
+        goal: Bring(Item::Crayfish, 3),
+        reward: &[
+            Coins(400),
+            item(Item::GlassMarble, 1),
+            item(Item::CrayfishBoil, 2),
+        ],
+        after: "pip_fishbowl",
+        ..Q
+    },
+    QuestDef {
+        key: "mira_night",
+        giver: V::Mira,
+        title: "Night Fishing",
+        ask: "There's a catfish that only rises at night to look at the moon, like me. Would \
+              you catch one from your pond? I'd love to meet a fellow stargazer.",
+        thanks: "Hello, friend. Look at its purple whiskers! Here - take my old telescope. \
+                 On a clear night you might catch a shooting star.",
+        goal: Bring(Item::MoonlitCatfish, 1),
+        reward: &[Coins(1200), item(Item::Telescope, 1), Friend(V::Mira, 60)],
+        ..Q
+    },
+    QuestDef {
+        key: "mira_aurora",
+        giver: V::Mira,
+        title: "Northern Lights",
+        ask: "Deep in the Frost Caverns, they say, a trout carries the northern lights on its \
+              scales - but only after dark. I'd give my best painting to see one.",
+        thanks: "The whole sky, on one little fish... Thank you. The painting is yours, as \
+                 promised.",
+        goal: Bring(Item::AuroraTrout, 1),
+        reward: &[
+            Coins(5000),
+            item(Item::StarryPainting, 1),
+            item(Item::Moonstone, 2),
+        ],
+        after: "mira_night",
+        depth: 41,
+        ..Q
+    },
+    QuestDef {
+        key: "toby_storm",
+        giver: V::Toby,
+        title: "Storm Chaser",
+        ask: "Rainy days are the worst for a postman. Except! Storm salmon leap up the stream \
+              when it pours. Catch me one on a wet day and I'll love the rain forever.",
+        thanks: "A storm salmon! I'll never grumble about rain again. Probably. Here, a \
+                 raincoat - I got two.",
+        goal: Bring(Item::StormSalmon, 1),
+        reward: &[
+            Coins(1500),
+            gear(Item::FrogRaincoat, RARE),
+            Friend(V::Toby, 60),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "clank_pike",
+        giver: V::Clank,
+        title: "The Frozen Lake",
+        ask: "In my Frost Guard days we fished the frozen lakes for ice pike. Sharp as \
+              swords! Bring me one, and I'll give you the rod I carried then.",
+        thanks: "An ice pike! Ha! The Frost Guard would be proud. The rod is yours, friend.",
+        goal: Bring(Item::IcePike, 1),
+        reward: &[
+            Coins(4000),
+            gear(Item::FrostRod, EPIC),
+            Friend(V::Clank, 60),
+        ],
+        depth: 41,
+        ..Q
+    },
+    QuestDef {
+        key: "opal_ray",
+        giver: V::Opal,
+        title: "A Living Diamond",
+        ask: "Darling, I hear there's a ray in the Crystal Grotto that glitters like a cut \
+              diamond. Only the most charming delvers ever land one. Bring it to me?",
+        thanks: "It's exquisite. Look at the facets! For you - a real star diamond, and \
+                 candlelight to see your home sparkle by.",
+        goal: Bring(Item::DiamondRay, 1),
+        reward: &[
+            Coins(3000),
+            item(Item::StarDiamond, 1),
+            item(Item::Candelabra, 1),
+            Friend(V::Opal, 60),
+        ],
+        depth: 11,
+        charm: 25,
+        ..Q
+    },
+    QuestDef {
+        key: "hazel_scales",
+        giver: V::Hazel,
+        title: "Ghostly Scales",
+        ask: "Ghost fish swim in the Sunken Ruins' pools. Their scales make the finest ink \
+              for spellbooks. Two, please - and mind the puffers.",
+        thanks: "Perfect. See how they shimmer? A wish star and some potions for your trouble.",
+        goal: Bring(Item::GhostFish, 2),
+        reward: &[
+            Coins(3500),
+            item(Item::WishStar, 1),
+            item(Item::LargeManaPotion, 3),
+        ],
+        depth: 51,
+        ..Q
+    },
+    QuestDef {
+        key: "juniper_seaweed",
+        giver: V::Juniper,
+        title: "Pond Weeds",
+        ask: "Seaweed is a marvellous fertiliser. Anglers pull it up all the time! Ten \
+              strands, if you can spare them.",
+        thanks: "Lovely and slimy. Here, some plants for your house - they'll love you back.",
+        goal: Bring(Item::Seaweed, 10),
+        reward: &[
+            Coins(500),
+            item(Item::PottedFern, 2),
+            item(Item::PottedCactus, 1),
+        ],
+        ..Q
+    },
+    QuestDef {
+        key: "rowan_frogs",
+        giver: V::Rowan,
+        title: "Frog Trouble",
+        ask: "Bog frogs by the underground ponds are spitting at delvers. Harmless, mostly. \
+              Humiliating, definitely. Clear out ten.",
+        thanks: "Ten frogs, no more spit. The Guild thanks you. They hoard bait, too - keep it.",
+        goal: Slay(Some(Foe::Frog), 10, 1),
+        reward: &[Coins(1200), Marks(30), item(Item::Bait, 20)],
+        after: "rowan_slimes",
+        ..Q
+    },
+    QuestDef {
+        key: "rowan_puffers",
+        giver: V::Rowan,
+        title: "Spiky Business",
+        ask: "Puffers in the Grotto blow up into spiky balls and fire needles everywhere. \
+              Eight of them, floor 11 or deeper. Keep your distance when they swell.",
+        thanks: "Eight puffers deflated. Here's your pay - and a pearl rod we pulled out of \
+                 one of their nests.",
+        goal: Slay(Some(Foe::Puffer), 8, 11),
+        reward: &[Coins(2500), Marks(40), gear(Item::PearlRod, RARE)],
+        after: "rowan_frogs",
+        depth: 11,
+        ..Q
+    },
+    QuestDef {
+        key: "olive_party",
+        giver: V::Olive,
+        title: "Garden Party",
+        ask: "I'm throwing a garden party, and your home is so lovely everyone wants it \
+              decorated with your roses. Five roses?",
+        thanks: "Beautiful! The party was a triumph. Take these vases - fill them with \
+                 something pretty.",
+        goal: Bring(Item::Rose, 5),
+        reward: &[Coins(1500), item(Item::FlowerVase, 2), Friend(V::Olive, 60)],
+        charm: 20,
+        ..Q
+    },
+    QuestDef {
+        key: "bramble_housewarming",
+        giver: V::Bramble,
+        title: "Housewarming",
+        ask: "A home as charming as yours deserves a song and a feast! Bring three plates of \
+              fish tacos and I'll write the ballad of Hollowbloom Farm.",
+        thanks: "♪ Oh, the farm above the Hollow, where the tacos always flow... ♪ Needs \
+                 work. Here, a globe and a music box for your parlour.",
+        goal: Bring(Item::FishTacos, 3),
+        reward: &[
+            Coins(2000),
+            item(Item::Globe, 1),
+            item(Item::MusicBox, 1),
+            Friend(V::Bramble, 60),
+        ],
+        charm: 25,
+        ..Q
+    },
 ];
 
 pub fn quest_def(key: &str) -> Option<&'static QuestDef> {
@@ -2064,6 +2564,11 @@ pub struct Journal {
     pub foes: Vec<Foe>,
     #[serde(default)]
     pub guardians: Vec<u32>,
+    /// Kinds of fish caught, and the biggest of each (in cm).
+    #[serde(default)]
+    pub fish: Vec<Item>,
+    #[serde(default)]
+    pub records: Vec<(Item, u16)>,
 }
 
 fn note<T: PartialEq>(v: &mut Vec<T>, x: T) -> bool {
@@ -2119,6 +2624,12 @@ pub fn goal_text(g: Goal) -> String {
         Goal::Cast(n) => format!("Cast {n} spells (Q and R)"),
         Goal::Brew(n) => format!("Brew {n} potions (crafting, Potions tab)"),
         Goal::Mastery(l) => format!("Train a spell to level {l}"),
+        Goal::Fish(n) => format!("Catch {n} fish"),
+        Goal::Fishdex(n) => format!("Catch {n} different kinds of fish"),
+        Goal::Charm(n) => format!("Make your home {n} charisma"),
+        Goal::Furnish(n) => format!("Furnish your house with {n} pieces"),
+        Goal::Tank(n) => format!("Keep {n} fish in a tank at home"),
+        Goal::Cook(n) => format!("Cook {n} dishes at your stove"),
     }
 }
 
@@ -2134,6 +2645,9 @@ pub fn foe_name(f: Foe) -> &'static str {
         Foe::Skeleton => "skeleton",
         Foe::Golem => "golem",
         Foe::Ghost => "ghost",
+        Foe::Frog => "bog frog",
+        Foe::Jelly => "drift jelly",
+        Foe::Puffer => "puffer",
     }
 }
 
@@ -2194,7 +2708,13 @@ impl Play {
             | Goal::Harvest(_, n)
             | Goal::Enchant(n)
             | Goal::Cast(n)
-            | Goal::Brew(n) => (q.n.min(n as u64), n as u64),
+            | Goal::Brew(n)
+            | Goal::Fish(n)
+            | Goal::Cook(n) => (q.n.min(n as u64), n as u64),
+            Goal::Fishdex(n) => (self.journal.fish.len().min(n as usize) as u64, n as u64),
+            Goal::Charm(n) => (self.charisma().min(n) as u64, n as u64),
+            Goal::Furnish(n) => (self.house.furnished().min(n as usize) as u64, n as u64),
+            Goal::Tank(n) => (self.house.fish_kept().min(n as usize) as u64, n as u64),
             Goal::Mastery(l) => (self.spells.best_level().min(l) as u64, l as u64),
             Goal::Ship(v) => (q.n.min(v), v),
             Goal::Reach(d) => (self.deepest.min(d) as u64, d as u64),
@@ -2231,6 +2751,7 @@ impl Play {
                 && self.deepest >= d.depth
                 && self.friends.hearts(v) >= d.hearts
                 && self.clock.day >= d.day
+                && self.charisma() >= d.charm
         })
     }
 
@@ -2568,6 +3089,39 @@ impl Play {
         }
     }
 
+    /// A fish landed. Returns whether it's a new kind, and whether it's a new record.
+    pub fn on_catch(&mut self, item: Item, cm: u16) -> (bool, bool) {
+        self.stats.caught += 1;
+        let new = note(&mut self.journal.fish, item);
+        let record = match self.journal.records.iter_mut().find(|r| r.0 == item) {
+            Some(r) if cm > r.1 => {
+                r.1 = cm;
+                true
+            }
+            Some(_) => false,
+            None => {
+                self.journal.records.push((item, cm));
+                false
+            }
+        };
+        for q in &mut self.quests {
+            if let Goal::Fish(_) = q.goal() {
+                q.n += 1;
+            }
+        }
+        (new, record)
+    }
+
+    /// Dishes cooked on a stove.
+    pub fn on_cook(&mut self, n: u16) {
+        self.stats.cooked += n as u32;
+        for q in &mut self.quests {
+            if let Goal::Cook(_) = q.goal() {
+                q.n += n as u64;
+            }
+        }
+    }
+
     /// Potions brewed.
     pub fn on_brew(&mut self, n: u16) {
         self.stats.brewed += n as u32;
@@ -2663,6 +3217,49 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
                 foe_name(foe)
             ),
             Goal::Slay(Some(foe), n, floor),
+            coins,
+        )
+    } else if r.chance(0.3) {
+        // A fish from waters you've reached.
+        let reach: Vec<super::fish::Water> = {
+            use super::fish::Water as W;
+            let mut v = vec![W::Pond, W::River];
+            // The Hollow's waters, one for each biome going down.
+            for (b, w) in super::fish::WATERS[2..].iter().enumerate() {
+                // Lava fish need a heat-proof rod: nobody asks for those on the board.
+                if b as u8 <= biome && deepest > b as u32 * 10 && *w != W::Lava {
+                    v.push(*w);
+                }
+            }
+            v
+        };
+        let fish: Vec<&super::fish::FishDef> = super::fish::FISH
+            .iter()
+            .filter(|d| {
+                d.rarity <= 1
+                    && d.when != super::fish::When::Rain
+                    && d.water.iter().any(|w| reach.contains(w))
+            })
+            .collect();
+        let d = fish[r.below(fish.len())];
+        let n = if d.rarity == 0 {
+            r.range(1, 4) as u16
+        } else {
+            1
+        };
+        let coins = (d.item.def().price as f32 * n as f32 * 3.0) as u64 + 200;
+        let from = d
+            .water
+            .iter()
+            .find(|w| reach.contains(w))
+            .map_or("the farm pond", |w| w.name());
+        (
+            format!("Wanted: {}", d.item.def().name),
+            format!(
+                "Fancy a spot of fishing? I'm after {n} {} from {from}.",
+                d.item.def().name
+            ),
+            Goal::Bring(d.item, n),
             coins,
         )
     } else if r.chance(0.5) {

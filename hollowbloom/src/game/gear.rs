@@ -41,9 +41,17 @@ pub enum Stat {
     Forage,
     Focus,
     Spirit,
+    /// Fish bite sooner.
+    Lure,
+    /// A hooked fish slips away more slowly.
+    Line,
+    /// More sunken treasure on the line.
+    Treasure,
+    /// Rarer fish take the bait.
+    Angler,
 }
 
-pub const STATS: usize = 28;
+pub const STATS: usize = 32;
 
 pub const ALL_STATS: [Stat; STATS] = [
     Stat::Damage,
@@ -74,6 +82,10 @@ pub const ALL_STATS: [Stat; STATS] = [
     Stat::Forage,
     Stat::Focus,
     Stat::Spirit,
+    Stat::Lure,
+    Stat::Line,
+    Stat::Treasure,
+    Stat::Angler,
 ];
 
 /// How a stat's number is written.
@@ -141,6 +153,10 @@ stat_defs! {
     "forage", "Forage", Pct, (4.0, 0.08), (10.0, 0.2), 40.0, GREEN, "Squirrels", "Find seeds and gems while you work.";
     "focus", "Mana Cost", Less, (4.0, 0.05), (10.0, 0.15), 40.0, LAVENDER, "Moonbeams", "Spells cost less mana.";
     "spirit", "Mana Regen", Plus, (1.0, 0.02), (2.0, 0.06), 99.0, AQUA, "Dewdrops", "Mana comes back faster.";
+    "lure", "Bite Speed", Pct, (5.0, 0.1), (12.0, 0.3), 60.0, MINT, "the Heron", "Fish bite sooner.";
+    "line", "Line Strength", Pct, (4.0, 0.08), (10.0, 0.25), 50.0, SKY, "Steady Hands", "A hooked fish slips away more slowly.";
+    "treasure", "Treasure Find", Pct, (3.0, 0.05), (8.0, 0.15), 35.0, GOLD, "Sunken Gold", "More sunken chests on the line.";
+    "angler", "Rare Fish", Pct, (3.0, 0.05), (8.0, 0.15), 40.0, AQUA, "the Otter", "Rarer fish take the bait.";
 }
 
 impl Stat {
@@ -308,7 +324,8 @@ impl Group {
                 Luck, Greed,
             ],
             Group::Tool => &[
-                Power, Frugal, Haste, Reach, Capacity, Bounty, Growth, Forage, Luck, Greed,
+                Power, Frugal, Haste, Reach, Capacity, Bounty, Growth, Forage, Luck, Greed, Lure,
+                Line, Treasure, Angler,
             ],
         }
     }
@@ -329,9 +346,11 @@ pub enum Class {
     Sickle,
     Axe,
     Pickaxe,
+    /// A fishing rod.
+    Rod,
 }
 
-pub const CLASSES: [Class; 13] = [
+pub const CLASSES: [Class; 14] = [
     Class::Sword,
     Class::Wand,
     Class::Staff,
@@ -345,6 +364,7 @@ pub const CLASSES: [Class; 13] = [
     Class::Sickle,
     Class::Axe,
     Class::Pickaxe,
+    Class::Rod,
 ];
 
 /// Where armour is worn. Weapons and tools are used from the hotbar instead.
@@ -402,6 +422,7 @@ impl Class {
             Class::Sickle => "Sickle",
             Class::Axe => "Axe",
             Class::Pickaxe => "Pickaxe",
+            Class::Rod => "Fishing Rod",
         }
     }
 
@@ -420,6 +441,7 @@ impl Class {
             Class::Sickle => "sickles",
             Class::Axe => "axes",
             Class::Pickaxe => "pickaxes",
+            Class::Rod => "fishing rods",
         }
     }
 
@@ -465,6 +487,7 @@ impl Class {
             Class::Sickle => &[Bounty, Reach, Haste, Forage, Frugal, Damage, Luck],
             Class::Axe => &[Power, Haste, Frugal, Bounty, Forage, Damage],
             Class::Pickaxe => &[Power, Haste, Frugal, Bounty, Forage, Luck, Greed],
+            Class::Rod => &[Lure, Line, Treasure, Angler, Haste, Luck, Greed],
         }
     }
 
@@ -489,6 +512,7 @@ impl Class {
             Class::Hoe => "Tilling Reach",
             Class::Can => "Water",
             Class::Sickle => "Reap Damage",
+            Class::Rod => "Reel Power",
         }
     }
 }
@@ -511,6 +535,7 @@ pub fn base_value(class: Class, level: u16, quality: u8, mult: u8) -> i32 {
         Class::Axe | Class::Pickaxe => 2.0 + 0.22 * l,
         Class::Sickle => 3.0 + 0.8 * l,
         Class::Can => 20.0 + 1.6 * l,
+        Class::Rod => 8.0 + 1.0 * l,
         // Tilling reach in tiles; the quality roll does not change it.
         Class::Hoe => return (1 + level as i32 / 22).min(3),
     };

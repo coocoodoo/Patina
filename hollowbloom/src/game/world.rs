@@ -4,7 +4,8 @@
 use glam::{Mat4, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 
-use super::items::{Crop, Stack};
+use super::home::Furn;
+use super::items::{Crop, Item, Stack};
 use super::town::Place;
 use crate::assets::models::TALL_TUFTS;
 use crate::assets::{Assets, BIOMES, tiles};
@@ -214,6 +215,14 @@ pub enum Obj {
         var: u8,
         hp: i16,
     },
+    /// A piece of furniture in the house, turned `rot` quarter turns; the other tiles it
+    /// covers are `Part`s. Fish tanks keep their fish here.
+    Furniture {
+        f: Furn,
+        rot: u8,
+        #[serde(default)]
+        fish: Vec<Item>,
+    },
 }
 
 impl Obj {
@@ -243,6 +252,7 @@ impl Obj {
             Obj::StreetLamp { lit: true, .. } => Some((1.7, 5.0, 0.55, 5.5)),
             Obj::WishTree { blooming: true } => Some((1.6, 6.0, 0.7, 2.0)),
             Obj::Hearth => Some((0.5, 4.2, 0.42, 6.5)),
+            Obj::Furniture { f, .. } => f.def().light,
             _ => None,
         }
     }
@@ -257,6 +267,8 @@ pub enum Area {
     Town,
     /// Inside one of the town's buildings.
     Inside(Place),
+    /// Inside the farmhouse.
+    Home,
 }
 
 pub struct World {
@@ -268,6 +280,8 @@ pub struct World {
     pub objs: Vec<Option<Obj>>,
     pub area: Area,
     pub biome: usize,
+    /// A room's carpet colour (the house's floor).
+    pub style: u8,
     /// Accumulated damage on walls being mined, by tile index.
     pub wall_dmg: std::collections::HashMap<usize, i16>,
     chunks: Vec<Mesh>,
@@ -299,6 +313,7 @@ impl World {
             objs: vec![None; n],
             area,
             biome: biome.min(BIOMES - 1),
+            style: 0,
             wall_dmg: Default::default(),
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
@@ -772,6 +787,7 @@ impl World {
             Floor::Carpet => match self.area {
                 Area::Inside(Place::Scrolls | Place::Spellery) => a.carpets[1],
                 Area::Inside(Place::Jeweler) => a.carpets[2],
+                Area::Home => a.carpets[self.style as usize % 3],
                 _ => a.carpets[0],
             },
             Floor::Soil => a.soil,
@@ -925,7 +941,8 @@ impl World {
                 );
                 // Banks where recessed floors (water, lava) meet higher ground.
                 if y < 0.0 {
-                    let bank = if f == Floor::Water {
+                    // Earthy banks up top; the cave's own rock underground.
+                    let bank = if f == Floor::Water && !matches!(self.area, Area::Hollow { .. }) {
                         a.soil
                     } else {
                         a.biomes[self.biome].side

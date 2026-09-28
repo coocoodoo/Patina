@@ -1,7 +1,9 @@
 //! Every texture, sprite, font and model the game uses, generated at start-up.
 
+pub mod fish_art;
 pub mod font;
 pub mod gear_art;
+pub mod home_art;
 pub mod item_art;
 pub mod magic_art;
 pub mod models;
@@ -134,6 +136,9 @@ pub struct FoeSkins {
     pub wisp: Vec<crate::render::Mesh>,
     pub beetle: Vec<crate::render::Mesh>,
     pub golem: Vec<crate::render::Mesh>,
+    pub frog: Vec<crate::render::Mesh>,
+    pub frog_leg: Vec<crate::render::Mesh>,
+    pub puffer: Vec<crate::render::Mesh>,
 }
 
 /// Copies a mesh, swapping each listed texture for a recoloured copy.
@@ -216,7 +221,27 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
         [WHITE, SKY, BLUE],
         [SAND, KHAKI, ROSEWOOD],
     ];
+    // Bright against each biome's floor: poison-dart pinks in the blue grotto, and so on.
+    let frogs = [
+        [LIME, GREEN, TEAL],
+        [BLUSH, PINK, CRIMSON],
+        [GOLD, ORANGE, RUST],
+        [CREAM, GOLD, CLAY],
+        [LIME, GREEN, TEAL],
+        [MINT, AQUA, TEAL],
+    ];
+    let puffers = [
+        [CREAM, SAND, KHAKI],
+        [CREAM, GOLD, ORANGE],
+        [BLUSH, PINK, CRIMSON],
+        [CREAM, GOLD, ORANGE],
+        [WHITE, WHITE, SKY],
+        [CREAM, GOLD, CLAY],
+    ];
     let mut s = FoeSkins {
+        frog: vec![],
+        frog_leg: vec![],
+        puffer: vec![],
         slime: vec![],
         slime_core: vec![],
         slime_cols,
@@ -285,6 +310,16 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
             &[c.golem_tex],
             &ramp([KHAKI, ROSEWOOD, SHADOW], golems[b]),
         ));
+        let fr = ramp([LIME, GREEN, TEAL], frogs[b]);
+        s.frog.push(recolor(bank, &c.frog, &[c.frog_tex], &fr));
+        s.frog_leg
+            .push(recolor(bank, &c.frog_leg, &[c.frog_tex], &fr));
+        s.puffer.push(recolor(
+            bank,
+            &c.puffer,
+            &[c.puffer_tex],
+            &ramp([CREAM, SAND, KHAKI], puffers[b]),
+        ));
     }
     s
 }
@@ -340,6 +375,8 @@ pub struct Assets {
     pub critters: Critters,
     pub props: Props,
     pub gear: GearArt,
+    /// Furniture, rugs and pictures for the farmhouse.
+    pub home: home_art::HomeArt,
 }
 
 impl Assets {
@@ -350,6 +387,8 @@ impl Assets {
         let gear = gear_art::build(&mut bank, &mut icons);
         quest_art::build(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
+        fish_art::build(&mut bank, &mut icons);
+        let home = home_art::build(&mut bank, &mut icons);
         let grass = [
             bank.add(tiles::grass(1, false)),
             bank.add(tiles::grass(2, false)),
@@ -530,6 +569,7 @@ impl Assets {
             critters,
             props,
             gear,
+            home,
         }
     }
 

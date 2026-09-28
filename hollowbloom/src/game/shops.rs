@@ -53,7 +53,7 @@ pub fn patter(at: Option<Place>, t: ShopTab) -> &'static str {
         (Some(Place::Armory), ShopTab::Specials) => "Hilde: \"Freshly hammered this morning!\"",
         (Some(Place::Armory), _) => "Hilde: \"Protection with personality!\"",
         (Some(Place::Smithy), ShopTab::Specials) => "Garrick: \"...Today's work. Good steel.\"",
-        (Some(Place::Smithy), _) => "Garrick: \"...Sharp. Fair.\"",
+        (Some(Place::Smithy), _) => "Garrick: \"...Sharp. Fair. Rods too.\"",
         (Some(Place::Tools), ShopTab::Specials) => "Nix: \"Prototypes! Barely exploded!\"",
         (Some(Place::Tools), _) => "Nix: \"Tools for every job and some for none!\"",
         (Some(Place::Scrolls), ShopTab::Specials) => "Quill: \"Freshly inked, still drying.\"",
@@ -64,7 +64,7 @@ pub fn patter(at: Option<Place>, t: ShopTab) -> &'static str {
         (Some(Place::Bakery), _) => "Mabel: \"Eat something, dearie!\"",
         (Some(Place::Tavern), _) => "Barley: \"Best stew this side of the Hollow!\"",
         (Some(Place::Jeweler), _) => "Opal: \"Everything that sparkles, darling.\"",
-        (Some(Place::Nook), _) => "Wren: \"Make your farm feel like a hug!\"",
+        (Some(Place::Nook), _) => "Wren: \"Make home feel like a hug!\"",
         (Some(Place::Spellery), _) => "Hazel: \"Mind the cauldron, it bites.\"",
         (Some(Place::Hall), _) => "",
     }
@@ -76,13 +76,19 @@ pub fn buy_rate(at: Option<Place>, s: &Stack) -> u64 {
     let class = s.item.class();
     let yes = match at {
         Some(Place::Armory) => class.is_some_and(|c| c.is_armor()),
-        Some(Place::Smithy) => matches!(class, Some(Class::Sword | Class::Wand | Class::Staff)),
-        Some(Place::Tools) => class.is_some_and(|c| c.group() == super::gear::Group::Tool),
+        Some(Place::Smithy) => matches!(
+            class,
+            Some(Class::Sword | Class::Wand | Class::Staff | Class::Rod)
+        ),
+        Some(Place::Tools) => {
+            class.is_some_and(|c| c.group() == super::gear::Group::Tool && c != Class::Rod)
+        }
         Some(Place::Scrolls) => matches!(k, Kind::Scroll(_)),
         Some(Place::Jeweler) => matches!(k, Kind::Gem | Kind::Relic),
         Some(Place::Seeds) => matches!(k, Kind::Seed(_) | Kind::Produce { .. }),
-        Some(Place::Bakery | Place::Tavern) => matches!(k, Kind::Food { .. }),
-        Some(Place::Nook) => matches!(k, Kind::Place(_)),
+        Some(Place::Bakery) => matches!(k, Kind::Food { .. }),
+        Some(Place::Tavern) => matches!(k, Kind::Food { .. } | Kind::Fish),
+        Some(Place::Nook) => matches!(k, Kind::Place(_) | Kind::Wallpaper(_) | Kind::Flooring(_)),
         Some(Place::Guild) => matches!(k, Kind::Material),
         Some(Place::Spellery) => {
             matches!(k, Kind::Potion { .. })
@@ -148,9 +154,13 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
                 (20, Item::CrystalWand),
                 (24, Item::CapwoodSabre),
                 (28, Item::CrystalStaff),
+                (0, Item::BambooRod),
+                (4, Item::WillowRod),
+                (12, Item::OakRod),
             ] {
                 add(need, item, item.def().price * 3 + 20);
             }
+            add(0, Item::Bait, 12);
         }
         Place::Tools => {
             for (need, item) in [
@@ -193,6 +203,60 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
             add(25, Item::HeartCrystal, 9000);
         }
         Place::Nook => {
+            // Wren saves her grandest pieces for homes that will do them justice.
+            let charm = p.charisma();
+            for (need, item, price) in [
+                (0, Item::WoodenChair, 150),
+                (0, Item::RoundTable, 300),
+                (0, Item::KitchenCounter, 350),
+                (0, Item::PottedFern, 200),
+                (0, Item::PottedCactus, 220),
+                (0, Item::FlowerVase, 300),
+                (0, Item::PlushBunny, 180),
+                (0, Item::Dresser, 600),
+                (0, Item::FloorLamp, 450),
+                (0, Item::CozyBed, 900),
+                (0, Item::WoodStove, 800),
+                (0, Item::Armchair, 900),
+                (0, Item::Bookshelf, 1100),
+                (0, Item::FishBowl, 450),
+                (0, Item::FishTank, 2400),
+                (0, Item::RoundRug, 400),
+                (0, Item::StripedRug, 500),
+                (0, Item::FishRug, 600),
+                (0, Item::MeadowPainting, 600),
+                (0, Item::SunsetPainting, 800),
+                (0, Item::MintWallpaper, 270),
+                (0, Item::BlossomWallpaper, 330),
+                (0, Item::HoneyWallpaper, 330),
+                (0, Item::RoseWallpaper, 330),
+                (0, Item::CheckerFloor, 330),
+                (0, Item::RedCarpet, 390),
+                (0, Item::StoneFloor, 270),
+                (8, Item::Wardrobe, 1000),
+                (8, Item::Icebox, 700),
+                (8, Item::DiningTable, 850),
+                (8, Item::OceanWallpaper, 390),
+                (8, Item::VioletCarpet, 390),
+                (8, Item::TealCarpet, 390),
+                (12, Item::Candelabra, 950),
+                (12, Item::Sofa, 2200),
+                (12, Item::Globe, 750),
+                (12, Item::StarryWallpaper, 360),
+                (18, Item::GrandfatherClock, 2600),
+                (18, Item::Telescope, 1800),
+                (18, Item::StarRug, 700),
+                (18, Item::StarryPainting, 1200),
+                (25, Item::Fireplace, 4800),
+                (25, Item::TrophyFish, 1500),
+                (32, Item::CopperRange, 6500),
+                (40, Item::CanopyBed, 5200),
+                (50, Item::Piano, 8800),
+            ] {
+                if charm >= need {
+                    add(0, item, price);
+                }
+            }
             for (need, item, price) in [
                 (0, Item::Torch, 10),
                 (0, Item::Fence, 7),
@@ -238,6 +302,9 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
                 (0, Item::HealingTonic, 110),
                 (0, Item::StaminaTonic, 110),
                 (0, Item::SmallEnergyPotion, 70),
+                (0, Item::FishAndChips, 260),
+                (0, Item::FishStew, 380),
+                (2, Item::Sushi, 330),
                 (8, Item::GlowSoup, 210),
                 (10, Item::MushroomSkewer, 210),
                 (31, Item::EmberCurry, 330),
@@ -251,6 +318,7 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
         }
         Place::Guild => {
             add(0, Item::Feather, 260);
+            add(0, Item::Bait, 14);
             add(0, Item::HealingTonic, 100);
             add(0, Item::StaminaTonic, 100);
             add(0, Item::ManaTonic, 100);
@@ -397,9 +465,10 @@ fn pick_of_class(depth: u32, class: Class, rng: &mut Rng) -> Option<Item> {
 
 /// A shop's rows for a tab: (what, price, sold out).
 pub fn rows(p: &Play, at: Option<Place>, tab: ShopTab) -> Vec<(Stack, u64, bool)> {
+    // A charming customer gets a little off everything.
     let plain = |v: Vec<(Item, u32)>| -> Vec<(Stack, u64, bool)> {
         v.into_iter()
-            .map(|(i, price)| (Stack::new(i, 1), price as u64, false))
+            .map(|(i, price)| (Stack::new(i, 1), p.buy_price(price as u64), false))
             .collect()
     };
     match (at, tab) {
@@ -409,14 +478,17 @@ pub fn rows(p: &Play, at: Option<Place>, tab: ShopTab) -> Vec<(Stack, u64, bool)
         (None, ShopTab::Specials) => loot::specials(p.seed, p.clock.day, p.deepest)
             .into_iter()
             .enumerate()
-            .map(|(k, (s, price))| (s, price, p.bought.contains(&k)))
+            .map(|(k, (s, price))| (s, p.buy_price(price), p.bought.contains(&k)))
             .collect(),
         (Some(_), ShopTab::Seeds) => plain(seeds(p)),
         (Some(place), ShopTab::Goods) => plain(goods(p, place)),
         (Some(place), ShopTab::Specials) => specials(p, place)
             .into_iter()
             .enumerate()
-            .map(|(k, (s, price))| (s, price, p.bought.contains(&special_id(Some(place), k))))
+            .map(|(k, (s, price))| {
+                let sold = p.bought.contains(&special_id(Some(place), k));
+                (s, p.buy_price(price), sold)
+            })
             .collect(),
     }
 }
@@ -429,12 +501,14 @@ pub fn special_id(at: Option<Place>, k: usize) -> usize {
     }
 }
 
-/// True for placeable furniture (for the Nook's patter).
+/// True for things that go inside the house.
 #[allow(dead_code)]
 pub fn is_furniture(i: Item) -> bool {
     matches!(
         i.def().kind,
-        Kind::Place(Placeable::Lamp | Placeable::Bench)
+        Kind::Place(Placeable::Furniture(_) | Placeable::Rug(_) | Placeable::WallArt(_))
+            | Kind::Wallpaper(_)
+            | Kind::Flooring(_)
     )
 }
 

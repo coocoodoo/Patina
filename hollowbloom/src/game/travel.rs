@@ -62,6 +62,7 @@ pub fn area_world<'a>(
     area: Area,
     farm: &'a World,
     town: &'a World,
+    home: &'a World,
     level: &'a Option<Level>,
     room: &'a Option<Room>,
 ) -> &'a World {
@@ -69,6 +70,7 @@ pub fn area_world<'a>(
         (Area::Hollow { .. }, Some(l), _) => &l.world,
         (Area::Town, _, _) => town,
         (Area::Inside(_), _, Some(r)) => &r.world,
+        (Area::Home, _, _) => home,
         _ => farm,
     }
 }
@@ -77,6 +79,7 @@ pub fn area_world_mut<'a>(
     area: Area,
     farm: &'a mut World,
     town: &'a mut World,
+    home: &'a mut World,
     level: &'a mut Option<Level>,
     room: &'a mut Option<Room>,
 ) -> &'a mut World {
@@ -84,6 +87,7 @@ pub fn area_world_mut<'a>(
         (Area::Hollow { .. }, Some(l), _) => &mut l.world,
         (Area::Town, _, _) => town,
         (Area::Inside(_), _, Some(r)) => &mut r.world,
+        (Area::Home, _, _) => home,
         _ => farm,
     }
 }
@@ -271,6 +275,10 @@ impl Play {
 
     /// The middle of the room the hero is in, where the camera rests.
     pub fn room_center(&self) -> Vec3 {
+        if self.area == Area::Home {
+            let w = &self.house.world;
+            return Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5 + 0.2);
+        }
         match &self.room {
             Some(r) => Vec3::new(r.world.w as f32 * 0.5, 0.0, r.world.h as f32 * 0.5 + 0.2),
             None => self.player.world_pos(),
@@ -332,6 +340,27 @@ impl Play {
     pub fn update_doors(&mut self, io: &mut Io) {
         let dt = io.dt;
         match self.area {
+            Area::Home => {
+                let out = self.player.tile() == super::home::HOUSE_DOOR;
+                if out && self.fade.is_none() {
+                    io.audio.play(Sfx::Door);
+                    self.start_fade(Trans::House { enter: false });
+                }
+            }
+            Area::Farm => {
+                // Walking up to the farmhouse door goes in.
+                let pushing = io.input.move_axis().y < -0.5;
+                if self.house_door_ahead() && pushing && self.fade.is_none() {
+                    self.door_push += dt;
+                    if self.door_push > 0.2 {
+                        self.door_push = -1.0;
+                        self.go_indoors(io);
+                    }
+                } else {
+                    self.door_push = self.door_push.min(0.0) + dt;
+                }
+                self.door_push = self.door_push.min(1.0);
+            }
             Area::Inside(_) => {
                 let out = self
                     .room

@@ -337,21 +337,39 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             (1200.0, 1380.0, Inside(Place::Tavern)),
         ],
         haunts: &[(15, 21), (21, 25)],
-        loves: &[Item::EmberOre, Item::SpookyChili, Item::GolemHeart],
-        likes: &[Item::IronOre, Item::GoldOre, Item::EmberPepper, Item::Wood],
-        hates: &[Item::FrostLily],
-        hello: "...Hm. Sprig & Steel. Swords, wands, staffs. Good steel, fair prices. \
-                You break it, you buy another. That's the deal.",
+        loves: &[
+            Item::EmberOre,
+            Item::SpookyChili,
+            Item::GolemHeart,
+            Item::GoldenCarp,
+            Item::GrilledTrout,
+        ],
+        likes: &[
+            Item::IronOre,
+            Item::GoldOre,
+            Item::EmberPepper,
+            Item::Wood,
+            Item::BrookTrout,
+            Item::Bait,
+        ],
+        hates: &[Item::FrostLily, Item::SoggyBoot],
+        hello: "...Hm. Sprig & Steel. Swords, wands, staffs. And rods - fishing's the only \
+                quiet thing left in this valley. Good steel, fair prices. You break it, you \
+                buy another. That's the deal.",
         chat: &[
             "...Hm.",
             "Heat the steel. Hit the steel. Simple.",
             "Wands are for people who don't like getting close. Fair enough.",
             "Bring ember ore if you find any. Burns hotter than anything.",
             "My forge hasn't gone out in thirty years.",
+            "Fish don't talk. That's why I like them.",
+            "When the bobber dips, strike. Don't think. Strike.",
+            "The frogs down in the Hollow hoard rods. Better ones than mine. Don't tell anyone.",
         ],
         close: &[
             "...You're alright, farmer. Don't make it weird.",
             "Made you something. Don't thank me. ...Fine, you can thank me a little.",
+            "Caught a golden carp once. Let it go. Some things should stay in the pond.",
         ],
     },
     VillagerDef {
@@ -461,18 +479,33 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         home: NOOK,
         hours: &[(480.0, 1200.0, Inside(Place::Nook)), (1200.0, 1280.0, Town)],
         haunts: &[(54, 21), (56, 25)],
-        loves: &[Item::ChippedTeacup, Item::Sunflower, Item::CarrotCake],
-        likes: &[Item::Wood, Item::Rose, Item::BlueberryMuffin, Item::Fiber],
-        hates: &[Item::Ectoplasm],
+        loves: &[
+            Item::ChippedTeacup,
+            Item::Sunflower,
+            Item::CarrotCake,
+            Item::PlushBunny,
+        ],
+        likes: &[
+            Item::Wood,
+            Item::Rose,
+            Item::BlueberryMuffin,
+            Item::Fiber,
+            Item::LilyKoi,
+        ],
+        hates: &[Item::Ectoplasm, Item::TinCan],
         hello: "Oh, hello! Come in out of the draught. The Cozy Nook has everything to make \
-                a farm feel like home - lamps, benches, flower pots, chests, paths. \
-                A home should hug you when you walk in.",
+                a house a home - beds, sofas, lamps, rugs, wallpaper, fish tanks. The more \
+                charming your home, the more folk will warm to you. A home should hug you \
+                when you walk in.",
         chat: &[
             "Put a lamp by your door. Coming home in the dark is so much nicer.",
             "A bench in the right spot can fix a whole day.",
             "I'm knitting a tiny sweater for the fountain. Is that strange?",
-            "Paths! Paths make a farm feel like a place.",
+            "Every piece you put in your house makes it more charming. Folk notice!",
             "The best furniture is the kind you want to sit in forever.",
+            "Press T while you're holding furniture to turn it before you set it down.",
+            "Two of everything is lovely. Twenty of anything is a warehouse.",
+            "I keep my fanciest pieces for the most charming homes. You'll see.",
         ],
         close: &[
             "I made a cushion with your farm on it. It's lumpy. I love it.",
@@ -1352,8 +1385,14 @@ impl Play {
             }
         }
         let ppos = self.player.pos;
-        let world =
-            super::travel::area_world(self.area, &self.farm, &self.town, &self.level, &self.room);
+        let world = super::travel::area_world(
+            self.area,
+            &self.farm,
+            &self.town,
+            &self.house.world,
+            &self.level,
+            &self.room,
+        );
         let mut gone = Vec::new();
         let mut rng = Rng::new(hash2(self.clock.day as i32, (self.time * 10.0) as i32, 5) as u64);
         let count = self.folk.len();

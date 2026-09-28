@@ -12,7 +12,7 @@ use super::player::{Player, PlayerSave};
 use super::quests::{Journal, Quest};
 use super::world::{Floor, Obj, Wall, World};
 
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize)]
 pub struct FarmSave {
@@ -61,6 +61,13 @@ pub struct SaveData {
     pub rank: u8,
     #[serde(default)]
     pub spells: super::spells::Spellbook,
+    /// Inside the farmhouse (version 4).
+    #[serde(default)]
+    pub house: super::home::HouseSave,
+    #[serde(default)]
+    pub warmed: u32,
+    #[serde(default)]
+    pub stargazed: u32,
 }
 
 const FLOORS: [(Floor, char); 15] = [
@@ -221,6 +228,9 @@ pub fn write(p: &Play) -> Result<(), String> {
         marks: p.marks,
         rank: p.rank,
         spells: p.spells.clone(),
+        house: p.house.save(),
+        warmed: p.warmed,
+        stargazed: p.stargazed,
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let path = path().ok_or("no data directory")?;
@@ -275,6 +285,10 @@ pub fn read() -> Result<Play, String> {
     p.rank = d.rank.min(super::quests::RANKS.len() as u8 - 1);
     p.spells = d.spells;
     p.spells.fix();
+    // Farms from before the house had rooms get a freshly furnished one.
+    p.house = super::home::House::load(&d.house);
+    p.warmed = d.warmed;
+    p.stargazed = d.stargazed;
     p.town = super::town::generate(p.restored);
     let (dx, dz) = super::farm::MARKS.door;
     let pos = glam::Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);

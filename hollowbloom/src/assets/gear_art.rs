@@ -927,6 +927,26 @@ const SICKLE: &[&str] = &[
 
 // ------------------------------------------------------------------------------------------
 // Looks in 3D
+/// A fishing rod: 0-1 the pole, 2 the grip, 3 the reel.
+const ROD: &[&str] = &[
+    "..............KK",
+    ".............K0K",
+    "............K01K",
+    "...........K01Kw",
+    "..........K01K.w",
+    ".........K01K..w",
+    "........K01K...w",
+    ".......K01K....w",
+    "......K01K.....w",
+    ".....K01K......w",
+    "....K01K.....KrK",
+    "...K01K3K....KwK",
+    "..K22K333K....K.",
+    ".K22K.K3K.......",
+    "K22K...K........",
+    "KKK.............",
+];
+
 // ------------------------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
@@ -1020,6 +1040,8 @@ enum L {
     Turtle,
     LeafShield,
     MushroomShield,
+    /// Pole colours, grip and reel.
+    Rod([u8; 3], u8, u8),
 }
 
 /// (icon name, icon template or `None` when `sprites.rs` already draws it, slots, look)
@@ -1580,6 +1602,79 @@ fn table() -> Vec<Entry> {
         ("pick3", None, NO, Pick(GOLDEN)),
         ("pick4", None, NO, Pick(CRYSTAL)),
         ("pick5", None, NO, Pick(EMBER)),
+        // Fishing rods.
+        (
+            "bamboo_rod",
+            Some(ROD),
+            [CREAM, KHAKI, CLAY, SLATE],
+            Rod([CREAM, SAND, KHAKI], CLAY, SLATE),
+        ),
+        (
+            "willow_rod",
+            Some(ROD),
+            [PEACH, CLAY, GREEN, SKY],
+            Rod([PEACH, CLAY, RUST], GREEN, SKY),
+        ),
+        (
+            "oak_rod",
+            Some(ROD),
+            [GOLD, RUST, MAROON, GOLD],
+            Rod([GOLD, RUST, MAROON], MAROON, GOLD),
+        ),
+        (
+            "coral_rod",
+            Some(ROD),
+            [BLUSH, PINK, WHITE, SALMON],
+            Rod([BLUSH, PINK, CRIMSON], WHITE, SALMON),
+        ),
+        (
+            "kelp_rod",
+            Some(ROD),
+            [LIME, GREEN, TEAL, MINT],
+            Rod([LIME, GREEN, DEEP_TEAL], TEAL, MINT),
+        ),
+        (
+            "pearl_rod",
+            Some(ROD),
+            [WHITE, BLUSH, SKY, WHITE],
+            Rod([WHITE, BLUSH, LAVENDER], SKY, WHITE),
+        ),
+        (
+            "crystal_rod",
+            Some(ROD),
+            [WHITE, MINT, TEAL, AQUA],
+            Rod([WHITE, MINT, AQUA], TEAL, AQUA),
+        ),
+        (
+            "jelly_rod",
+            Some(ROD),
+            [LAVENDER, PINK, BLUSH, PURPLE],
+            Rod([LAVENDER, PINK, PURPLE], BLUSH, PURPLE),
+        ),
+        (
+            "ember_rod",
+            Some(ROD),
+            [GOLD, ORANGE, MAROON, RED],
+            Rod([GOLD, ORANGE, RED], MAROON, GOLD),
+        ),
+        (
+            "frost_rod",
+            Some(ROD),
+            [WHITE, SKY, INDIGO, BLUE],
+            Rod([WHITE, SKY, BLUE], INDIGO, WHITE),
+        ),
+        (
+            "star_rod",
+            Some(ROD),
+            [CREAM, GOLD, INDIGO, LAVENDER],
+            Rod([CREAM, GOLD, LAVENDER], INDIGO, GOLD),
+        ),
+        (
+            "leviathan_rod",
+            Some(ROD),
+            [AQUA, TEAL, INDIGO, GOLD],
+            Rod([AQUA, TEAL, DEEP_TEAL], INDIGO, GOLD),
+        ),
     ]
 }
 
@@ -1994,6 +2089,32 @@ fn held_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                     bx(&mut m, v(-0.015, -0.03, -0.015), v(0.015, 0.03, 0.015), h);
                 }
             }
+        }
+        L::Rod(c, grip, reel) => {
+            let pole = metal(bank, c);
+            let (g, r) = (solid(bank, grip), solid(bank, reel));
+            let len = crate::game::fish::ROD_LEN;
+            // A grip, then the pole tapering away down the arm.
+            bx(&mut m, v(-0.028, -0.22, -0.028), v(0.028, 0.07, 0.028), g);
+            let segs = 5;
+            for k in 0..segs {
+                let t0 = k as f32 / segs as f32;
+                let t1 = (k + 1) as f32 / segs as f32;
+                let y0 = -0.22 - t0 * (len - 0.22);
+                let y1 = -0.22 - t1 * (len - 0.22);
+                let w = 0.02 * (1.0 - t0 * 0.65);
+                bx(&mut m, v(-w, y1, -w), v(w, y0, w), pole);
+                // A little guide ring for the line.
+                bx(
+                    &mut m,
+                    v(-w * 0.6, y1 + 0.01, w),
+                    v(w * 0.6, y1 + 0.03, w + 0.025),
+                    r,
+                );
+            }
+            // The reel under the grip, with its little crank.
+            bx(&mut m, v(-0.045, -0.13, 0.03), v(0.045, -0.02, 0.1), r);
+            bx(&mut m, v(0.045, -0.09, 0.05), v(0.08, -0.07, 0.07), g);
         }
         _ => return None,
     }

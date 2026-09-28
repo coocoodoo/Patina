@@ -65,6 +65,20 @@ pub enum Sfx {
     Spell,
     /// A spell growing stronger.
     SpellUp,
+    /// A line whipping out over the water.
+    Cast,
+    /// A bobber landing, or a fish nibbling.
+    Plop,
+    /// Something bites!
+    Bite,
+    /// Clicking in the reel.
+    Reel,
+    /// A fish landed.
+    Catch,
+    /// Something frying on the stove.
+    Sizzle,
+    /// A little tune on the piano.
+    Piano,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -118,6 +132,13 @@ pub const ALL: &[Sfx] = &[
     Sfx::Brew,
     Sfx::Spell,
     Sfx::SpellUp,
+    Sfx::Cast,
+    Sfx::Plop,
+    Sfx::Bite,
+    Sfx::Reel,
+    Sfx::Catch,
+    Sfx::Sizzle,
+    Sfx::Piano,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -626,5 +647,107 @@ pub fn make(s: Sfx) -> Vec<f32> {
             0.25,
             5.0,
         ),
+        Sfx::Cast => {
+            // A whip of air, then the reel spinning out.
+            let mut lp = 0.0;
+            let mut b = render(0.18, |t, n| {
+                let k = 0.08 + 0.6 * (t / 0.18);
+                lp += (n - lp) * k;
+                lp * (1.0 - t / 0.18) * 0.8
+            });
+            let mut rng = Rng::new(3);
+            b.extend(render(0.25, |t, n| {
+                let click = if rng.chance(0.012) {
+                    n.signum() * 0.3
+                } else {
+                    0.0
+                };
+                click * (1.0 - t / 0.25)
+            }));
+            b
+        }
+        Sfx::Plop => {
+            // A water drop: a quick upward chirp over a soft splash.
+            let mut phase = 0.0;
+            let mut b = render(0.16, |t, n| {
+                phase += (380.0 + t * 2600.0) / RATE;
+                sine(phase) * 0.5 * (-t * 26.0).exp() + n * 0.12 * (-t * 40.0).exp()
+            });
+            lowpass(&mut b, 0.5);
+            b
+        }
+        Sfx::Bite => {
+            // Plunk! and a bright little alarm.
+            let mut phase = 0.0;
+            let mut b = render(0.12, |t, n| {
+                phase += (220.0 + t * 1500.0) / RATE;
+                sine(phase) * 0.6 * (-t * 20.0).exp() + n * 0.25 * (-t * 30.0).exp()
+            });
+            lowpass(&mut b, 0.45);
+            b.extend(arp(&[(note(88), 0.05), (note(93), 0.1)], 0.25, 14.0));
+            b
+        }
+        Sfx::Reel => {
+            let mut b = Vec::new();
+            for k in 0..6 {
+                let mut c = render(0.025, |t, n| n * 0.4 * (-t * 160.0).exp());
+                lowpass(&mut c, 0.6);
+                b.extend(c);
+                b.extend(std::iter::repeat_n(
+                    0.0,
+                    (RATE * (0.03 + k as f32 * 0.004)) as usize,
+                ));
+            }
+            b
+        }
+        Sfx::Catch => {
+            // A splash out of the water and a happy jingle.
+            let mut b = render(0.14, |t, n| n * 0.35 * (-t * 18.0).exp());
+            lowpass(&mut b, 0.35);
+            b.extend(arp(
+                &[
+                    (note(79), 0.07),
+                    (note(83), 0.07),
+                    (note(86), 0.07),
+                    (note(91), 0.26),
+                ],
+                0.25,
+                6.0,
+            ));
+            b
+        }
+        Sfx::Sizzle => {
+            // Frying: crackling hiss with little pops.
+            let mut rng = Rng::new(11);
+            let mut lp = 0.0;
+            let mut b = render(0.5, |t, n| {
+                lp += (n - lp) * 0.6;
+                let hiss = (n - lp) * 0.22;
+                let pop = if rng.chance(0.002) {
+                    n.signum() * 0.4
+                } else {
+                    0.0
+                };
+                (hiss + pop) * (t * 20.0).min(1.0) * (1.0 - t / 0.5)
+            });
+            lowpass(&mut b, 0.8);
+            b
+        }
+        Sfx::Piano => {
+            // A little tune on a slightly out-of-tune upright.
+            let tune = [72, 76, 79, 77, 76, 74, 72, 79, 84];
+            let mut b = Vec::new();
+            for (i, n) in tune.into_iter().enumerate() {
+                let f = note(n);
+                let len = if i == tune.len() - 1 { 0.6 } else { 0.16 };
+                let (mut a, mut c) = (0.0, 0.0);
+                b.extend(render(len, |t, _| {
+                    a += f / RATE;
+                    c += f * 2.003 / RATE;
+                    (tri(a) * 0.4 + sine(c) * 0.15) * (-t * 5.0).exp() * (t * 200.0).min(1.0)
+                }));
+            }
+            b
+        }
     }
 }

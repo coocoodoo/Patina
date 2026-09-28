@@ -81,6 +81,9 @@ pub fn base(f: Foe) -> Base {
         Foe::Skeleton => b(30, 11, 2.2, 0.3, 10, "Skeleton"),
         Foe::Golem => b(60, 16, 1.3, 0.5, 16, "Golem"),
         Foe::Ghost => b(18, 10, 1.8, 0.3, 9, "Ghost"),
+        Foe::Frog => b(16, 7, 2.6, 0.3, 6, "Bog Frog"),
+        Foe::Jelly => b(14, 8, 1.2, 0.3, 7, "Drift Jelly"),
+        Foe::Puffer => b(20, 9, 1.4, 0.32, 8, "Puffer"),
     }
 }
 
@@ -116,8 +119,11 @@ impl Enemy {
             biome,
             pos: Vec2::new(x, z),
             vel: Vec2::ZERO,
-            y: if matches!(foe, Foe::Bat | Foe::Wisp | Foe::Ghost) {
-                0.6
+            y: if matches!(
+                foe,
+                Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer
+            ) {
+                0.55
             } else {
                 0.0
             },
@@ -156,7 +162,7 @@ impl Enemy {
 
     /// Jelly and ghosts are see-through, so they are drawn after everything else.
     pub fn translucent(&self) -> bool {
-        matches!(self.foe, Foe::Slime | Foe::Ghost)
+        matches!(self.foe, Foe::Slime | Foe::Ghost | Foe::Jelly)
     }
 
     /// Hard shells and bones strike sparks.
@@ -170,7 +176,7 @@ impl Enemy {
     /// Does this enemy touch the ground (and so can bump the player)?
     pub fn grounded(&self) -> bool {
         match self.foe {
-            Foe::Slime => self.y < 0.35 * self.scale(),
+            Foe::Slime | Foe::Frog => self.y < 0.35 * self.scale(),
             _ => true,
         }
     }
@@ -304,6 +310,8 @@ impl Enemy {
                 self.charger(dt, world, dirp, dist, fx, shots, depth)
             }
             Foe::Wisp | Foe::Imp => self.shooter(dt, world, dirp, dist, shots, rng),
+            Foe::Frog => self.frog(dt, world, dirp, dist, shots, rng),
+            Foe::Jelly | Foe::Puffer => self.floater(dt, world, dirp, dist, shots, fx, rng),
         }
         if dist > 0.01 && self.st != St::Dash {
             self.yaw = dirp.x.atan2(dirp.y);
@@ -323,10 +331,10 @@ impl Enemy {
                 Vec2::ZERO
             };
         }
-        if self.foe == Foe::Bat || self.foe == Foe::Wisp {
+        if matches!(self.foe, Foe::Bat | Foe::Wisp | Foe::Jelly | Foe::Puffer) {
             self.y = 0.55 + (self.anim * 4.0).sin() * 0.1;
         }
-        if self.foe != Foe::Slime {
+        if !matches!(self.foe, Foe::Slime | Foe::Frog) {
             let d = self.dir * self.speed * 0.35 * dt;
             self.step(world, d);
             if self.dir.length_squared() > 0.0 {
@@ -513,6 +521,137 @@ impl Enemy {
         }
     }
 
+    /// A bog frog: long hops towards you, and now and then a spat bubble.
+    fn frog(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        match self.st {
+            St::Hop => {
+                self.vy -= 18.0 * dt;
+                self.y += self.vy * dt;
+                let d = self.dir * self.speed * 1.8 * dt;
+                self.step(world, d);
+                if self.y <= 0.0 {
+                    self.y = 0.0;
+                    self.vy = 0.0;
+                    self.squash = 1.0;
+                    self.hops += 1;
+                    if dist < 6.5 && rng.chance(0.35) {
+                        self.st = St::Windup;
+                        self.t = 0.4;
+                    } else {
+                        self.st = St::Idle;
+                        self.t = rng.range_f(0.3, 0.8);
+                    }
+                }
+            }
+            St::Windup => {
+                self.squash = 0.5;
+                if self.t <= 0.0 {
+                    shots.push(Shot {
+                        pos: self.pos + dirp * 0.3,
+                        vel: dirp * 4.2,
+                        dmg: self.dmg,
+                        life: 2.0,
+                        color: SKY,
+                        radius: 0.17,
+                    });
+                    self.st = St::Idle;
+                    self.t = rng.range_f(0.5, 1.0);
+                }
+            }
+            _ => {
+                if self.t <= 0.0 {
+                    self.st = St::Hop;
+                    self.vy = 5.4;
+                    self.dir = if dist < 10.0 { dirp } else { Vec2::ZERO };
+                    self.squash = 0.6;
+                }
+            }
+        }
+    }
+
+    /// Drift jellies and puffers bob towards you, then let fly: a ring of sparks, or a
+    /// burst of spines once the puffer has blown itself up.
+    #[allow(clippy::too_many_arguments)]
+    fn floater(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        fx: &mut Fx,
+        rng: &mut Rng,
+    ) {
+        let jelly = self.foe == Foe::Jelly;
+        self.y = 0.55 + (self.anim * if jelly { 2.2 } else { 3.0 }).sin() * 0.08;
+        match self.st {
+            St::Windup => {
+                if !jelly {
+                    self.squash = (0.6 - self.t).clamp(0.0, 0.6) / 0.6;
+                }
+                if self.t <= 0.0 {
+                    let n = if self.boss { 14 } else { 8 };
+                    let (color, speed, life) = if jelly {
+                        (CREAM, 5.0, 0.35)
+                    } else {
+                        (SAND, 4.6, 0.9)
+                    };
+                    for k in 0..n {
+                        let a = k as f32 / n as f32 * std::f32::consts::TAU + self.anim;
+                        shots.push(Shot {
+                            pos: self.pos,
+                            vel: Vec2::new(a.cos(), a.sin()) * speed,
+                            dmg: self.dmg * 2 / 3,
+                            life,
+                            color,
+                            radius: 0.15,
+                        });
+                    }
+                    if jelly {
+                        fx.burst(self.world_pos(), 12, &[WHITE, CREAM, AQUA], 3.0, 1.0);
+                    }
+                    self.st = St::Rest;
+                    self.t = if jelly { 1.3 } else { 1.7 };
+                }
+            }
+            St::Rest => {
+                self.squash = (self.squash - dt * 2.0).max(0.0);
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                }
+            }
+            _ => {
+                let near = if jelly { 1.9 } else { 3.2 };
+                let keep = if jelly { 0.8 } else { 2.2 };
+                if dist < near && self.t <= 0.0 {
+                    self.st = St::Windup;
+                    self.t = if jelly { 0.55 } else { 0.6 };
+                } else {
+                    let want = if dist > keep {
+                        dirp
+                    } else {
+                        Vec2::new(-dirp.y, dirp.x)
+                    };
+                    let wobble = Vec2::new((self.anim * 1.7).sin(), (self.anim * 1.3).cos()) * 0.3;
+                    let d = (want + wobble).normalize_or_zero();
+                    self.dir = d;
+                    self.step(world, d * self.speed * dt);
+                    if self.t <= 0.0 {
+                        self.t = rng.range_f(0.2, 0.6);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn color(&self) -> u8 {
         match (self.foe, self.biome) {
             (Foe::Slime, 0) => GREEN,
@@ -530,6 +669,10 @@ impl Enemy {
             (Foe::Skeleton, _) => SAND,
             (Foe::Golem, _) => KHAKI,
             (Foe::Ghost, _) => BLUSH,
+            (Foe::Frog, 2) => PURPLE,
+            (Foe::Frog, _) => GREEN,
+            (Foe::Jelly, _) => LAVENDER,
+            (Foe::Puffer, _) => GOLD,
         }
     }
 
@@ -546,6 +689,12 @@ impl Enemy {
                 radius: 2.5,
                 power: 0.35,
                 warmth: 8.0,
+            }),
+            Foe::Jelly => Some(PointLight {
+                pos: self.world_pos() + Vec3::Y * 0.2,
+                radius: 3.0,
+                power: 0.45,
+                warmth: 2.2,
             }),
             _ => None,
         }
@@ -748,6 +897,72 @@ impl Enemy {
                     o.glass(0.28).with_glow(o.glow.max(0.8))
                 };
                 r.mesh(&a.bank, &a.critters.ghost, &m, &sheet.with_warp(warp));
+            }
+            Foe::Frog => {
+                let (sx, sy) = if self.st == St::Hop {
+                    (0.85, 1.2)
+                } else {
+                    (1.0 + self.squash * 0.25, 1.0 - self.squash * 0.3)
+                };
+                let m = at(self.y) * rot * sc(sx, sy);
+                r.mesh(&a.bank, &a.foes.frog[b], &m, &o);
+                // Legs trail out behind on a jump.
+                let kick = if self.st == St::Hop { 0.5 } else { 0.0 };
+                for side in [-1.0f32, 1.0] {
+                    let leg = m
+                        * Mat4::from_translation(Vec3::new(side * 0.2, 0.08, -0.12))
+                        * Mat4::from_rotation_x(kick);
+                    r.mesh(&a.bank, &a.foes.frog_leg[b], &leg, &o);
+                }
+            }
+            Foe::Jelly => {
+                // A glowing bell, and threads that stream behind it.
+                let pulse = 1.0 + (self.anim * 3.0).sin() * 0.06;
+                let m = at(self.y) * rot * sc(pulse, 1.0 / pulse);
+                let trail = -self.dir * 0.12
+                    + Vec2::new((self.anim * 2.3).sin(), (self.anim * 1.9).cos()) * 0.05;
+                let warp = Warp::Bend {
+                    base: self.y,
+                    h: -0.45 * s,
+                    lean: trail * s,
+                };
+                let lit = if self.flash > 0.0 {
+                    o
+                } else {
+                    o.with_glow(o.glow.max(0.9))
+                };
+                r.mesh(&a.bank, &a.critters.jelly_core, &m, &lit.with_warp(warp));
+                r.mesh(
+                    &a.bank,
+                    &a.critters.jelly_threads,
+                    &m,
+                    &lit.two_sided().with_warp(warp),
+                );
+                let bell = if self.flash > 0.0 {
+                    o
+                } else {
+                    o.glass(0.3).with_glow(o.glow.max(0.8))
+                };
+                r.mesh(&a.bank, &a.critters.jelly_bell, &m, &bell);
+                if self.st == St::Windup && (self.anim * 30.0).sin() > 0.0 {
+                    r.halo(self.world_pos() + Vec3::Y * 0.1, 0.5 * s, CREAM, 0.7);
+                }
+            }
+            Foe::Puffer => {
+                // Blows itself up into a spiky ball before letting fly.
+                let puff = 1.0 + self.squash * 0.55;
+                let m = at(self.y) * rot * sc(puff, puff);
+                r.mesh(&a.bank, &a.foes.puffer[b], &m, &o);
+                if self.squash > 0.2 {
+                    r.mesh(&a.bank, &a.critters.puffer_spikes, &m, &o);
+                }
+                let flap = (self.anim * 14.0).sin() * 0.5;
+                for side in [-1.0f32, 1.0] {
+                    let fin = m
+                        * Mat4::from_translation(Vec3::new(side * 0.22, 0.0, 0.0))
+                        * Mat4::from_rotation_y(side * (0.4 + flap));
+                    r.mesh(&a.bank, &a.critters.puffer_fin, &fin, &o.two_sided());
+                }
             }
             Foe::Imp | Foe::Skeleton => {
                 let h = if self.foe == Foe::Imp {
