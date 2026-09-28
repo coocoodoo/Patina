@@ -1138,6 +1138,7 @@ impl Play {
                                     _ => stack,
                                 };
                                 self.player.inv.add_stack(stack);
+                                self.on_pickup(stack.item);
                                 if tab == ShopTab::Specials {
                                     self.bought.push(shops::special_id(at, cursor));
                                     if stack.rarity() >= Some(Rarity::Rare) {

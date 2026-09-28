@@ -463,6 +463,7 @@ impl Play {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_talk(
         &self,
         c: &mut Canvas,
@@ -482,9 +483,10 @@ impl Play {
         // Name plate with hearts.
         let d = who.def();
         let name = d.name;
-        let nw = c.text_width(name).max(66) + 12;
+        let nw = c.text_width(name) + c.text_width(d.title) + 22;
         c.panel(l.px + 4, l.py - 12, nw, 14, Style::Paper);
-        c.text(l.px + 10, l.py - 9, name, RUST);
+        let tx0 = l.px + 10 + c.text(l.px + 10, l.py - 9, name, RUST) + 6;
+        c.text(tx0, l.py - 9, d.title, ROSEWOOD);
         let hearts = self.friends.hearts(who);
         for i in 0..10 {
             let icon = if (i as u8) < hearts {
@@ -750,7 +752,12 @@ impl Play {
             CREAM
         };
         c.text_big(l.px + (l.pw - tw) / 2, l.py + dy + 7, title, 2, col, RUST);
-        c.text_center(l.px + l.pw / 2, l.py + dy + 28, &ch.title, INK);
+        let sub = if ch.title.starts_with("A gift") {
+            ch.title.clone()
+        } else {
+            format!("{} - for {}", ch.title, ch.who.name())
+        };
+        c.text_center(l.px + l.pw / 2, l.py + dy + 28, &sub, INK);
         for (i, (stack, line, color)) in ch.lines.iter().enumerate() {
             let y = l.py + dy + 42 + i as i32 * 20;
             // Rewards slide in one after another.
@@ -823,6 +830,16 @@ impl Play {
             sel = 0;
         }
         if tab == 0 {
+            let drop_btn = (l.px + l.pw - 58, l.py + l.ph - 26, 50, 11);
+            let clicked = input.button_pressed(Button::Left)
+                && inside(input.mouse, drop_btn.0, drop_btn.1, drop_btn.2, drop_btn.3);
+            if (clicked || input.key_pressed(crate::input::KeyCode::Delete))
+                && sel < self.quests.len()
+            {
+                self.drop_quest(sel);
+                io.audio.play(Sfx::UiBack);
+                sel = sel.saturating_sub(1);
+            }
             let n = self.quests.len().max(1);
             if input.pressed_repeat(Action::Down) {
                 sel = (sel + 1) % n;
@@ -929,6 +946,10 @@ impl Play {
                     }
                 };
                 c.text(x, l.py + l.ph - 14, done_note, SHADOW);
+                // Giving up is always allowed.
+                let (bx, by) = (l.px + l.pw - 58, l.py + l.ph - 26);
+                c.panel(bx, by, 50, 11, Style::Inset);
+                c.text_center(bx + 25, by + 2, "Drop quest", ROSEWOOD);
             }
             1 => {
                 c.text(
@@ -1057,7 +1078,7 @@ impl Play {
         }
         if let Area::Hollow { depth } = self.area {
             if !self.keepsakes_here(depth).is_empty() {
-                rows.push(("Something for a quest".into(), "is here!".into(), true));
+                rows.push(("A keepsake is on".into(), "this floor!".into(), true));
             }
         }
         if rows.is_empty() {

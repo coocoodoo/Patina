@@ -1053,3 +1053,513 @@ fn soak_many_floors() {
     assert!(s.play.money >= money);
     assert!(s.play.stats.kills > 20, "kills: {}", s.play.stats.kills);
 }
+
+// ------------------------------------------------------------------------------------------
+// Bramblewick: the bus, shops, villagers and quests
+// ------------------------------------------------------------------------------------------
+
+use super::folk::{Spot, VILLAGERS, Villager};
+use super::quests::{Goal, QuestId};
+use super::town::{self, BUILDINGS, Place, TOWN};
+
+/// One frame's worth of input and audio, borrowing only those two.
+fn frame_io<'a>(input: &'a Input, audio: &'a Audio) -> Io<'a> {
+    Io {
+        dt: 1.0 / 60.0,
+        input,
+        audio,
+        view: (480, 270),
+        quit: false,
+        toggle_fullscreen: false,
+    }
+}
+
+impl Sim {
+    /// Rides the bus from wherever the hero is and waits to arrive.
+    fn ride(&mut self) {
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &self.input,
+            audio: &self.audio,
+            view: (480, 270),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        let from = self.play.area;
+        self.play.call_bus(&mut io);
+        for _ in 0..600 {
+            self.frames(1);
+            if self.play.area != from && self.play.fade.is_none() {
+                break;
+            }
+        }
+    }
+
+    fn accept(&mut self, key: &str) {
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &self.input,
+            audio: &self.audio,
+            view: (480, 270),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        assert!(self.play.accept(QuestId::Story(key.to_string()), &mut io));
+    }
+
+    fn quest(&self, key: &str) -> usize {
+        self.play
+            .quests
+            .iter()
+            .position(|q| q.key() == key)
+            .unwrap_or_else(|| panic!("{key} isn't open"))
+    }
+}
+
+#[test]
+fn bus_ride_to_town_and_back() {
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    s.ride();
+    assert_eq!(s.play.area, Area::Town);
+    let (ax, az) = TOWN.arrive;
+    let d = s.play.player.pos - Vec2::new(ax as f32, az as f32);
+    assert!(d.length() < 4.0, "you step off at the stop");
+    assert!(!s.play.folk.is_empty(), "the town is full of people");
+    // The bus drives off by itself.
+    s.frames(600);
+    assert!(s.play.bus.is_none());
+    s.ride();
+    assert_eq!(s.play.area, Area::Farm);
+    let (sx, sz) = super::farm::MARKS.stop;
+    let d = s.play.player.pos - Vec2::new(sx as f32, sz as f32);
+    assert!(d.length() < 4.0, "and step off by your farm");
+}
+
+#[test]
+fn the_farm_road_reaches_the_bus_stop() {
+    let p = Play::new(77);
+    let (sx, sz) = super::farm::MARKS.stop;
+    assert!(matches!(p.farm.obj(sx, sz), Some(Obj::BusStop)));
+    // From the front door to the shelter and on to the road.
+    let (dx, dz) = super::farm::MARKS.door;
+    let path = super::folk::find_path(&p.farm, (dx, dz + 1), (sx, sz + 1));
+    assert!(
+        path.is_some(),
+        "you can walk from the house to the bus stop"
+    );
+    for z in 0..super::farm::FARM_H {
+        assert!(
+            !p.farm.blocked(super::farm::ROAD_X, z),
+            "the road is clear at {z}"
+        );
+    }
+}
+
+#[test]
+fn shops_open_and_close_their_doors() {
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    s.ride();
+    s.frames(90);
+    let b = &BUILDINGS[Place::Armory.building()];
+    let (x, z) = b.step();
+    s.stand(x, z, Vec2::new(0.0, -1.0));
+    s.frames(1);
+    s.tap(KeyCode::KeyE, 60);
+    assert_eq!(s.play.area, Area::Inside(Place::Armory));
+    assert!(
+        s.play
+            .folk
+            .iter()
+            .any(|n| n.who == Villager::Hilde && n.fixed),
+        "Hilde is behind her counter"
+    );
+    // The mat by the door leads back out.
+    let (ex, ez) = s.play.room.as_ref().unwrap().exit;
+    s.stand(ex, ez, Vec2::new(0.0, 1.0));
+    s.frames(60);
+    assert_eq!(s.play.area, Area::Town);
+    assert_eq!(s.play.player.tile(), (x, z));
+    // At night the door stays shut.
+    s.play.clock.min = 1400.0;
+    s.stand(x, z, Vec2::new(0.0, -1.0));
+    s.frames(1);
+    s.tap(KeyCode::KeyE, 60);
+    assert_eq!(s.play.area, Area::Town, "closed for the night");
+}
+
+#[test]
+fn talking_and_gifts_make_friends() {
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    s.ride();
+    s.frames(30);
+    let i = s
+        .play
+        .folk
+        .iter()
+        .position(|n| n.who == Villager::Olive)
+        .expect("Olive is out gardening");
+    let at = s.play.folk[i].pos;
+    s.play.player.pos = at + Vec2::new(0.0, 0.9);
+    s.play.player.facing = Vec2::new(0.0, -1.0);
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::Sunflower, 3));
+    s.select(5);
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.talk_to(i, &mut io);
+    assert!(matches!(s.play.menu, Menu::Talk { .. }));
+    let before = s.play.friends.points[Villager::Olive as usize];
+    let mut io = frame_io(&s.input, &s.audio);
+    let reply = s
+        .play
+        .talk_choice(Villager::Olive, super::talk::Say::Gift, &mut io);
+    let after = s.play.friends.points[Villager::Olive as usize];
+    assert_eq!(after - before, 80, "Olive loves sunflowers");
+    assert_eq!(s.play.player.inv.count(Item::Sunflower), 2);
+    let (_, choices) = reply.expect("she answers");
+    assert!(
+        !choices.iter().any(|(_, c)| *c == super::talk::Say::Gift),
+        "one gift a day"
+    );
+}
+
+#[test]
+fn keepsakes_wait_in_the_hollow_while_asked_for() {
+    let mut s = Sim::new();
+    // Nobody asked: nothing special on the floor.
+    s.play.start_fade(Trans::Descend {
+        depth: 3,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert!(!s.play.drops.iter().any(|d| d.stack.item == Item::Locket));
+    s.accept("fern_locket");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 3,
+        via_waystone: false,
+    });
+    s.frames(60);
+    let d = s
+        .play
+        .drops
+        .iter()
+        .find(|d| d.stack.item == Item::Locket)
+        .expect("the locket is somewhere on floor 3");
+    s.play.player.pos = Vec2::new(d.pos.x, d.pos.z);
+    s.frames(60);
+    assert_eq!(s.play.player.inv.count(Item::Locket), 1);
+    // Hand it in: the locket goes back to Fern, and she's generous.
+    let q = s.quest("fern_locket");
+    assert!(s.play.quest_ready(&s.play.quests[q]));
+    let hearts = s.play.player.inv.count(Item::HeartCrystal);
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.finish_quest(q, &mut io);
+    assert_eq!(s.play.player.inv.count(Item::Locket), 0);
+    assert_eq!(s.play.player.inv.count(Item::HeartCrystal), hearts + 1);
+    assert!(s.play.is_done("fern_locket"));
+    assert!(s.play.cheer.is_some(), "and there's a celebration");
+    // Found once, the locket never turns up again.
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 4,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert!(!s.play.drops.iter().any(|d| d.stack.item == Item::Locket));
+}
+
+#[test]
+fn quest_drops_only_fall_while_the_quest_is_open() {
+    let mut s = Sim::new();
+    let at = glam::Vec3::ZERO;
+    for _ in 0..60 {
+        s.play.on_kill(super::dungeon::Foe::Slime, false, 2, at);
+    }
+    assert!(
+        !s.play
+            .drops
+            .iter()
+            .any(|d| d.stack.item == Item::SlimeHeart),
+        "no slime hearts without Pip's request"
+    );
+    s.play.done.push("pip_teddy".into());
+    s.accept("pip_slime");
+    for _ in 0..200 {
+        s.play.on_kill(super::dungeon::Foe::Slime, false, 2, at);
+    }
+    let dropped: u32 = s
+        .play
+        .drops
+        .iter()
+        .filter(|d| d.stack.item == Item::SlimeHeart)
+        .map(|d| d.stack.n as u32)
+        .sum();
+    assert_eq!(dropped, 8, "exactly as many as Pip asked for");
+    // Bats don't carry them.
+    s.play.drops.clear();
+    for _ in 0..100 {
+        s.play.on_kill(super::dungeon::Foe::Bat, false, 2, at);
+    }
+    assert!(
+        !s.play
+            .drops
+            .iter()
+            .any(|d| d.stack.item == Item::SlimeHeart)
+    );
+}
+
+#[test]
+fn guardians_return_for_their_prizes() {
+    let mut s = Sim::new();
+    s.play.deepest = 20;
+    s.play.waystones = vec![10, 20];
+    s.play.start_fade(Trans::Descend {
+        depth: 20,
+        via_waystone: true,
+    });
+    s.frames(60);
+    assert!(
+        !s.play.foes.iter().any(|f| f.boss),
+        "a cleared floor stays cleared"
+    );
+    for k in ["opal_gems", "opal_curios"] {
+        s.play.done.push(k.into());
+    }
+    s.accept("opal_pearl");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 20,
+        via_waystone: true,
+    });
+    s.frames(60);
+    let boss = s
+        .play
+        .foes
+        .iter()
+        .position(|f| f.boss)
+        .expect("the Matriarch is back");
+    s.play.foes[boss].hp = 0;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.reap(&mut io);
+    assert!(
+        s.play
+            .drops
+            .iter()
+            .any(|d| d.stack.item == Item::MatriarchPearl),
+        "and she drops her pearl"
+    );
+}
+
+#[test]
+fn counting_quests_count() {
+    let mut s = Sim::new();
+    s.accept("rowan_slimes");
+    let q = s.quest("rowan_slimes");
+    assert_eq!(s.play.progress(&s.play.quests[q]), (0, 12));
+    for _ in 0..5 {
+        s.play
+            .on_kill(super::dungeon::Foe::Slime, false, 1, glam::Vec3::ZERO);
+    }
+    s.play
+        .on_kill(super::dungeon::Foe::Bat, false, 1, glam::Vec3::ZERO);
+    assert_eq!(s.play.progress(&s.play.quests[q]).0, 5);
+    for _ in 0..10 {
+        s.play
+            .on_kill(super::dungeon::Foe::Slime, false, 1, glam::Vec3::ZERO);
+    }
+    assert!(s.play.quest_ready(&s.play.quests[q]));
+    let money = s.play.money;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.finish_quest(q, &mut io);
+    assert_eq!(s.play.money, money + 600);
+    let shield = s
+        .play
+        .player
+        .inv
+        .slots
+        .iter()
+        .flatten()
+        .copied()
+        .find(|st| st.item == Item::CopperShield)
+        .expect("a shield from the guild");
+    assert!(shield.rarity() >= Some(Rarity::Uncommon));
+    assert!(s.play.marks >= 20);
+    // Next up with Rowan: the map.
+    assert_eq!(
+        s.play.quest_for(Villager::Rowan).map(|d| d.key),
+        Some("rowan_map")
+    );
+}
+
+#[test]
+fn deliveries_go_to_the_right_door() {
+    let mut s = Sim::new();
+    s.play.done.push("toby_mailbag".into());
+    s.accept("toby_letter");
+    assert_eq!(
+        s.play.player.inv.count(Item::Letter),
+        1,
+        "Toby hands you the letter"
+    );
+    assert!(s.play.quest_to_finish(Villager::Toby).is_none());
+    let q = s
+        .play
+        .quest_to_finish(Villager::Thistle)
+        .expect("for the mayor");
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.finish_quest(q, &mut io);
+    assert_eq!(s.play.player.inv.count(Item::Letter), 0);
+    assert!(s.play.is_done("toby_letter"));
+}
+
+#[test]
+fn meeting_everyone_on_the_welcome_tour() {
+    let mut s = Sim::new();
+    s.accept("thistle_hello");
+    let q = s.quest("thistle_hello");
+    for v in [
+        Villager::Hilde,
+        Villager::Garrick,
+        Villager::Posy,
+        Villager::Mabel,
+    ] {
+        s.play.on_meet(v);
+    }
+    assert!(!s.play.quest_ready(&s.play.quests[q]));
+    s.play.on_meet(Villager::Pip);
+    assert!(
+        !s.play.quest_ready(&s.play.quests[q]),
+        "Pip isn't a shopkeeper"
+    );
+    s.play.on_meet(Villager::Nix);
+    assert!(s.play.quest_ready(&s.play.quests[q]));
+}
+
+#[test]
+fn the_boards_post_new_notices_every_day() {
+    let mut s = Sim::new();
+    let today = s.play.notices(false);
+    assert_eq!(today.len(), 3);
+    assert_eq!(s.play.notices(true).len(), 2);
+    let first = today[0].clone();
+    s.play.taken.push(first.id);
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.accept(QuestId::Request(first.clone()), &mut io);
+    assert_eq!(s.play.notices(false).len(), 2, "taken notices come down");
+    // Fill it and hand it in.
+    let q = s.play.quests.len() - 1;
+    match first.goal {
+        Goal::Bring(item, n) => {
+            s.play.player.inv.add(item, n);
+        }
+        Goal::Slay(foe, n, d) => {
+            for _ in 0..n {
+                s.play.on_kill(
+                    foe.unwrap_or(super::dungeon::Foe::Slime),
+                    false,
+                    d,
+                    glam::Vec3::ZERO,
+                );
+            }
+        }
+        _ => {}
+    }
+    assert!(s.play.quest_ready(&s.play.quests[q]));
+    let money = s.play.money;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.finish_quest(q, &mut io);
+    assert!(s.play.money > money);
+    // Tomorrow brings fresh ones.
+    s.play.clock.day += 1;
+    assert_eq!(s.play.notices(false).len(), 3);
+}
+
+#[test]
+fn town_projects_change_the_town() {
+    let before = town::generate(0);
+    let after = town::generate(u32::MAX);
+    let (fx, fz) = TOWN.fountain;
+    assert!(matches!(
+        before.obj(fx, fz),
+        Some(Obj::Fountain { flowing: false })
+    ));
+    assert!(matches!(
+        after.obj(fx, fz),
+        Some(Obj::Fountain { flowing: true })
+    ));
+    // The bridges to the park only exist once mended.
+    let bridge = (61, 20);
+    assert!(before.blocked(bridge.0, bridge.1));
+    assert!(!after.blocked(bridge.0, bridge.1));
+    let (tx, tz) = TOWN.wish_tree;
+    assert!(matches!(
+        after.obj(tx, tz),
+        Some(Obj::WishTree { blooming: true })
+    ));
+}
+
+#[test]
+fn villagers_keep_their_hours() {
+    let mut s = Sim::new();
+    // Morning in town: Mabel is at her bakery, not in the street.
+    s.play.clock.min = 600.0;
+    s.ride();
+    s.frames(10);
+    assert!(!s.play.folk.iter().any(|n| n.who == Villager::Mabel));
+    assert_eq!(Villager::Mabel.spot(600.0), Spot::Inside(Place::Bakery));
+    // Late at night the streets are quiet but the tavern isn't.
+    assert!(
+        VILLAGERS
+            .iter()
+            .any(|v| v.spot(1300.0) == Spot::Inside(Place::Tavern))
+    );
+    assert!(
+        VILLAGERS
+            .iter()
+            .all(|v| v.spot(1530.0) != Spot::Town || *v == Villager::Mira)
+    );
+}
+
+#[test]
+fn town_and_shops_render_in_palette() {
+    use crate::render::Renderer;
+    let mut game = super::Game::new();
+    let mut r = Renderer::new(320, 180);
+    let input = Input::default();
+    game.new_game(6);
+    let audio = Audio::silent();
+    let mut settings = Settings::default();
+    if let Some(p) = game.play_mut() {
+        p.menu = Menu::None;
+        p.clock.min = 700.0;
+        p.ride_bus(true);
+        p.bus = None;
+    }
+    for place in [None, Some(Place::Bakery), Some(Place::Tavern)] {
+        if let Some(p) = game.play_mut() {
+            if let Some(pl) = place {
+                p.enter_place(pl);
+            }
+            for _ in 0..20 {
+                let mut io = Io {
+                    dt: 1.0 / 60.0,
+                    input: &input,
+                    audio: &audio,
+                    view: (320, 180),
+                    quit: false,
+                    toggle_fullscreen: false,
+                };
+                p.update(&mut io, &mut settings);
+            }
+        }
+        game.draw(&mut r, &input);
+        assert!(r.fb.color.iter().all(|&c| c < 32));
+        if let Some(p) = game.play_mut() {
+            if place.is_some() {
+                p.leave_place();
+            }
+        }
+    }
+}

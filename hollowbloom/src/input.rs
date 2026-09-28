@@ -168,6 +168,11 @@ impl Input {
         self.down.contains(&k)
     }
 
+    /// A raw key that went down this frame.
+    pub fn key_pressed(&self, k: KeyCode) -> bool {
+        self.pressed.contains(&k)
+    }
+
     pub fn down(&self, a: Action) -> bool {
         let held = keys(a).iter().any(|k| self.down.contains(k));
         held || match a {

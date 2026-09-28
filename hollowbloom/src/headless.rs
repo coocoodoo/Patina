@@ -709,6 +709,9 @@ pub fn shots(dir: &str) {
         println!("day {} money {}", p.clock.day, loot::money_text(p.money));
     }
     let _ = (Slot::Head, Rarity::Common);
+    // The road to town, Bramblewick and its people.
+    town_shots(dir.to_str().unwrap_or("shots"));
+    folk_shots(dir.to_str().unwrap_or("shots"));
 }
 
 /// Renders the hero in an outfit into a cell of a sheet.
@@ -1053,6 +1056,29 @@ pub fn bench() {
         total * 1000.0 / frames as f64,
         draw_time * 1000.0 / frames as f64
     );
+    // The busiest place: the plaza at noon, everyone out and about.
+    {
+        let p = play(&mut game);
+        p.clock.min = 720.0;
+        p.restored = u32::MAX;
+        p.ride_bus(true);
+        p.bus = None;
+        p.player.pos = Vec2::new(35.5, 29.5);
+    }
+    let t0 = Instant::now();
+    let mut draw_time = 0.0;
+    for _ in 0..frames {
+        tick(&mut game, &input, &audio, 1);
+        let t = Instant::now();
+        game.draw(&mut r, &input);
+        draw_time += t.elapsed().as_secs_f64();
+    }
+    let total = t0.elapsed().as_secs_f64();
+    println!(
+        "{frames} frames in town: {:.2} ms/frame total, {:.2} ms/frame drawing",
+        total * 1000.0 / frames as f64,
+        draw_time * 1000.0 / frames as f64
+    );
 }
 
 /// `--town-shots DIR`: the road to town, Bramblewick from above and street level, and the
@@ -1354,4 +1380,36 @@ pub fn folk_shots(dir: &str) {
         };
     }
     snap(&mut game, &mut r, &input, dir, "f13_armory_shop");
+    // A keepsake waiting in the Hollow for whoever asked for it.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.leave_place();
+        let mut io = io(&input, &audio);
+        p.accept(QuestId::Story("fern_locket".into()), &mut io);
+        p.fade = None;
+        p.start_fade(Trans::Descend {
+            depth: 3,
+            via_waystone: false,
+        });
+    }
+    tick(&mut game, &input, &audio, 60);
+    {
+        let p = play(&mut game);
+        p.banner = None;
+        p.toasts.clear();
+        if let Some(d) = p.drops.iter().find(|d| d.stack.item == Item::Locket) {
+            let (x, z) = (d.pos.x, d.pos.z);
+            let w = &p.level.as_ref().unwrap().world;
+            let (tx, tz) = w.nearest_open(x as i32 - 1, z as i32 + 2);
+            p.player.pos = Vec2::new(tx as f32 + 0.5, tz as f32 + 0.5);
+            p.player.facing = Vec2::new(1.0, -1.0).normalize();
+            p.foes.clear();
+            for d in p.drops.iter_mut() {
+                d.age = 5.0;
+            }
+        }
+    }
+    tick(&mut game, &input, &audio, 20);
+    snap(&mut game, &mut r, &input, dir, "f14_keepsake_in_the_hollow");
 }

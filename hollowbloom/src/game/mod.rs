@@ -365,7 +365,7 @@ fn draw_title(c: &mut Canvas, t: &Title) {
             INK,
         );
     }
-    let help = "WASD move  -  J / click use  -  E / right click interact  -  Space roll  -  Tab bag  -  C craft";
+    let help = "WASD move  -  J / click use  -  E / right click talk, interact  -  Space roll  -  Tab bag  -  C craft  -  L quests";
     let lines = c.font.wrap(help, w - 20);
     for (i, l) in lines.iter().enumerate() {
         let lw = c.text_width(l);

@@ -1,11 +1,14 @@
 # Hollowbloom
 
-**A cozy top-down action RPG. Farm on the surface, delve an endless dungeon below it.**
+**A cozy top-down action RPG. Farm on the surface, delve an endless dungeon below it, and
+help a little town come back to life.**
 
 Your little farm sits right on top of *the Hollow*, a cave that goes down forever. Fight and
 dig your way through procedurally generated floors, bring home the strange seeds, ores and
 treasures you find, and grow them into a farm that helps you go deeper. Every tenth floor a
-guardian watches over a waystone that can take you home.
+guardian watches over a waystone that can take you home. Down the road, a bus runs to
+**Bramblewick**, where nineteen villagers have shops to keep, stories to tell and more than a
+hundred things they would love a hand with.
 
 Everything you see is low-poly 3D with pixel-art textures, drawn by a small software renderer
 that **can only ever produce the 32 colours of the
@@ -24,7 +27,21 @@ in the program is the palette itself, applied at the final blit.
 | ![Frost Caverns](docs/hollow-frost.png) | ![Sunken Ruins](docs/hollow-ruins.png) |
 | ![A guardian](docs/guardian.png) | ![Guardian loot](docs/loot.png) |
 | ![The waystone](docs/waystone.png) | ![Your stats](docs/stats.png) |
-| ![Crafting](docs/crafting.png) | |
+| ![Crafting](docs/crafting.png) | ![The bus to town](docs/bus.png) |
+
+**Bramblewick**
+
+![Bramblewick from above](docs/town.png)
+
+| | |
+| --- | --- |
+| ![Toby the postman in the plaza](docs/bramblewick.png) | ![Bramblewick at night, lamps lit](docs/town-night.png) |
+| ![Talking with Pip](docs/talk.png) | ![Pip asks for help](docs/quest-offer.png) |
+| ![Quest complete!](docs/quest-complete.png) | ![The quest journal](docs/journal.png) |
+| ![The request board](docs/board.png) | ![A keepsake waiting in the Hollow](docs/keepsake.png) |
+| ![Honeycrumb Bakery](docs/bakery.png) | ![Petalplate Armory's daily specials](docs/armory.png) |
+| ![The Sleepy Snail at night](docs/tavern.png) | ![Moonquill Scriptorium](docs/scriptorium.png) |
+| ![The Wishing Tree in bloom](docs/wishing-tree.png) | |
 
 ![A dozen outfits from the Hollow's wardrobe](docs/wardrobe.png)
 
@@ -38,11 +55,12 @@ install: it is a single executable.
 | --- | --- | --- |
 | Move | WASD / arrows | |
 | Use tool, attack, cast | J or Z | left click (aims at the cursor) |
-| Interact, harvest, eat, place, wear | E or K | right click |
+| Interact, talk, harvest, eat, place, wear | E or K | right click |
 | Dodge roll | Space or Shift | |
 | Hotbar | 1-9, 0, Q / R | wheel |
 | Bag, worn gear, stats / crafting | Tab or I / C | right click wears armour |
-| Minimap (in the Hollow) | M | |
+| Quest journal, friends, records | L | |
+| Minimap (in the Hollow and in town) | M | |
 | Pause, settings, save & quit | Esc | |
 | Fullscreen / screenshot | F11 or Alt+Enter / F12 | |
 
@@ -67,6 +85,50 @@ install: it is a single executable.
 * Craft **sprinklers** from dungeon ores to automate watering (4, 8 or 24 tiles).
 * Glowcaps and Moonblooms glow at night; lamps, lit windows and fireflies keep the evenings
   cozy. There is a cat. You can pet the cat.
+
+### Bramblewick (the town down the road)
+
+* A country road now runs along the farm's east edge. **Wave the bus down** at the shelter and
+  it drives you to **Bramblewick**: streets and a plaza, nineteen storybook buildings, a
+  stream with a park beyond it, and a bus back home whenever you like. Road corners are
+  rounded, on the farm and in town.
+* **Eleven buildings you can walk into**, each a little diorama: the Town Hall, the Lantern
+  Guild, and **nine specialist shops**, each with its own shelves, **specials rolled fresh
+  every morning**, and better prices for the things it deals in:
+  * **Petalplate Armory** (Hilde): helmets, chest armour, leg armour, boots and shields.
+  * **Sprig & Steel** (Garrick): swords, wands and staffs.
+  * **Tinkerbolt Tools** (Nix): hoes, cans, sickles, axes, pickaxes and sprinklers.
+  * **Moonquill Scriptorium** (Elder Quill): weapon, armour and tool scrolls, tonics, wish
+    stars, and an enchanting table.
+  * **Sproutling Seeds** (Posy): every seed in the valley, and rarer ones the deeper you go.
+  * **Honeycrumb Bakery** (Mabel), **The Sleepy Snail** tavern (Barley): food with buffs.
+  * **Glimmer & Gold** (Opal): gems and curios, and 50% more for any you sell her.
+  * **Cozy Nook** (Wren): lamps, benches, chests, paths and other furniture.
+  * **The Lantern Guild** (Captain Rowan): delving supplies and guild spoils.
+* **Nineteen villagers** with their own looks, outfits, voices and **daily schedules**: they
+  open their shops, stroll their favourite corners of town, gather at the tavern in the
+  evening and go home at night. Talk to them (they chatter in little blips, with their
+  portrait in the talk box), **give gifts** (each has things they love, like and hate) and
+  your **friendship** grows to ten hearts, with presents at three, six and nine.
+* **111 hand-written story quests**, five to eight from everyone in town, unlocking as you
+  make friends and go deeper: find **keepsakes** lost in the Hollow (Albert's locket on floors
+  2-5, Toby's mailbag, Quill's spectacles...), gather **quest drops** from creatures (slime
+  hearts, bat fangs, glow oil from wisps, wishing leaves from the deep), slay, reach floors,
+  beat guardians, grow and harvest, cook, enchant, ship, and **deliver** letters and parcels.
+  Keepsakes and quest drops **only exist while the quest is open**, and a guardian **returns
+  to its floor** for anyone who needs something it carries. A **!** marks someone with a
+  request and a **?** someone you can hand one in to.
+* **Rewards are generous**: heaps of coins, gear of a guaranteed rarity at your level
+  (up to Legendary), top scrolls, heart crystals, sun stones and wish stars, sprinklers, rare
+  seeds, and each finished quest ends in a little celebration.
+* **Bring the town back**: the mayor's projects make the fountain flow, relight the lamps,
+  replant the flower beds, string festival bunting, mend the bridges to the park, fix the
+  clock (it chimes the hours), bring back market day and make the **Wishing Tree** bloom
+  (it blesses you with luck once a day).
+* Endless extras: **three new notices every day** on the plaza's **request board**, **guild
+  bounties** that earn marks and promotions through six **Lantern Guild ranks**, and
+  **collections** to complete (every crop, every curio, every dish, every creature). The
+  journal (L) keeps track of it all.
 
 ### The Hollow (endless and procedural)
 
@@ -120,7 +182,7 @@ install: it is a single executable.
 * Better gear is crafted from what you bring up: ores, crab shells, imp horns, wisp dust and
   more. Crafted gear comes out with random stats too.
 
-Progress is saved automatically every morning (and when you quit from the farm):
+Progress is saved automatically every morning (and when you quit anywhere but the Hollow):
 
 * Windows: `%APPDATA%\Hollowbloom\save.json`
 * Linux: `$XDG_DATA_HOME/hollowbloom/save.json` (usually `~/.local/share/hollowbloom/`)
@@ -167,8 +229,10 @@ release when a `hollowbloom-v*` tag is pushed.
 
 ```bash
 hollowbloom --shots DIR           # render a tour of the game to PNGs, no display needed
+hollowbloom --town-shots DIR      # just the road to town, Bramblewick and every room
+hollowbloom --folk-shots DIR      # just villagers, talking, quests, boards and shops
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
-hollowbloom --bench               # rendering speed (about 3 ms per frame at 480x270)
+hollowbloom --bench               # rendering speed (about 4 ms per frame at 480x270)
 hollowbloom --palette-chart FILE  # the light maps: every colour at every light level
 hollowbloom --mute                # no sound
 ```
@@ -189,14 +253,16 @@ hollowbloom --mute                # no sound
   walls.
 * **Everything is procedural or written in code**: tile textures, the low-poly models
   (boxes and lathes, including a 3D look for every hat, boot, shield, weapon and tool), about
-  330 item icons, crop sprites and stat symbols drawn as ASCII art, two bitmap fonts,
+  390 item icons, crop sprites and stat symbols drawn as ASCII art, two bitmap fonts,
   the sound effects (sfxr-style synthesis) and the chiptune soundtrack (a small four-channel
-  sequencer with six songs).
+  sequencer with eight songs). The town's buildings are generated from a short description
+  each (size, walls, roof, awning, sign), and villagers find their way about with a simple
+  breadth-first path search over the town's tiles.
 * **Audio** uses ALSA on Linux (loaded with `dlopen`) and winmm on Windows, from a mixer
   thread.
 
 ## Credits
 
 * Palette: [Resurrect 32](https://lospec.com/palette-list/resurrect-32) by Kerrie Lake.
-* Inspired by the look of *Final Fantasy: The 4 Heroes of Light*, the farming of
-  *Stardew Valley* and the digging freedom of *Core Keeper*.
+* Inspired by the look of *Final Fantasy: The 4 Heroes of Light*, the farming and townsfolk
+  of *Stardew Valley* and the digging freedom of *Core Keeper*.

@@ -1949,19 +1949,6 @@ pub fn foe_name(f: Foe) -> &'static str {
     }
 }
 
-pub const ALL_FOES: [Foe; 10] = [
-    Foe::Slime,
-    Foe::Bat,
-    Foe::Shroom,
-    Foe::Crab,
-    Foe::Wisp,
-    Foe::Beetle,
-    Foe::Imp,
-    Foe::Skeleton,
-    Foe::Golem,
-    Foe::Ghost,
-];
-
 /// A reward, in words.
 pub fn reward_text(r: &Reward) -> String {
     match *r {
@@ -2122,6 +2109,7 @@ impl Play {
         if let QuestId::Story(k) = &q.id {
             self.done.push(k.clone());
         }
+        self.tidy_keepsakes(q.goal());
         let giver = q.giver();
         let mut lines = Vec::new();
         let rewards = q.rewards();
@@ -2148,6 +2136,34 @@ impl Play {
             lines,
             t: 0.0,
         });
+    }
+
+    /// Gives up on a quest: whatever it gave you to carry goes back.
+    pub fn drop_quest(&mut self, i: usize) {
+        if i >= self.quests.len() {
+            return;
+        }
+        let q = self.quests.remove(i);
+        self.tidy_keepsakes(q.goal());
+        self.toast(format!("Dropped \"{}\"", q.title()), None, 0);
+    }
+
+    /// Keepsakes nobody needs any more crumble away.
+    fn tidy_keepsakes(&mut self, g: Goal) {
+        let item = match g {
+            Goal::Find(i, ..) | Goal::Gather(i, ..) | Goal::Deliver(i, _) => i,
+            _ => return,
+        };
+        let still = self.quests.iter().any(|q| match q.goal() {
+            Goal::Find(i, ..) | Goal::Gather(i, ..) | Goal::Deliver(i, _) => i == item,
+            _ => false,
+        });
+        if !still {
+            let n = self.player.inv.count(item);
+            if n > 0 {
+                self.player.inv.take(item, n);
+            }
+        }
     }
 
     /// Gives one reward. Returns a line for the celebration.
@@ -2215,7 +2231,7 @@ impl Play {
             Reward::Restore(bit) => {
                 let new = self.restored & bit == 0;
                 self.restored |= bit;
-                if new && self.area == super::world::Area::Town {
+                if new {
                     self.town = town::generate(self.restored);
                 }
                 if bit == town::CLOCK {
@@ -2232,6 +2248,7 @@ impl Play {
 
     /// Into the bag, or onto the ground at your feet if it's full.
     pub fn give(&mut self, s: Stack) {
+        self.on_pickup(s.item);
         let left = self.player.inv.add_stack(s);
         if left > 0 {
             let at = self.player.world_pos();

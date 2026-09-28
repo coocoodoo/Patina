@@ -40,6 +40,7 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
                 | Obj::House
                 | Obj::EnchantTable
                 | Obj::StreetLamp { .. }
+                | Obj::WishTree { .. }
                 | Obj::Building { .. } => env.night > 0.2,
                 Obj::Crop { crop, days, .. } => {
                     crop.def().glow && *days >= crop.def().days && env.night > 0.2
@@ -358,7 +359,7 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 // Water arcing from the top bowl and splashing below.
                 for i in 0..12 {
                     let k = (env.time * 0.9 + i as f32 / 12.0).fract();
-                    let ang = i as f32 * 0.5236;
+                    let ang = i as f32 * std::f32::consts::FRAC_PI_6;
                     let rad = 0.35 + k * 0.6;
                     let y = 1.3 + k * 0.25 - k * k * 1.2;
                     let p = base + Vec3::new(ang.cos() * rad, y, ang.sin() * rad);
@@ -372,8 +373,16 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 );
             }
         }
-        Obj::StreetLamp { lit } => {
+        Obj::StreetLamp { lit, bunting } => {
             r.mesh(&a.bank, &a.town.street_lamp, &at, &lit_opts(base));
+            if *bunting {
+                // A string of little flags to the next lamp along the street.
+                if let Some(k) =
+                    (2..=9).find(|k| matches!(w.obj(x + k, z), Some(Obj::StreetLamp { .. })))
+                {
+                    draw_bunting(r, a, base + Vec3::Y * 1.62, k as f32, env.time + x as f32);
+                }
+            }
             let glow = *lit && env.night > 0.2;
             let o = if glow {
                 DrawOpts::default().with_mode(Mode::Unlit)
@@ -386,6 +395,44 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             }
         }
         Obj::Board => r.mesh(&a.bank, &a.town.board, &at, &lit),
+        Obj::WishTree { blooming } => {
+            r.shadow(a.tex(a.disk), base, 1.3);
+            let sway = (env.time * 0.8).sin() * 0.015;
+            let tree = if *blooming { &p.trees[2] } else { &p.trees[0] };
+            let m = at * Mat4::from_scale(Vec3::splat(1.9)) * Mat4::from_rotation_z(sway);
+            let o = if *blooming { lit.with_glow(0.9) } else { lit };
+            r.mesh(&a.bank, tree, &m, &o);
+            if *blooming {
+                // Petals drifting down, and fireflies of light in the branches.
+                for i in 0..14 {
+                    let t = (env.time * 0.25 + i as f32 * 0.071).fract();
+                    let ang = i as f32 * 2.4;
+                    let rad = 0.4 + (i % 5) as f32 * 0.25;
+                    let q = base
+                        + Vec3::new(
+                            ang.cos() * rad + (t * 9.0 + i as f32).sin() * 0.2,
+                            3.0 - t * 3.0,
+                            ang.sin() * rad,
+                        );
+                    r.point(q, 1, if i % 3 == 0 { WHITE } else { BLUSH });
+                }
+                for i in 0..5 {
+                    let on = (env.time * 2.0 + i as f32 * 1.3).sin() > 0.4;
+                    if on {
+                        let ang = i as f32 * 1.26 + env.time * 0.2;
+                        r.point(
+                            base + Vec3::new(
+                                ang.cos() * 1.0,
+                                2.2 + (i % 2) as f32 * 0.5,
+                                ang.sin() * 0.8,
+                            ),
+                            2,
+                            CREAM,
+                        );
+                    }
+                }
+            }
+        }
         Obj::Planter { var } => {
             let m = &a.town.planters[*var as usize % a.town.planters.len()];
             r.mesh(&a.bank, m, &at, &lit);
@@ -506,6 +553,33 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 }
             }
         }
+    }
+}
+
+/// Festival flags sagging from one lamp to another `len` tiles east.
+fn draw_bunting(r: &mut Renderer, a: &Assets, from: Vec3, len: f32, t: f32) {
+    let tex = a.tex(a.town.bunting);
+    let segs = (len * 2.0) as i32;
+    let o = DrawOpts {
+        light: Light::At(from),
+        cull: false,
+        ..Default::default()
+    };
+    for i in 0..segs {
+        let k0 = i as f32 / segs as f32;
+        let k1 = (i + 1) as f32 / segs as f32;
+        let sag = |k: f32| -(k * (1.0 - k)) * 1.1 + (t * 2.0 + k * 6.0).sin() * 0.015;
+        let p0 = from + Vec3::new(k0 * len, sag(k0), 0.0);
+        let p1 = from + Vec3::new(k1 * len, sag(k1), 0.0);
+        let h = Vec3::Y * 0.22;
+        let mut m = Mesh::new();
+        m.quad(
+            [p0 - h, p1 - h, p1, p0],
+            UvRect::new(0.0, 0.0, 8.0, 8.0),
+            a.town.bunting,
+        );
+        let _ = tex;
+        r.mesh(&a.bank, &m, &Mat4::IDENTITY, &o);
     }
 }
 

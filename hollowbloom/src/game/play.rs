@@ -131,6 +131,10 @@ pub struct Play {
     pub rank: u8,
     /// A quest just finished, to celebrate.
     pub cheer: Option<super::quests::Cheer>,
+    /// The day the Wishing Tree last blessed you.
+    pub blessed: u32,
+    /// The hour the town clock last struck.
+    pub last_hour: i32,
     pub level: Option<Level>,
     pub area: Area,
     pub player: Player,
@@ -210,6 +214,8 @@ impl Play {
             marks: 0,
             rank: 0,
             cheer: None,
+            blessed: 0,
+            last_hour: -1,
             level: None,
             area: Area::Farm,
             player,
@@ -269,8 +275,10 @@ impl Play {
             "Welcome home! This little farm sits right on top of the Hollow, a cave that goes \
              down forever. Seeds from the deep grow up here, so delve, dig and plant.\n\
              Till with the hoe, plant, water every day and sleep to let things grow. The \
-             Hollow is full of treasure: gear, coins and scrolls you can bind to your gear at \
-             the enchanting table by the house. Every tenth floor, a waystone brings you home.",
+             Hollow is full of treasure: gear, coins and scrolls you can bind at the \
+             enchanting table by the house.\n\
+             Follow the path east to the bus stop: the bus goes to Bramblewick, where the \
+             townsfolk have shops, stories and plenty they'd love a hand with (L: quests).",
         );
         p
     }
@@ -515,7 +523,7 @@ impl Play {
         let Some(level) = &self.level else { return };
         let w = &level.world;
         let (sx, sz) = level.start;
-        let mut rng = Rng::new(self.seed ^ depth as u64 * 7717 ^ self.clock.day as u64);
+        let mut rng = Rng::new(self.seed ^ (depth as u64 * 7717) ^ self.clock.day as u64);
         let mut spots = Vec::new();
         for z in 1..w.h - 1 {
             for x in 1..w.w - 1 {
@@ -732,8 +740,15 @@ impl Play {
             return;
         }
 
-        // Time.
+        // Time, and the town clock striking the hours once it's mended.
         self.clock.min += dt * MIN_PER_SEC;
+        let hour = (self.clock.min / 60.0) as i32;
+        if hour != self.last_hour {
+            if self.last_hour >= 0 && self.in_town() && self.restored & super::town::CLOCK != 0 {
+                io.audio.play_at(Sfx::Bell, 0.5, 1.0);
+            }
+            self.last_hour = hour;
+        }
         if self.clock.min >= DAY_END {
             self.clock.min = DAY_END;
             self.toast("You're exhausted... you collapse.", None, 0);
@@ -1153,6 +1168,7 @@ impl Play {
             Obj::BusStop => "Wait for the bus",
             Obj::Board => "Read the notices",
             Obj::Fountain { .. } => "Make a wish",
+            Obj::WishTree { .. } => "Touch the Wishing Tree",
             Obj::Well => "Peek in",
             Obj::House => "Sleep",
             Obj::Bin => "Ship items",
@@ -1532,6 +1548,7 @@ impl Play {
             }
             Obj::Board => self.open_board(io),
             Obj::Fountain { .. } => self.wish(io),
+            Obj::WishTree { blooming } => self.wish_tree(blooming, io),
             Obj::Well => {
                 self.toast("It's very deep. Something glints far below...", None, 0);
                 io.audio.play_at(Sfx::Water, 0.4, 0.7);

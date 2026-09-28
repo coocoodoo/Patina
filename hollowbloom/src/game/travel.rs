@@ -243,6 +243,11 @@ impl Play {
         self.room = Some(room);
         self.area = Area::Inside(place);
         self.cam_pos = self.room_center();
+        self.banner = Some(Banner {
+            title: place.def().name.into(),
+            sub: place.def().trade.into(),
+            t: 0.8,
+        });
         self.arrive_folk();
     }
 
@@ -258,6 +263,8 @@ impl Play {
         self.player.act = None;
         self.room = None;
         self.area = Area::Town;
+        // Anything finished indoors (a mended fountain, say) shows up outside.
+        self.town = town::generate(self.restored);
         self.cam_pos = self.player.world_pos();
         self.arrive_folk();
     }
@@ -384,6 +391,44 @@ impl Play {
         } else {
             self.toast("Plip! You make a wish.", None, 0);
         }
+    }
+
+    /// The Wishing Tree grants a little luck each day once it blooms.
+    pub fn wish_tree(&mut self, blooming: bool, io: &mut Io) {
+        if !blooming {
+            self.toast(
+                "The old tree is bare. Mayor Thistle says it once granted wishes.",
+                None,
+                0,
+            );
+            return;
+        }
+        if self.blessed == self.clock.day {
+            self.toast("The tree hums softly. Come back tomorrow.", None, 0);
+            return;
+        }
+        self.blessed = self.clock.day;
+        self.player.add_buff(
+            Buff {
+                stat: Stat::Luck,
+                val: 8,
+                secs: 900,
+            },
+            Item::WishStar,
+        );
+        self.player.refresh();
+        let (tx, tz) = TOWN.wish_tree;
+        let at = Vec3::new(tx as f32 + 0.5, 1.5, tz as f32 + 0.5);
+        self.fx.motes(at, 30, &[BLUSH, PINK, WHITE, CREAM], 1.2);
+        self.fx
+            .popup_big(self.player.world_pos() + Vec3::Y * 1.2, "BLESSED!", PINK);
+        self.toast_colored(
+            "The Wishing Tree blesses you: Luck +8 today!",
+            None,
+            0,
+            PINK,
+        );
+        io.audio.play(Sfx::Enchant);
     }
 
     pub fn draw_bus(&self, r: &mut Renderer, a: &Assets, night: f32) {

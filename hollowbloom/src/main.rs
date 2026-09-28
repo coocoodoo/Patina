@@ -33,6 +33,7 @@ CONTROLS:
     WASD / arrows        move            Space / Shift   dodge roll
     J / Z / left click   use tool        E / right click interact, eat, place
     1-0 / wheel / Q R    hotbar          Tab / I         bag      C  crafting
+    L                    quest journal   E near someone  talk, give gifts, take quests
     M                    minimap         Esc             pause    F11 fullscreen   F12 screenshot
 ";
 

@@ -165,6 +165,20 @@ impl Play {
                 self.draw_minimap(c, px, 56, pw);
             }
         }
+        match self.area {
+            Area::Town if self.show_map => {
+                c.panel(px, 40, pw, 14, Style::Dark);
+                c.text_shadow(px + 6, 43, "Bramblewick", CREAM, INK);
+                self.draw_town_map(c, px + 3, 56);
+            }
+            Area::Inside(place) => {
+                let name = place.def().name;
+                let pw2 = c.text_width(name) + 12;
+                c.panel(w - pw2 - 3, 40, pw2, 14, Style::Dark);
+                c.text_shadow(w - pw2 + 3, 43, name, CREAM, INK);
+            }
+            _ => {}
+        }
 
         // Boss bar.
         if let Some(b) = self.foes.iter().find(|f| f.boss && f.alert) {
@@ -281,6 +295,62 @@ impl Play {
                 let sw = c.text_width(&b.sub);
                 c.text_outline((w - sw) / 2, y + 20, &b.sub, GOLD, INK);
             }
+        }
+    }
+
+    /// Bramblewick at a glance: streets, roofs, the stream, and who wants you.
+    fn draw_town_map(&self, c: &mut Canvas, x0: i32, y0: i32) {
+        let w = &self.town;
+        c.rect(x0 - 1, y0 - 1, w.w + 2, w.h + 2, INK);
+        for z in 0..w.h {
+            for x in 0..w.w {
+                let col = match w.obj(x, z) {
+                    Some(Obj::Building { id }) => super::town::BUILDINGS[*id as usize].look.roof[1],
+                    Some(Obj::Part { ax, az }) => match w.obj(*ax as i32, *az as i32) {
+                        Some(Obj::Building { id }) => {
+                            super::town::BUILDINGS[*id as usize].look.roof[1]
+                        }
+                        Some(Obj::Fountain { .. }) => SKY,
+                        _ => KHAKI,
+                    },
+                    Some(Obj::Tree { .. } | Obj::Pine { .. } | Obj::WishTree { .. }) => DEEP_TEAL,
+                    Some(Obj::Fountain { .. }) => SKY,
+                    _ => match (w.wall(x, z), w.floor(x, z)) {
+                        (Wall::Hedge, _) => DEEP_TEAL,
+                        (_, Floor::Water) => BLUE,
+                        (_, Floor::Street | Floor::Plaza | Floor::Planks) => SAND,
+                        (_, Floor::Path | Floor::Sand) => KHAKI,
+                        _ => TEAL,
+                    },
+                };
+                c.px(x0 + x, y0 + z, col);
+            }
+        }
+        // Shop doors that are open right now.
+        for b in &super::town::BUILDINGS {
+            if let Some(p) = b.place {
+                if p.is_open(self.clock.min) {
+                    let (dx, dz) = b.step();
+                    c.px(x0 + dx, y0 + dz - 1, CREAM);
+                }
+            }
+        }
+        let blink = (self.time * 3.0).fract() < 0.6;
+        for n in &self.folk {
+            let (nx, nz) = n.tile();
+            let col = match self.marker(n.who) {
+                Some(true) => GREEN,
+                Some(false) if blink => GOLD,
+                _ => PINK,
+            };
+            c.px(x0 + nx, y0 + nz, col);
+            if self.marker(n.who).is_some() {
+                c.px(x0 + nx, y0 + nz - 1, col);
+            }
+        }
+        if blink {
+            let (px, pz) = self.player.tile();
+            c.rect(x0 + px, y0 + pz, 2, 2, WHITE);
         }
     }
 

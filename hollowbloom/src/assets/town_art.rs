@@ -45,6 +45,7 @@ impl Kit {
 }
 
 /// A quad facing +z (the camera) at depth `z`, from (x0, y0) to (x1, y1).
+#[allow(clippy::too_many_arguments)]
 fn front_quad(m: &mut Mesh, x0: f32, y0: f32, x1: f32, y1: f32, z: f32, uv: UvRect, t: TexId) {
     m.quad(
         [
@@ -59,6 +60,7 @@ fn front_quad(m: &mut Mesh, x0: f32, y0: f32, x1: f32, y1: f32, z: f32, uv: UvRe
 }
 
 /// A quad facing -z, for the back of signs.
+#[allow(clippy::too_many_arguments)]
 fn back_quad(m: &mut Mesh, x0: f32, y0: f32, x1: f32, y1: f32, z: f32, uv: UvRect, t: TexId) {
     m.quad(
         [
@@ -2318,8 +2320,7 @@ fn bunting_tex() -> Texture {
     for x in 0..16 {
         t.set(x, 0, SHADOW);
     }
-    for f in 0..4 {
-        let c = cols[f];
+    for (f, &c) in cols.iter().enumerate() {
         for y in 1..6 {
             let half = (6 - y) / 2;
             for x in (f as i32 * 4 + 2 - half)..=(f as i32 * 4 + 1 + half) {

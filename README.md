@@ -334,7 +334,9 @@ hollowbloom/          a cozy action RPG built on the same Rust stack (see below)
 [`hollowbloom/`](hollowbloom/README.md) is a cozy top-down action RPG written in Rust on the
 same winit + softbuffer stack as the core: farm on the surface, delve an endless procedurally
 generated dungeon below it, full of loot: 123 pieces of gear with random stats and rarities,
-enchanting scrolls, copper, silver and gold coins, and 38 crops to grow. It is drawn in low-poly
+enchanting scrolls, copper, silver and gold coins, and 38 crops to grow. A bus runs to
+Bramblewick, a town of nineteen villagers with shops you can walk into, friendships and 111
+quests. It is drawn in low-poly
 3D with pixel-art textures by a software renderer that only ever outputs the 32 colours of the
 Resurrect 32 palette, and it builds for Windows and Linux from a single machine.
 
@@ -343,6 +345,7 @@ cargo run -p hollowbloom --release
 ```
 
 ![Hollowbloom](hollowbloom/docs/farm-morning.png)
+![Bramblewick](hollowbloom/docs/bramblewick.png)
 ![Hollowbloom's wardrobe](hollowbloom/docs/wardrobe.png)
 
 ## License

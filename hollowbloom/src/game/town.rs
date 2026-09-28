@@ -698,7 +698,7 @@ pub const TOWN: TownMarks = TownMarks {
     arrive: (20, 43),
     board: (30, 22),
     fountain: (35, 26),
-    wish_tree: (65, 24),
+    wish_tree: (67, 24),
 };
 
 /// The streets, as rectangles (x0, z0, x1, z1), inclusive.
@@ -714,7 +714,7 @@ const STREETS: [(i32, i32, i32, i32); 6] = [
 /// Builds the town. `done` holds the restoration projects finished so far.
 pub fn generate(done: u32) -> World {
     let mut w = World::new(TOWN_W, TOWN_H, Area::Town, 0);
-    let mut r = Rng::new(0xB2A4_B1E);
+    let mut r = Rng::new(0x0B2A_4B1E);
     for z in 0..TOWN_H {
         for x in 0..TOWN_W {
             w.set_floor(x, z, Floor::Grass);
@@ -895,6 +895,7 @@ pub fn generate(done: u32) -> World {
                 z,
                 Some(Obj::StreetLamp {
                     lit: done & LAMPS != 0,
+                    bunting: done & BUNTING != 0,
                 }),
             );
         }
@@ -924,9 +925,8 @@ pub fn generate(done: u32) -> World {
     w.set_obj(
         tx,
         tz,
-        Some(Obj::Tree {
-            var: if done & WISH_TREE != 0 { 2 } else { 1 },
-            hp: 99,
+        Some(Obj::WishTree {
+            blooming: done & WISH_TREE != 0,
         }),
     );
     w.set_obj(tx, tz + 2, Some(Obj::Bench));
@@ -935,7 +935,7 @@ pub fn generate(done: u32) -> World {
     // Hedges and a forest all round.
     for x in 0..TOWN_W {
         for z in 0..TOWN_H {
-            let border = x < 3 || x >= TOWN_W - 3 || z < 3 || z >= TOWN_H - 3;
+            let border = !(3..TOWN_W - 3).contains(&x) || !(3..TOWN_H - 3).contains(&z);
             if !border || w.floor(x, z) != Floor::Grass {
                 continue;
             }

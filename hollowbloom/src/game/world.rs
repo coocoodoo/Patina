@@ -164,6 +164,12 @@ pub enum Obj {
     },
     StreetLamp {
         lit: bool,
+        /// Festival flags strung to the next lamp along.
+        bunting: bool,
+    },
+    /// The Wishing Tree in the park.
+    WishTree {
+        blooming: bool,
     },
     /// The request board.
     Board,
@@ -228,7 +234,8 @@ impl Obj {
             Obj::Mushroom { .. } => Some((0.3, 3.0, 0.45, 2.5)),
             Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
             Obj::EnchantTable => Some((0.9, 3.4, 0.5, 1.4)),
-            Obj::StreetLamp { lit: true } => Some((1.7, 6.0, 0.9, 5.8)),
+            Obj::StreetLamp { lit: true, .. } => Some((1.7, 5.0, 0.55, 5.5)),
+            Obj::WishTree { blooming: true } => Some((1.6, 6.0, 0.7, 2.0)),
             Obj::Hearth => Some((0.5, 4.2, 0.42, 6.5)),
             _ => None,
         }

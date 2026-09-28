@@ -15,38 +15,33 @@ use crate::palette::*;
 use crate::util::{Rng, damp, hash2, wrap_angle};
 
 macro_rules! folk {
-    ($( $id:ident = $key:literal ),* $(,)?) => {
+    ($( $id:ident ),* $(,)?) => {
         #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, Serialize, Deserialize)]
         pub enum Villager { $($id),* }
         pub const VILLAGERS: &[Villager] = &[ $(Villager::$id),* ];
-        impl Villager {
-            pub fn key(self) -> &'static str {
-                match self { $(Villager::$id => $key),* }
-            }
-        }
     };
 }
 
 folk! {
-    Thistle = "thistle",
-    Rowan = "rowan",
-    Quill = "quill",
-    Hilde = "hilde",
-    Garrick = "garrick",
-    Nix = "nix",
-    Opal = "opal",
-    Wren = "wren",
-    Posy = "posy",
-    Mabel = "mabel",
-    Barley = "barley",
-    Fern = "fern",
-    Pip = "pip",
-    Juniper = "juniper",
-    Bramble = "bramble",
-    Toby = "toby",
-    Clank = "clank",
-    Mira = "mira",
-    Olive = "olive",
+    Thistle,
+    Rowan,
+    Quill,
+    Hilde,
+    Garrick,
+    Nix,
+    Opal,
+    Wren,
+    Posy,
+    Mabel,
+    Barley,
+    Fern,
+    Pip,
+    Juniper,
+    Bramble,
+    Toby,
+    Clank,
+    Mira,
+    Olive,
 }
 
 pub const FOLK: usize = 19;
@@ -982,10 +977,6 @@ impl Villager {
             Taste::Fine
         }
     }
-
-    pub fn from_key(key: &str) -> Option<Villager> {
-        VILLAGERS.iter().copied().find(|v| v.key() == key)
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1433,7 +1424,6 @@ mod tests {
                 .step_by(30)
                 .any(|m| v.spot(m as f32) != Spot::Away);
             assert!(seen, "{} never leaves home", v.name());
-            assert_eq!(Villager::from_key(v.key()), Some(v));
             let d = v.def();
             assert!(!d.chat.is_empty() && !d.close.is_empty());
             assert!(!d.haunts.is_empty(), "{} has nowhere to go", d.name);

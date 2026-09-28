@@ -282,7 +282,7 @@ pub fn seeds(p: &Play) -> Vec<(Item, u32)> {
 /// The morning's special pieces: gear and scrolls of the shop's trade, rolled for the day.
 pub fn specials(p: &Play, at: Place) -> Vec<(Stack, u64)> {
     let mut rng = Rng::new(
-        p.seed ^ (p.clock.day as u64).wrapping_mul(0x2545_F491) ^ (at as u64 + 1) * 0xA5A5,
+        p.seed ^ (p.clock.day as u64).wrapping_mul(0x2545_F491) ^ ((at as u64 + 1) * 0xA5A5),
     );
     let depth = p.deepest.max(2);
     let f = Fortune {
