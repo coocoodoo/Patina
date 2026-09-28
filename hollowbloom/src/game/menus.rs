@@ -1,21 +1,25 @@
-//! Menus: inventory and crafting, chests, the shop, the shipping bin, the Hollow elevator,
-//! dialogs, pause/settings and the morning summary. Mouse and keyboard both work.
+//! Menus: the bag with worn gear, stats and crafting, chests, the shop, the shipping bin, the
+//! Hollow elevator, dialogs, pause/settings and the morning summary. Mouse and keyboard both
+//! work. The enchanting table lives in `enchant.rs`.
 
 use glam::Vec2;
 
-use super::items::{ITEMS, Inventory, Item, Kind, RECIPES, Stack, ToolKind};
+use super::gear::{Rarity, SLOTS, Slot, Stat};
+use super::items::{CATS, Inventory, Item, Kind, RECIPES, Recipe, Stack};
+use super::loot;
 use super::play::{Play, Trans, transfer};
-use super::player::HOTBAR;
-use super::world::Obj;
+use super::tips::{draw_money, money_width, stat_icon};
 use super::{Io, Settings};
 use crate::assets::Assets;
 use crate::audio::Sfx;
-use crate::input::{Action, Button};
+use crate::input::{Action, Button, KeyCode};
 use crate::palette::*;
 use crate::ui::{Canvas, Style};
-use crate::util::thousands;
 
 pub const CELL: i32 = 19;
+/// Every menu window is this big.
+pub const PW: i32 = 236;
+pub const PH: i32 = 180;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Choice {
@@ -34,13 +38,38 @@ pub struct Summary {
     pub fainted: bool,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Tab {
+    Bag,
+    Stats,
+    Craft,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShopTab {
+    Seeds,
+    Goods,
+    Specials,
+    Sell,
+}
+
+/// A piece of gear chosen in a menu: in the bag, or worn.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Pick {
+    Bag(usize),
+    Worn(Slot),
+}
+
 pub enum Menu {
     None,
     Inventory {
-        craft: bool,
+        tab: Tab,
+        /// 0..40 the bag, 40..45 worn gear.
         cursor: usize,
         recipe: usize,
         scroll: usize,
+        /// Recipe category: 0 = everything, then one per `Cat`.
+        cat: usize,
     },
     Chest {
         x: i32,
@@ -48,8 +77,8 @@ pub enum Menu {
         cursor: usize,
     },
     Shop {
+        tab: ShopTab,
         cursor: usize,
-        sell: bool,
         scroll: usize,
     },
     Ship {
@@ -70,15 +99,43 @@ pub enum Menu {
         settings: bool,
     },
     Summary,
+    Enchant {
+        gear: Option<Pick>,
+        scroll: Option<usize>,
+        socket: usize,
+        /// 0..40 the bag, 40..45 worn gear, 45..48 sockets, 48 the button.
+        cursor: usize,
+        msg: Option<(String, u8)>,
+        /// Sparkle timer after a successful enchantment.
+        glow: f32,
+    },
 }
 
 impl Menu {
     pub fn inventory(craft: bool) -> Menu {
         Menu::Inventory {
-            craft,
+            tab: if craft { Tab::Craft } else { Tab::Bag },
             cursor: 0,
             recipe: 0,
             scroll: 0,
+            cat: 0,
+        }
+    }
+    pub fn shop() -> Menu {
+        Menu::Shop {
+            tab: ShopTab::Seeds,
+            cursor: 0,
+            scroll: 0,
+        }
+    }
+    pub fn enchant() -> Menu {
+        Menu::Enchant {
+            gear: None,
+            scroll: None,
+            socket: 0,
+            cursor: 0,
+            msg: None,
+            glow: 0.0,
         }
     }
     pub fn pause() -> Menu {
@@ -143,7 +200,7 @@ impl Grid {
     }
 }
 
-fn inside(p: Vec2, x: i32, y: i32, w: i32, h: i32) -> bool {
+pub fn inside(p: Vec2, x: i32, y: i32, w: i32, h: i32) -> bool {
     p.x >= x as f32 && p.y >= y as f32 && p.x < (x + w) as f32 && p.y < (y + h) as f32
 }
 
@@ -171,6 +228,38 @@ fn nav(io: &Io, cursor: &mut usize, cols: usize, n: usize) -> bool {
     }
 }
 
+/// Moves a cursor over the bag (0..40) and the worn-gear column (40..45) to its left.
+pub fn nav_bag(io: &Io, cursor: &mut usize) {
+    let i = io.input;
+    let before = *cursor;
+    if *cursor >= 40 {
+        let k = *cursor - 40;
+        if i.pressed_repeat(Action::Down) {
+            *cursor = 40 + (k + 1) % 5;
+        }
+        if i.pressed_repeat(Action::Up) {
+            *cursor = 40 + (k + 4) % 5;
+        }
+        if i.pressed_repeat(Action::Right) {
+            *cursor = k.min(3) * 10;
+        }
+    } else {
+        let (col, row) = (*cursor % 10, *cursor / 10);
+        if i.pressed_repeat(Action::Left) {
+            *cursor = if col == 0 { 40 + row } else { *cursor - 1 };
+        } else if i.pressed_repeat(Action::Right) {
+            *cursor = if col == 9 { row * 10 } else { *cursor + 1 };
+        } else if i.pressed_repeat(Action::Down) {
+            *cursor = (*cursor + 10) % 40;
+        } else if i.pressed_repeat(Action::Up) {
+            *cursor = (*cursor + 30) % 40;
+        }
+    }
+    if before != *cursor {
+        io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+    }
+}
+
 pub struct Layout {
     pub px: i32,
     pub py: i32,
@@ -187,45 +276,89 @@ pub fn center(w: i32, h: i32, pw: i32, ph: i32) -> Layout {
     }
 }
 
+pub fn panel_layout(w: i32, h: i32) -> Layout {
+    center(w, h, PW, PH)
+}
+
+/// The bag grid inside a panel, `top` pixels down, shifted right of the worn-gear column.
 pub fn bag_grid(l: &Layout, top: i32) -> Grid {
-    let g = Grid {
-        x: 0,
-        y: 0,
+    Grid {
+        x: l.px + 34,
+        y: l.py + top,
         cols: 10,
         rows: 4,
         gap: 3,
-    };
-    Grid {
-        x: l.px + (l.pw - g.w()) / 2,
-        y: l.py + top,
-        ..g
     }
 }
 
+/// The worn-gear column beside the bag.
+pub fn worn_pos(l: &Layout, top: i32, slot: usize) -> (i32, i32) {
+    (l.px + 9, l.py + top + slot as i32 * CELL)
+}
+
+pub fn worn_hit(l: &Layout, top: i32, p: Vec2) -> Option<usize> {
+    (0..5).find(|&i| {
+        let (x, y) = worn_pos(l, top, i);
+        inside(p, x, y, 18, 18)
+    })
+}
+
+/// Seeds Burrowby sells; more as you go deeper.
+pub fn shop_seeds(p: &Play) -> Vec<(Item, u32)> {
+    let d = p.deepest;
+    let mut v = vec![
+        (Item::TurnipSeeds, 20),
+        (Item::CarrotSeeds, 40),
+        (Item::RadishSeeds, 25),
+        (Item::SeedPotato, 40),
+        (Item::WheatSeeds, 15),
+        (Item::GarlicBulb, 40),
+        (Item::PeaSeeds, 35),
+        (Item::TomatoSeeds, 60),
+        (Item::CabbageSeeds, 70),
+    ];
+    let unlocks: [(u32, Item, u32); 23] = [
+        (2, Item::StrawberrySeeds, 90),
+        (3, Item::GlowcapSpores, 70),
+        (3, Item::RoseSeeds, 70),
+        (4, Item::MossberrySeeds, 60),
+        (5, Item::CornSeeds, 80),
+        (5, Item::SunflowerSeeds, 80),
+        (6, Item::BunnyrootSeeds, 50),
+        (7, Item::BlueberrySeeds, 100),
+        (7, Item::EggplantSeeds, 60),
+        (8, Item::MelonSeeds, 110),
+        (11, Item::BerrySeeds, 90),
+        (15, Item::PrismPearSeeds, 140),
+        (21, Item::PumpkinSeeds, 140),
+        (22, Item::PuffballSpores, 60),
+        (26, Item::JellySpores, 120),
+        (31, Item::PepperSeeds, 130),
+        (33, Item::FlameTulipBulb, 140),
+        (35, Item::LavaLemonSeeds, 150),
+        (41, Item::LilyBulb, 170),
+        (43, Item::SnowPeaSeeds, 110),
+        (45, Item::FrostMintSeeds, 100),
+        (53, Item::GhostPepperSeeds, 180),
+        (55, Item::AncientGrainSeeds, 200),
+    ];
+    for (need, item, price) in unlocks {
+        if d >= need {
+            v.push((item, price));
+        }
+    }
+    v
+}
+
+/// Supplies, food and furniture.
 pub fn shop_goods(p: &Play) -> Vec<(Item, u32)> {
     let d = p.deepest;
-    let mut v = vec![(Item::TurnipSeeds, 20), (Item::CarrotSeeds, 40)];
-    if d >= 3 {
-        v.push((Item::GlowcapSpores, 70));
-    }
-    if d >= 8 {
-        v.push((Item::MelonSeeds, 110));
-    }
-    if d >= 11 {
-        v.push((Item::BerrySeeds, 90));
-    }
-    if d >= 21 {
-        v.push((Item::PumpkinSeeds, 140));
-    }
-    if d >= 31 {
-        v.push((Item::PepperSeeds, 130));
-    }
-    if d >= 41 {
-        v.push((Item::LilyBulb, 170));
-    }
-    v.extend([
+    let mut v = vec![
         (Item::Torch, 12),
         (Item::HealingTonic, 120),
+        (Item::ManaTonic, 120),
+        (Item::StaminaTonic, 120),
+        (Item::FreshBread, 110),
         (Item::Feather, 300),
         (Item::Fence, 8),
         (Item::StonePath, 5),
@@ -234,15 +367,39 @@ pub fn shop_goods(p: &Play) -> Vec<(Item, u32)> {
         (Item::Bench, 120),
         (Item::Chest, 160),
         (Item::Lamp, 200),
-    ]);
+        (Item::EnchantTable, 900),
+        (Item::Sickle, 60),
+        (Item::TwigWand, 50),
+        (Item::PotLid, 40),
+    ];
     if d >= 5 {
         v.push((Item::Sprinkler, 450));
+    }
+    if d >= 12 {
+        v.push((Item::Ruby, 240));
+        v.push((Item::Sapphire, 240));
+        v.push((Item::Emerald, 240));
     }
     v
 }
 
-fn can_sell(item: Item) -> bool {
-    !matches!(item.def().kind, Kind::Tool(_, 0))
+/// Things you can sell (the four starter tools stay with you).
+pub fn can_sell(s: &Stack) -> bool {
+    !matches!(s.item, Item::Hoe | Item::Can0 | Item::Axe0 | Item::Pick0) && s.unit_price() > 0
+}
+
+/// The level a crafted piece of gear comes out at.
+fn crafted_level(p: &Play, item: Item) -> u16 {
+    let b = item.base().map_or(1, |b| b.lvl);
+    b.max((p.deepest as u16).min(b + 8))
+}
+
+/// Recipes shown under a category (0 = all).
+pub fn recipes_in(cat: usize) -> Vec<&'static Recipe> {
+    RECIPES
+        .iter()
+        .filter(|r| cat == 0 || r.cat == CATS[cat - 1])
+        .collect()
 }
 
 impl Play {
@@ -254,39 +411,39 @@ impl Play {
                 *held = Some(s);
                 inv.slots[i] = None;
             }
-            (None, Some(s), true) => {
+            (None, Some(s), true) if s.n > 1 => {
                 let half = s.n.div_ceil(2);
-                *held = Some(Stack::new(s.item, half));
-                inv.slots[i] = if s.n - half > 0 {
-                    Some(Stack::new(s.item, s.n - half))
-                } else {
-                    None
-                };
+                *held = Some(Stack { n: half, ..s });
+                inv.slots[i] = Some(Stack { n: s.n - half, ..s });
+            }
+            (None, Some(s), true) => {
+                *held = Some(s);
+                inv.slots[i] = None;
             }
             (Some(h), None, false) => {
                 inv.slots[i] = Some(h);
                 *held = None;
             }
             (Some(h), None, true) => {
-                inv.slots[i] = Some(Stack::new(h.item, 1));
+                inv.slots[i] = Some(Stack { n: 1, ..h });
                 *held = if h.n > 1 {
-                    Some(Stack::new(h.item, h.n - 1))
+                    Some(Stack { n: h.n - 1, ..h })
                 } else {
                     None
                 };
             }
-            (Some(h), Some(s), _) if h.item == s.item => {
+            (Some(h), Some(s), _) if s.stacks_with(&h) => {
                 let max = s.item.def().stack;
                 let add = if right { 1 } else { h.n };
-                let k = (max - s.n).min(add);
-                inv.slots[i] = Some(Stack::new(s.item, s.n + k));
+                let k = (max - s.n.min(max)).min(add);
+                inv.slots[i] = Some(Stack { n: s.n + k, ..s });
                 *held = if h.n - k > 0 {
-                    Some(Stack::new(h.item, h.n - k))
+                    Some(Stack { n: h.n - k, ..h })
                 } else {
                     None
                 };
             }
-            (Some(h), Some(s), false) => {
+            (Some(h), Some(s), _) => {
                 inv.slots[i] = Some(h);
                 *held = Some(s);
             }
@@ -294,28 +451,97 @@ impl Play {
         }
     }
 
-    /// Puts whatever is on the cursor back into the bag (or on the ground).
-    fn return_held(&mut self) {
-        if let Some(h) = self.held.take() {
-            let left = self.player.inv.add(h.item, h.n);
-            if left > 0 {
-                self.drop_item(h.item, left);
+    /// Clicking a worn-gear slot: wear what is on the cursor, or take the piece off.
+    fn worn_click(&mut self, slot: usize, right: bool, io: &Io) {
+        let sl = SLOTS[slot];
+        match self.held {
+            Some(h) => {
+                if h.item.class().and_then(|c| c.slot()) == Some(sl) {
+                    self.held = self.player.equip[slot].take();
+                    self.player.equip[slot] = Some(h);
+                    self.player.refresh();
+                    io.audio.play(Sfx::Equip);
+                } else {
+                    io.audio.play(Sfx::Denied);
+                }
+            }
+            None => {
+                if right {
+                    if self.player.unequip(sl) {
+                        io.audio.play(Sfx::Equip);
+                    }
+                } else if let Some(s) = self.player.equip[slot].take() {
+                    self.held = Some(s);
+                    self.player.refresh();
+                    io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
+                }
             }
         }
     }
 
-    fn drop_item(&mut self, item: Item, n: u16) {
+    /// Puts whatever is on the cursor back into the bag (or on the ground).
+    fn return_held(&mut self) {
+        if let Some(h) = self.held.take() {
+            let left = self.player.inv.add_stack(h);
+            if left > 0 {
+                self.drop_stack(Stack { n: left, ..h });
+            }
+        }
+    }
+
+    fn drop_stack(&mut self, s: Stack) {
         let at = self.player.world_pos()
             + glam::Vec3::new(self.player.facing.x * 0.6, 0.0, self.player.facing.y * 0.6);
-        let mut d = super::fx::Drop::item(item, n, at, &mut self.rng);
+        let mut d = super::fx::Drop::new(s, at, &mut self.rng);
         d.age = -0.8;
         self.drops.push(d);
     }
 
-    fn close_menu(&mut self, io: &Io) {
+    pub fn close_menu(&mut self, io: &Io) {
         self.return_held();
         self.menu = Menu::None;
         io.audio.play(Sfx::UiBack);
+    }
+
+    /// Crafts a recipe: gear and scrolls come out freshly rolled.
+    fn craft(&mut self, r: &Recipe, io: &Io) -> bool {
+        if !r.can_craft(&self.player.inv) {
+            io.audio.play(Sfx::Denied);
+            return false;
+        }
+        for (item, k) in r.needs {
+            self.player.inv.take(*item, *k as u32);
+        }
+        let luck = self.player.luck();
+        let made = if r.out.base().is_some() {
+            let lvl = crafted_level(self, r.out);
+            loot::roll_gear(r.out, lvl, luck, &mut self.rng)
+        } else if let Some(g) = r.out.scroll_group() {
+            let depth = self.deepest.max(1);
+            loot::scroll_of(g, depth, loot::Fortune { luck, greed: 1.0 }, &mut self.rng)
+        } else {
+            Stack::new(r.out, r.n)
+        };
+        let left = self.player.inv.add_stack(made);
+        if left > 0 {
+            self.drop_stack(Stack { n: left, ..made });
+        }
+        io.audio.play(Sfx::Craft);
+        match made.rarity() {
+            Some(rar) => {
+                let text = format!("Crafted {} {}", rar.name(), made.name());
+                self.toast_colored(text, Some(made.item), 0, rar.color());
+                if rar >= Rarity::Rare {
+                    io.audio.play(Sfx::Rare);
+                }
+            }
+            None => self.toast(
+                format!("Crafted {}", made.name()),
+                Some(made.item),
+                r.n as u32,
+            ),
+        }
+        true
     }
 
     pub fn update_menu(&mut self, io: &mut Io, settings: &mut Settings) {
@@ -324,6 +550,7 @@ impl Play {
         let mouse = input.mouse;
         let lclick = input.button_pressed(Button::Left);
         let rclick = input.button_pressed(Button::Right);
+        let shift = input.key_down(KeyCode::ShiftLeft) || input.key_down(KeyCode::ShiftRight);
         let menu = std::mem::replace(&mut self.menu, Menu::None);
         self.menu = match menu {
             Menu::None => Menu::None,
@@ -573,22 +800,26 @@ impl Play {
                 }
             }
             Menu::Inventory {
-                mut craft,
+                mut tab,
                 mut cursor,
                 mut recipe,
                 mut scroll,
+                mut cat,
             } => {
-                let l = center(w, h, 214, 176);
+                let l = panel_layout(w, h);
                 // Tabs.
-                if lclick && inside(mouse, l.px + 8, l.py + 5, 40, 12) {
-                    craft = false;
-                    io.audio.play(Sfx::UiMove);
-                } else if lclick && inside(mouse, l.px + 52, l.py + 5, 56, 12) {
-                    craft = true;
-                    io.audio.play(Sfx::UiMove);
+                for (i, (x, tw)) in tab_rects(&l, &[34, 38, 54]).into_iter().enumerate() {
+                    if lclick && inside(mouse, x, l.py + 5, tw, 12) {
+                        tab = [Tab::Bag, Tab::Stats, Tab::Craft][i];
+                        io.audio.play(Sfx::UiMove);
+                    }
                 }
                 if input.pressed(Action::Crafting) {
-                    craft = !craft;
+                    tab = if tab == Tab::Craft {
+                        Tab::Bag
+                    } else {
+                        Tab::Craft
+                    };
                     io.audio.play(Sfx::UiMove);
                 }
                 let close = input.pressed(Action::Cancel) || input.pressed(Action::Inventory);
@@ -596,93 +827,135 @@ impl Play {
                     self.close_menu(io);
                     return;
                 }
-                if !craft {
-                    let g = bag_grid(&l, 22);
-                    nav(io, &mut cursor, 10, 40);
-                    let hit = g.hit(mouse);
-                    if let Some(i) = hit {
-                        if input.mouse_moved {
-                            cursor = i;
-                        }
-                    }
-                    if let Some(i) = hit.filter(|_| lclick || rclick) {
-                        Self::grid_click(&mut self.held, &mut self.player.inv, i, rclick);
-                        io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
-                    } else if input.pressed(Action::Confirm) {
-                        Self::grid_click(&mut self.held, &mut self.player.inv, cursor, false);
-                        io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
-                    } else if lclick && !inside(mouse, l.px, l.py, l.pw, l.ph) {
-                        if let Some(hs) = self.held.take() {
-                            self.drop_item(hs.item, hs.n);
-                            io.audio.play(Sfx::Place);
-                        }
-                    }
-                    // Eat straight from the bag with a right click on food.
-                } else {
-                    let n = RECIPES.len();
-                    let rows = 8;
-                    if input.pressed_repeat(Action::Down) {
-                        recipe = (recipe + 1) % n;
-                        io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
-                    }
-                    if input.pressed_repeat(Action::Up) {
-                        recipe = (recipe + n - 1) % n;
-                        io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
-                    }
-                    if input.wheel != 0.0 {
-                        scroll = (scroll as i32 - input.wheel.signum() as i32)
-                            .clamp(0, (n - rows) as i32) as usize;
-                    }
-                    if recipe < scroll {
-                        scroll = recipe;
-                    }
-                    if recipe >= scroll + rows {
-                        scroll = recipe + 1 - rows;
-                    }
-                    for row in 0..rows {
-                        let y = l.py + 22 + row as i32 * 18;
-                        if inside(mouse, l.px + 6, y, 100, 17) && lclick && scroll + row < n {
-                            recipe = scroll + row;
-                            io.audio.play_at(Sfx::UiMove, 0.6, 1.0);
-                        }
-                    }
-                    let button = (l.px + 118, l.py + l.ph - 24, 86, 14);
-                    let craft_now = input.pressed(Action::Confirm)
-                        || lclick && inside(mouse, button.0, button.1, button.2, button.3);
-                    if craft_now {
-                        let r = &RECIPES[recipe];
-                        if r.can_craft(&self.player.inv) {
-                            for (item, k) in r.needs {
-                                self.player.inv.take(*item, *k as u32);
+                match tab {
+                    Tab::Bag => {
+                        let g = bag_grid(&l, 22);
+                        nav_bag(io, &mut cursor);
+                        let hit = g.hit(mouse);
+                        let worn = worn_hit(&l, 22, mouse);
+                        if let Some(i) = hit {
+                            if input.mouse_moved {
+                                cursor = i;
                             }
-                            self.player.inv.add(r.out, r.n);
-                            io.audio.play(Sfx::Craft);
-                            self.toast(
-                                format!("Crafted {}", r.out.def().name),
-                                Some(r.out),
-                                r.n as u32,
-                            );
-                        } else {
-                            io.audio.play(Sfx::Denied);
+                        }
+                        if let Some(i) = worn {
+                            if input.mouse_moved {
+                                cursor = 40 + i;
+                            }
+                        }
+                        if let Some(i) = hit.filter(|_| lclick || rclick) {
+                            let armor = self.player.inv.slots[i]
+                                .is_some_and(|s| s.item.class().is_some_and(|c| c.is_armor()));
+                            if (rclick || shift) && self.held.is_none() && armor {
+                                self.player.equip_from(i);
+                                io.audio.play(Sfx::Equip);
+                            } else {
+                                Self::grid_click(&mut self.held, &mut self.player.inv, i, rclick);
+                                io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
+                            }
+                        } else if let Some(i) = worn.filter(|_| lclick || rclick) {
+                            self.worn_click(i, rclick || shift, io);
+                        } else if input.pressed(Action::Confirm) {
+                            if cursor >= 40 {
+                                self.worn_click(cursor - 40, self.held.is_none(), io);
+                            } else {
+                                let armor = self.player.inv.slots[cursor]
+                                    .is_some_and(|s| s.item.class().is_some_and(|c| c.is_armor()));
+                                if armor && self.held.is_none() {
+                                    self.player.equip_from(cursor);
+                                    io.audio.play(Sfx::Equip);
+                                } else {
+                                    Self::grid_click(
+                                        &mut self.held,
+                                        &mut self.player.inv,
+                                        cursor,
+                                        false,
+                                    );
+                                    io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
+                                }
+                            }
+                        } else if lclick && !inside(mouse, l.px, l.py, l.pw, l.ph) {
+                            if let Some(hs) = self.held.take() {
+                                self.drop_stack(hs);
+                                io.audio.play(Sfx::Place);
+                            }
+                        }
+                    }
+                    Tab::Stats => {}
+                    Tab::Craft => {
+                        // Categories.
+                        let ncat = CATS.len() + 1;
+                        for (i, (x, cw)) in cat_rects(&l).into_iter().enumerate() {
+                            if lclick && inside(mouse, x, l.py + 21, cw, 11) {
+                                cat = i;
+                                recipe = 0;
+                                scroll = 0;
+                                io.audio.play_at(Sfx::UiMove, 0.6, 1.0);
+                            }
+                        }
+                        if input.pressed(Action::NextSlot) || input.pressed_repeat(Action::Right) {
+                            cat = (cat + 1) % ncat;
+                            recipe = 0;
+                            scroll = 0;
+                            io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+                        }
+                        if input.pressed(Action::PrevSlot) || input.pressed_repeat(Action::Left) {
+                            cat = (cat + ncat - 1) % ncat;
+                            recipe = 0;
+                            scroll = 0;
+                            io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+                        }
+                        let list = recipes_in(cat);
+                        let n = list.len().max(1);
+                        let rows = 7;
+                        if input.pressed_repeat(Action::Down) {
+                            recipe = (recipe + 1) % n;
+                            io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+                        }
+                        if input.pressed_repeat(Action::Up) {
+                            recipe = (recipe + n - 1) % n;
+                            io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+                        }
+                        if input.wheel != 0.0 {
+                            scroll = (scroll as i32 - input.wheel.signum() as i32)
+                                .clamp(0, n.saturating_sub(rows) as i32)
+                                as usize;
+                        }
+                        recipe = recipe.min(n - 1);
+                        if recipe < scroll {
+                            scroll = recipe;
+                        }
+                        if recipe >= scroll + rows {
+                            scroll = recipe + 1 - rows;
+                        }
+                        for row in 0..rows {
+                            let y = l.py + 36 + row as i32 * 18;
+                            if inside(mouse, l.px + 6, y, 118, 17) && lclick && scroll + row < n {
+                                recipe = scroll + row;
+                                io.audio.play_at(Sfx::UiMove, 0.6, 1.0);
+                            }
+                        }
+                        let (bx, by, bw, bh) = craft_button(&l);
+                        let craft_now = input.pressed(Action::Confirm)
+                            || lclick && inside(mouse, bx, by, bw, bh);
+                        if craft_now {
+                            if let Some(r) = list.get(recipe) {
+                                self.craft(r, io);
+                            }
                         }
                     }
                 }
                 Menu::Inventory {
-                    craft,
+                    tab,
                     cursor,
                     recipe,
                     scroll,
+                    cat,
                 }
             }
             Menu::Chest { x, z, mut cursor } => {
-                let l = center(w, h, 214, 176);
-                let cg = Grid {
-                    x: l.px + (l.pw - (10 * CELL - 1)) / 2,
-                    y: l.py + 20,
-                    cols: 10,
-                    rows: 3,
-                    gap: 0,
-                };
+                let l = panel_layout(w, h);
+                let cg = chest_grid(&l);
                 let bg = bag_grid(&l, 20 + 3 * CELL + 16);
                 if input.pressed(Action::Cancel) || input.pressed(Action::Inventory) {
                     self.close_menu(io);
@@ -690,7 +963,7 @@ impl Play {
                 }
                 nav(io, &mut cursor, 10, 70);
                 let mut chest = match self.world_mut().obj_mut(x, z) {
-                    Some(Obj::Chest { items }) => Inventory {
+                    Some(super::world::Obj::Chest { items }) => Inventory {
                         slots: std::mem::take(items),
                     },
                     _ => {
@@ -698,8 +971,6 @@ impl Play {
                         return;
                     }
                 };
-                let shift = input.key_down(crate::input::KeyCode::ShiftLeft)
-                    || input.key_down(crate::input::KeyCode::ShiftRight);
                 if let Some(i) = cg.hit(mouse) {
                     if input.mouse_moved {
                         cursor = i;
@@ -728,33 +999,52 @@ impl Play {
                 if lclick || rclick || input.pressed(Action::Confirm) {
                     io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
                 }
-                if let Some(Obj::Chest { items }) = self.world_mut().obj_mut(x, z) {
+                if let Some(super::world::Obj::Chest { items }) = self.world_mut().obj_mut(x, z) {
                     *items = chest.slots;
                 }
                 Menu::Chest { x, z, cursor }
             }
             Menu::Shop {
+                mut tab,
                 mut cursor,
-                mut sell,
                 mut scroll,
             } => {
-                let l = center(w, h, 214, 176);
+                let l = panel_layout(w, h);
                 if input.pressed(Action::Cancel) {
                     self.close_menu(io);
                     return;
                 }
-                if lclick && inside(mouse, l.px + 8, l.py + 5, 36, 12) {
-                    sell = false;
-                } else if lclick && inside(mouse, l.px + 48, l.py + 5, 36, 12) {
-                    sell = true;
+                let tabs = [
+                    ShopTab::Seeds,
+                    ShopTab::Goods,
+                    ShopTab::Specials,
+                    ShopTab::Sell,
+                ];
+                let before = tab;
+                for (i, (x, tw)) in tab_rects(&l, &SHOP_TABS).into_iter().enumerate() {
+                    if lclick && inside(mouse, x, l.py + 5, tw, 12) {
+                        tab = tabs[i];
+                    }
                 }
-                if input.pressed(Action::Crafting) || input.pressed(Action::Inventory) {
-                    sell = !sell;
+                let ti = tabs.iter().position(|t| *t == tab).unwrap_or(0);
+                if input.pressed(Action::Crafting)
+                    || input.pressed(Action::Inventory)
+                    || input.pressed(Action::NextSlot)
+                {
+                    tab = tabs[(ti + 1) % 4];
                 }
-                let goods = shop_goods(self);
-                if !sell {
+                if input.pressed(Action::PrevSlot) {
+                    tab = tabs[(ti + 3) % 4];
+                }
+                if tab != before {
+                    cursor = 0;
+                    scroll = 0;
+                    io.audio.play(Sfx::UiMove);
+                }
+                if tab != ShopTab::Sell {
                     let rows = 7;
-                    let n = goods.len();
+                    let entries = self.shop_rows(tab);
+                    let n = entries.len().max(1);
                     if input.pressed_repeat(Action::Down) {
                         cursor = (cursor + 1) % n;
                     }
@@ -787,13 +1077,21 @@ impl Play {
                         }
                     }
                     if buy {
-                        let (item, price) = goods[cursor];
-                        if self.gold >= price as u64 && self.player.inv.can_fit(item, 1) {
-                            self.gold -= price as u64;
-                            self.player.inv.add(item, 1);
-                            io.audio.play(Sfx::Coin);
-                        } else {
-                            io.audio.play(Sfx::Denied);
+                        if let Some(&(stack, price, sold)) = entries.get(cursor) {
+                            if !sold && self.money >= price && self.player.inv.can_fit_stack(&stack)
+                            {
+                                self.money -= price;
+                                self.player.inv.add_stack(stack);
+                                if tab == ShopTab::Specials {
+                                    self.bought.push(cursor);
+                                    if stack.rarity() >= Some(Rarity::Rare) {
+                                        io.audio.play(Sfx::Rare);
+                                    }
+                                }
+                                io.audio.play(Sfx::Coin);
+                            } else {
+                                io.audio.play(Sfx::Denied);
+                            }
                         }
                     }
                 } else {
@@ -814,12 +1112,13 @@ impl Play {
                     }
                     if let Some((i, one)) = target {
                         if let Some(s) = self.player.inv.slots[i] {
-                            if can_sell(s.item) {
+                            if can_sell(&s) {
                                 let n = if one { 1 } else { s.n };
-                                self.gold += s.item.def().price as u64 * n as u64;
-                                self.stats.earned += s.item.def().price as u64 * n as u64;
+                                let v = s.unit_price() * n as u64;
+                                self.money += v;
+                                self.stats.earned += v;
                                 self.player.inv.slots[i] = if s.n > n {
-                                    Some(Stack::new(s.item, s.n - n))
+                                    Some(Stack { n: s.n - n, ..s })
                                 } else {
                                     None
                                 };
@@ -831,13 +1130,13 @@ impl Play {
                     }
                 }
                 Menu::Shop {
+                    tab,
                     cursor,
-                    sell,
                     scroll,
                 }
             }
             Menu::Ship { mut cursor } => {
-                let l = center(w, h, 214, 176);
+                let l = panel_layout(w, h);
                 if input.pressed(Action::Cancel) || input.pressed(Action::Inventory) {
                     self.close_menu(io);
                     return;
@@ -858,21 +1157,22 @@ impl Play {
                 }
                 if let Some((i, one)) = target {
                     if let Some(s) = self.player.inv.slots[i] {
-                        if can_sell(s.item) && s.item.def().price > 0 {
+                        if can_sell(&s) && s.item.coin_value().is_none() {
                             let n = if one { 1 } else { s.n };
                             self.player.inv.slots[i] = if s.n > n {
-                                Some(Stack::new(s.item, s.n - n))
+                                Some(Stack { n: s.n - n, ..s })
                             } else {
                                 None
                             };
+                            let add = Stack { n, ..s };
                             if let Some(e) = self
                                 .shipping
                                 .iter_mut()
-                                .find(|e| e.item == s.item && e.n < 999)
+                                .find(|e| e.stacks_with(&add) && e.n < 999)
                             {
                                 e.n += n;
                             } else {
-                                self.shipping.push(Stack::new(s.item, n));
+                                self.shipping.push(add);
                             }
                             io.audio.play(Sfx::Place);
                         } else {
@@ -883,94 +1183,92 @@ impl Play {
                 // Take the last shipment back.
                 if lclick && inside(mouse, l.px + 8, l.py + 20, l.pw - 16, 34) {
                     if let Some(s) = self.shipping.pop() {
-                        let left = self.player.inv.add(s.item, s.n);
+                        let left = self.player.inv.add_stack(s);
                         if left > 0 {
-                            self.shipping.push(Stack::new(s.item, left));
+                            self.shipping.push(Stack { n: left, ..s });
                         }
                         io.audio.play(Sfx::UiBack);
                     }
                 }
                 Menu::Ship { cursor }
             }
+            Menu::Enchant {
+                gear,
+                scroll,
+                socket,
+                cursor,
+                msg,
+                glow,
+            } => self.update_enchant(io, gear, scroll, socket, cursor, msg, glow),
         };
-        let _ = HOTBAR;
+    }
+
+    /// Rows of a shop tab: (what, price, sold out).
+    pub fn shop_rows(&self, tab: ShopTab) -> Vec<(Stack, u64, bool)> {
+        match tab {
+            ShopTab::Seeds => shop_seeds(self)
+                .into_iter()
+                .map(|(i, p)| (Stack::new(i, 1), p as u64, false))
+                .collect(),
+            ShopTab::Goods => shop_goods(self)
+                .into_iter()
+                .map(|(i, p)| (Stack::new(i, 1), p as u64, false))
+                .collect(),
+            ShopTab::Specials => loot::specials(self.seed, self.clock.day, self.deepest)
+                .into_iter()
+                .enumerate()
+                .map(|(k, (s, p))| (s, p, self.bought.contains(&k)))
+                .collect(),
+            ShopTab::Sell => Vec::new(),
+        }
     }
 
     // --------------------------------------------------------------------------------------
     // Drawing
     // --------------------------------------------------------------------------------------
 
-    pub fn draw_slot(c: &mut Canvas, a: &Assets, x: i32, y: i32, s: Option<Stack>, selected: bool) {
-        c.panel(x, y, 18, 18, Style::Inset);
-        if let Some(s) = s {
-            c.sprite(a.tex(a.icon(s.item.def().icon)), x + 1, y + 1);
-            if s.n > 1 {
-                c.tiny(x + 17, y + 12, &s.n.to_string(), WHITE, INK);
-            }
-        }
-        if selected {
-            c.frame(x - 1, y - 1, 20, 20, ORANGE);
-            c.frame(x, y, 18, 18, GOLD);
-        }
-    }
-
-    pub fn draw_grid(c: &mut Canvas, a: &Assets, g: &Grid, inv: &Inventory, cursor: Option<usize>) {
+    pub fn draw_grid(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        g: &Grid,
+        inv: &Inventory,
+        cursor: Option<usize>,
+    ) {
         for i in 0..(g.cols * g.rows).min(inv.slots.len()) {
             let (x, y) = g.slot_pos(i);
-            Self::draw_slot(c, a, x, y, inv.slots[i], cursor == Some(i));
+            self.draw_slot(c, a, x, y, inv.slots[i], cursor == Some(i));
         }
     }
 
-    pub fn tooltip(&self, c: &mut Canvas, x: i32, y: i32, item: Item) {
-        let d = item.def();
-        let mut lines = vec![];
-        let kind = match d.kind {
-            Kind::Seed(crop) => {
-                let cd = crop.def();
-                if cd.regrow > 0 {
-                    format!("Seed - {} days, regrows", cd.days)
-                } else {
-                    format!("Seed - {} days", cd.days)
-                }
+    /// The worn-gear column: pieces, or faint outlines of what goes where.
+    pub fn draw_worn(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        l: &Layout,
+        top: i32,
+        cursor: Option<usize>,
+    ) {
+        for (i, slot) in SLOTS.iter().enumerate() {
+            let (x, y) = worn_pos(l, top, i);
+            let s = self.player.equip[i];
+            self.draw_slot(c, a, x, y, s, cursor == Some(i));
+            if s.is_none() {
+                c.sprite(a.tex(a.icon(slot.ghost_icon())), x + 1, y + 1);
             }
-            Kind::Produce { hp, energy } | Kind::Food { hp, energy } => {
-                format!("Food - +{hp} HP  +{energy} energy")
-            }
-            Kind::Tool(ToolKind::Sword, t) => {
-                format!("Weapon - {} damage", self.player.sword_damage(t))
-            }
-            Kind::Tool(_, t) => format!("Tool - tier {}", t + 1),
-            Kind::Place(_) => "Placeable".to_string(),
-            Kind::Material => "Material".to_string(),
-            _ => "Special".to_string(),
-        };
-        lines.push(kind);
-        let desc = c.font.wrap(d.desc, 130);
-        let w = desc
-            .iter()
-            .chain(lines.iter())
-            .map(|l| c.text_width(l))
-            .max()
-            .unwrap_or(0)
-            .max(c.text_width(d.name))
-            .max(60)
-            + 10;
-        let h = 16 + (lines.len() + desc.len()) as i32 * 10 + 12;
-        let x = x.min(c.w() - w - 2).max(2);
-        let y = y.min(c.h() - h - 2).max(2);
-        c.panel(x, y, w, h, Style::Paper);
-        c.text(x + 5, y + 4, d.name, INK);
-        let mut yy = y + 15;
-        for l in &lines {
-            c.text(x + 5, yy, l, TEAL);
-            yy += 10;
         }
-        for l in &desc {
-            c.text(x + 5, yy, l, SHADOW);
-            yy += 10;
-        }
-        if can_sell(item) {
-            c.text(x + 5, yy + 1, &format!("Sells for {}g", d.price), RUST);
+        let (x, y) = worn_pos(l, top, 0);
+        c.frame(x - 3, y - 3, 24, 5 * CELL + 5, KHAKI);
+    }
+
+    /// Shows the tooltip for a stack beside a slot.
+    fn tip_at(&self, c: &mut Canvas, a: &Assets, l: &Layout, sx: i32, sy: i32, s: &Stack) {
+        let w = c.w();
+        if l.px + l.pw + 150 < w {
+            self.stack_tooltip(c, a, l.px + l.pw + 4, sy - 4, s);
+        } else {
+            self.stack_tooltip(c, a, sx + 22, sy - 4, s);
         }
     }
 
@@ -1004,11 +1302,17 @@ impl Play {
                 } else {
                     line(c, "You slept soundly.".into(), SHADOW);
                 }
-                line(
-                    c,
-                    format!("Shipped goods sold for {}g", thousands(s.earned)),
-                    RUST,
-                );
+                // Earnings with coins.
+                let label = "Shipped goods sold for ";
+                let tw = c.text_width(label) + money_width(c, s.earned);
+                let x0 = l.px + (l.pw - tw) / 2;
+                let lw = c.text(x0, y, label, RUST);
+                draw_money(c, a, x0 + lw + 4, y, s.earned, RUST);
+                y += 11;
+                let mut line = |c: &mut Canvas, t: String, col: u8| {
+                    c.text_center(l.px + l.pw / 2, y, &t, col);
+                    y += 11;
+                };
                 line(c, format!("{} crops grew overnight", s.grown), TEAL);
                 if s.ready > 0 {
                     line(c, format!("{} are ready to harvest!", s.ready), GREEN);
@@ -1127,159 +1431,45 @@ impl Play {
                 }
             }
             Menu::Inventory {
-                craft,
+                tab,
                 cursor,
                 recipe,
                 scroll,
+                cat,
             } => {
-                let l = center(w, h, 214, 176);
+                let l = panel_layout(w, h);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
-                tabs(
+                let ti = match tab {
+                    Tab::Bag => 0,
+                    Tab::Stats => 1,
+                    Tab::Craft => 2,
+                };
+                tabs(c, &l, &["Bag", "Stats", "Crafting"], ti, &[34, 38, 54]);
+                draw_money(
                     c,
-                    &l,
-                    &["Bag", "Crafting"],
-                    if *craft { 1 } else { 0 },
-                    &[40, 56],
+                    a,
+                    l.px + l.pw - 10 - money_width(c, self.money),
+                    l.py + 7,
+                    self.money,
+                    INK,
                 );
-                if !*craft {
-                    let g = bag_grid(&l, 22);
-                    Self::draw_grid(c, a, &g, &self.player.inv, Some(*cursor));
-                    // Hotbar marker.
-                    let (hx, hy) = g.slot_pos(self.player.sel);
-                    c.rect(hx + 7, hy - 3, 4, 2, RUST);
-                    let p = &self.player;
-                    let y = g.y + g.h() + 6;
-                    let x = l.px + 12;
-                    c.text(x, y, &format!("Level {}", p.level), INK);
-                    let need = super::player::xp_needed(p.level);
-                    c.bar(
-                        x + 48,
-                        y + 1,
-                        70,
-                        7,
-                        p.xp as f32 / need as f32,
-                        AQUA,
-                        MINT,
-                        SHADOW,
-                    );
-                    c.text(x + 124, y, &format!("{}/{} xp", p.xp, need), SHADOW);
-                    c.text(x, y + 11, &format!("♥ {}/{}", p.hp, p.max_hp), CRIMSON);
-                    c.text(
-                        x + 70,
-                        y + 11,
-                        &format!("⚡ {}/{}", p.energy.max(0.0) as i32, p.max_energy),
-                        RUST,
-                    );
-                    c.text(x + 140, y + 11, &format!("{}g", thousands(self.gold)), RUST);
-                    c.text(
-                        x,
-                        y + 22,
-                        &format!("Deepest floor {}  -  Day {}", self.deepest, self.clock.day),
-                        SHADOW,
-                    );
-                    c.text(x, y + 33, "Click to move items. Right click splits.", KHAKI);
-                    let hover = g.hit(mouse).or(Some(*cursor));
-                    if self.held.is_none() {
-                        if let Some(i) = hover {
-                            if let Some(s) = self.player.inv.slots[i] {
-                                // Beside the panel when there is room, otherwise under the slot.
-                                let (sx, sy) = g.slot_pos(i);
-                                if l.px + l.pw + 150 < w {
-                                    self.tooltip(c, l.px + l.pw + 4, sy - 4, s.item);
-                                } else {
-                                    self.tooltip(c, sx - 20, sy + 22, s.item);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    let rows = 8;
-                    for row in 0..rows {
-                        let i = scroll + row;
-                        if i >= RECIPES.len() {
-                            break;
-                        }
-                        let r = &RECIPES[i];
-                        let y = l.py + 22 + row as i32 * 18;
-                        let ok = r.can_craft(&self.player.inv);
-                        if i == *recipe {
-                            c.rect(l.px + 6, y, 104, 17, GOLD);
-                        }
-                        let icon = a.tex(a.icon(r.out.def().icon));
-                        if ok {
-                            c.sprite(icon, l.px + 8, y + 1);
-                        } else {
-                            let dim = c.darken[0];
-                            c.sprite_map(icon, l.px + 8, y + 1, |col| dim[col as usize]);
-                        }
-                        let name = r.out.def().name;
-                        c.text(l.px + 27, y + 5, name, if ok { INK } else { ROSEWOOD });
-                    }
-                    // Scroll bar.
-                    let n = RECIPES.len() as i32;
-                    let track = rows as i32 * 18;
-                    c.rect(l.px + 111, l.py + 22, 2, track, KHAKI);
-                    let th = (track * rows as i32 / n).max(6);
-                    let ty = l.py + 22 + (track - th) * *scroll as i32 / (n - rows as i32).max(1);
-                    c.rect(l.px + 111, ty, 2, th, RUST);
-                    // Details.
-                    let r = &RECIPES[*recipe];
-                    let dx = l.px + 118;
-                    c.panel(dx, l.py + 22, 88, 20, Style::Inset);
-                    c.sprite(a.tex(a.icon(r.out.def().icon)), dx + 2, l.py + 24);
-                    let title = if r.n > 1 {
-                        format!("{} x{}", r.out.def().name, r.n)
-                    } else {
-                        r.out.def().name.to_string()
-                    };
-                    let lines = c.font.wrap(&title, 66);
-                    for (k, t) in lines.iter().take(2).enumerate() {
-                        c.text(dx + 20, l.py + 24 + k as i32 * 9, t, INK);
-                    }
-                    let mut y = l.py + 48;
-                    c.text(dx, y, "Needs:", SHADOW);
-                    y += 11;
-                    for (item, k) in r.needs {
-                        let have = self.player.inv.count(*item);
-                        c.sprite(a.tex(a.icon(item.def().icon)), dx, y - 3);
-                        let col = if have >= *k as u32 { TEAL } else { CRIMSON };
-                        c.text(dx + 18, y + 2, &format!("{have}/{k}"), col);
-                        y += 17;
-                    }
-                    y = y.max(l.py + 48);
-                    let desc = c.font.wrap(r.out.def().desc, 86);
-                    for (k, t) in desc.iter().take(3).enumerate() {
-                        c.text(dx, y + k as i32 * 9, t, SHADOW);
-                    }
-                    let ok = r.can_craft(&self.player.inv);
-                    let (bx, by) = (dx, l.py + l.ph - 24);
-                    c.rect(bx, by, 86, 14, if ok { GREEN } else { KHAKI });
-                    c.frame(bx, by, 86, 14, INK);
-                    c.text_center(
-                        bx + 43,
-                        by + 3,
-                        if ok { "Craft (E)" } else { "Missing items" },
-                        if ok { WHITE } else { ROSEWOOD },
-                    );
+                match tab {
+                    Tab::Bag => self.draw_bag_tab(c, a, &l, *cursor, mouse),
+                    Tab::Stats => self.draw_stats_tab(c, a, &l),
+                    Tab::Craft => self.draw_craft_tab(c, a, &l, *recipe, *scroll, *cat, mouse),
                 }
             }
             Menu::Chest { x, z, cursor } => {
-                let l = center(w, h, 214, 176);
+                let l = panel_layout(w, h);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 c.text(l.px + 10, l.py + 7, "Chest", RUST);
                 c.text(l.px + 80, l.py + 7, "Shift-click moves a stack", KHAKI);
-                let cg = Grid {
-                    x: l.px + (l.pw - (10 * CELL - 1)) / 2,
-                    y: l.py + 20,
-                    cols: 10,
-                    rows: 3,
-                    gap: 0,
-                };
-                if let Some(Obj::Chest { items }) = self.world().obj(*x, *z) {
+                let cg = chest_grid(&l);
+                if let Some(super::world::Obj::Chest { items }) = self.world().obj(*x, *z) {
                     let inv = Inventory {
                         slots: items.clone(),
                     };
-                    Self::draw_grid(
+                    self.draw_grid(
                         c,
                         a,
                         &cg,
@@ -1287,8 +1477,8 @@ impl Play {
                         if *cursor < 30 { Some(*cursor) } else { None },
                     );
                     let bg = bag_grid(&l, 20 + 3 * CELL + 16);
-                    c.text(l.px + 10, bg.y - 11, "Bag", RUST);
-                    Self::draw_grid(
+                    c.text(bg.x, bg.y - 11, "Bag", RUST);
+                    self.draw_grid(
                         c,
                         a,
                         &bg,
@@ -1299,116 +1489,64 @@ impl Play {
                             None
                         },
                     );
+                    if self.held.is_none() {
+                        let hover = cg
+                            .hit(mouse)
+                            .map(|i| (inv.slots[i], cg.slot_pos(i)))
+                            .or_else(|| {
+                                bg.hit(mouse)
+                                    .map(|i| (self.player.inv.slots[i], bg.slot_pos(i)))
+                            });
+                        if let Some((Some(s), (sx, sy))) = hover {
+                            self.tip_at(c, a, &l, sx, sy, &s);
+                        }
+                    }
                 }
             }
             Menu::Shop {
+                tab,
                 cursor,
-                sell,
                 scroll,
-            } => {
-                let l = center(w, h, 214, 176);
-                c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
-                tabs(
-                    c,
-                    &l,
-                    &["Buy", "Sell"],
-                    if *sell { 1 } else { 0 },
-                    &[36, 36],
-                );
-                c.text(
-                    l.px + l.pw - 60,
-                    l.py + 7,
-                    &format!("{}g", thousands(self.gold)),
-                    RUST,
-                );
-                if !*sell {
-                    let goods = shop_goods(self);
-                    for row in 0..7 {
-                        let i = scroll + row;
-                        if i >= goods.len() {
-                            break;
-                        }
-                        let (item, price) = goods[i];
-                        let y = l.py + 22 + row as i32 * 18;
-                        if i == *cursor {
-                            c.rect(l.px + 6, y, l.pw - 12, 17, GOLD);
-                        }
-                        c.sprite(a.tex(a.icon(item.def().icon)), l.px + 8, y + 1);
-                        c.text(l.px + 28, y + 5, item.def().name, INK);
-                        let pt = format!("{price}g");
-                        let afford = self.gold >= price as u64;
-                        c.text(
-                            l.px + l.pw - 12 - c.text_width(&pt),
-                            y + 5,
-                            &pt,
-                            if afford { RUST } else { ROSEWOOD },
-                        );
-                    }
-                    c.text(
-                        l.px + 10,
-                        l.py + l.ph - 14,
-                        "Burrowby: \"New seeds as you go deeper!\"",
-                        SHADOW,
-                    );
-                } else {
-                    c.text(
-                        l.px + 10,
-                        l.py + 24,
-                        "Click an item to sell the stack.",
-                        SHADOW,
-                    );
-                    let g = bag_grid(&l, 40);
-                    Self::draw_grid(c, a, &g, &self.player.inv, Some(*cursor));
-                    if let Some(i) = g.hit(mouse).or(Some(*cursor)) {
-                        if let Some(s) = self.player.inv.slots[i] {
-                            let v = s.item.def().price as u64 * s.n as u64;
-                            let t = if can_sell(s.item) {
-                                format!("{} x{} - {}g", s.item.def().name, s.n, thousands(v))
-                            } else {
-                                format!("{} - keep this one!", s.item.def().name)
-                            };
-                            c.text(l.px + 10, g.y + g.h() + 8, &t, INK);
-                        }
-                    }
-                }
-            }
+            } => self.draw_shop(c, a, *tab, *cursor, *scroll, mouse),
             Menu::Ship { cursor } => {
-                let l = center(w, h, 214, 176);
+                let l = panel_layout(w, h);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 c.text(l.px + 10, l.py + 7, "Shipping bin - sold overnight", RUST);
                 c.panel(l.px + 8, l.py + 20, l.pw - 16, 34, Style::Inset);
-                let total: u64 = self
-                    .shipping
-                    .iter()
-                    .map(|s| s.item.def().price as u64 * s.n as u64)
-                    .sum();
-                for (i, s) in self.shipping.iter().rev().take(9).enumerate() {
+                let total: u64 = self.shipping.iter().map(|s| s.value()).sum();
+                for (i, s) in self.shipping.iter().rev().take(11).enumerate() {
                     let x = l.px + 10 + i as i32 * 19;
                     c.sprite(a.tex(a.icon(s.item.def().icon)), x, l.py + 22);
                     if s.n > 1 {
                         c.tiny(x + 16, l.py + 33, &s.n.to_string(), WHITE, INK);
                     }
                 }
+                let lw = c.text(l.px + 12, l.py + 42, "Today:", SHADOW);
+                let mw = draw_money(c, a, l.px + 16 + lw, l.py + 42, total, INK);
                 c.text(
-                    l.px + 12,
+                    l.px + 22 + lw + mw,
                     l.py + 42,
-                    &format!("Today: {}g   (click here to take back)", thousands(total)),
+                    "(click to take back)",
                     SHADOW,
                 );
                 let g = bag_grid(&l, 60);
-                Self::draw_grid(c, a, &g, &self.player.inv, Some(*cursor));
+                self.draw_grid(c, a, &g, &self.player.inv, Some(*cursor));
                 if let Some(i) = g.hit(mouse).or(Some(*cursor)) {
                     if let Some(s) = self.player.inv.slots[i] {
-                        let t = format!(
-                            "{} x{} - {}g",
-                            s.item.def().name,
-                            s.n,
-                            thousands(s.item.def().price as u64 * s.n as u64)
-                        );
-                        c.text(l.px + 10, g.y + g.h() + 8, &t, INK);
+                        let t = format!("{} x{} -", s.name(), s.n);
+                        let tw = c.text(l.px + 10, g.y + g.h() + 8, &t, INK);
+                        draw_money(c, a, l.px + 14 + tw, g.y + g.h() + 8, s.value(), RUST);
                     }
                 }
             }
+            Menu::Enchant {
+                gear,
+                scroll,
+                socket,
+                cursor,
+                msg,
+                glow,
+            } => self.draw_enchant(c, a, *gear, *scroll, *socket, *cursor, msg, *glow, mouse),
         }
         // The stack being carried follows the mouse.
         if let Some(hs) = self.held {
@@ -1418,14 +1556,482 @@ impl Play {
                 c.tiny(x + 16, y + 11, &hs.n.to_string(), WHITE, INK);
             }
         }
-        let _ = ITEMS.len();
+    }
+
+    fn draw_bag_tab(&self, c: &mut Canvas, a: &Assets, l: &Layout, cursor: usize, mouse: Vec2) {
+        let g = bag_grid(l, 22);
+        self.draw_grid(
+            c,
+            a,
+            &g,
+            &self.player.inv,
+            if cursor < 40 { Some(cursor) } else { None },
+        );
+        self.draw_worn(
+            c,
+            a,
+            l,
+            22,
+            if cursor >= 40 {
+                Some(cursor - 40)
+            } else {
+                None
+            },
+        );
+        // Hotbar marker.
+        let (hx, hy) = g.slot_pos(self.player.sel);
+        c.rect(hx + 7, hy - 3, 4, 2, RUST);
+        let p = &self.player;
+        let y = g.y + g.h() + 20;
+        let x = l.px + 10;
+        c.text(x, y, &format!("Level {}", p.level), INK);
+        let need = super::player::xp_needed(p.level);
+        c.bar(
+            x + 44,
+            y + 1,
+            64,
+            7,
+            p.xp as f32 / need as f32,
+            AQUA,
+            MINT,
+            SHADOW,
+        );
+        c.text(x + 112, y, &format!("{}/{} xp", p.xp, need), SHADOW);
+        let y = y + 11;
+        c.text(x, y, &format!("♥ {}/{}", p.hp, p.max_hp()), CRIMSON);
+        c.text(
+            x + 62,
+            y,
+            &format!("⚡ {}/{}", p.energy.max(0.0) as i32, p.max_energy()),
+            RUST,
+        );
+        c.text(
+            x + 132,
+            y,
+            &format!("★ {}/{}", p.mana as i32, p.max_mana()),
+            PURPLE,
+        );
+        let y = y + 11;
+        c.sprite(a.tex(a.icon(stat_icon(Stat::Defense))), x, y);
+        c.text(x + 10, y, &format!("{} Defense", p.defense()), INDIGO);
+        c.sprite(a.tex(a.icon(stat_icon(Stat::Damage))), x + 80, y);
+        c.text(x + 90, y, &format!("{} Damage", p.weapon_damage()), MAROON);
+        let y = y + 12;
+        c.text(
+            x,
+            y,
+            "Right click: wear or split. Shift: quick wear.",
+            KHAKI,
+        );
+        let hover_bag = g
+            .hit(mouse)
+            .or(if cursor < 40 { Some(cursor) } else { None });
+        let hover_worn = worn_hit(l, 22, mouse).or(if cursor >= 40 {
+            Some(cursor - 40)
+        } else {
+            None
+        });
+        if self.held.is_none() {
+            if let Some(i) = worn_hit(l, 22, mouse).or(if g.hit(mouse).is_none() {
+                hover_worn
+            } else {
+                None
+            }) {
+                if let Some(s) = self.player.equip[i] {
+                    let (sx, sy) = worn_pos(l, 22, i);
+                    self.tip_at(c, a, l, sx, sy, &s);
+                }
+            } else if let Some(i) = hover_bag {
+                if let Some(s) = self.player.inv.slots[i] {
+                    let (sx, sy) = g.slot_pos(i);
+                    self.tip_at(c, a, l, sx, sy, &s);
+                }
+            }
+        }
+    }
+
+    fn draw_stats_tab(&self, c: &mut Canvas, a: &Assets, l: &Layout) {
+        let p = &self.player;
+        let x = l.px + 12;
+        let mut y = l.py + 23;
+        let head = [
+            (format!("Level {}", p.level), INK),
+            (format!("♥ {} HP", p.max_hp()), CRIMSON),
+            (format!("⚡ {} energy", p.max_energy()), RUST),
+            (format!("★ {} mana", p.max_mana()), PURPLE),
+        ];
+        let mut hx = x;
+        for (t, col) in &head {
+            hx += c.text(hx, y, t, *col) + 10;
+        }
+        y += 12;
+        c.rect(x, y - 2, l.pw - 24, 1, KHAKI);
+        let derived = [
+            (Stat::Defense, format!("{} Defense", p.defense())),
+            (Stat::Damage, format!("{} Damage", p.weapon_damage())),
+            (
+                Stat::Crit,
+                format!(
+                    "{}% Crit, x{:.1}",
+                    (p.crit_chance() * 100.0).round(),
+                    p.crit_mult()
+                ),
+            ),
+            (
+                Stat::Block,
+                format!("{}% Block", (p.block_chance() * 100.0).round()),
+            ),
+            (
+                Stat::Dodge,
+                format!("{}% Dodge", (p.dodge_chance() * 100.0).round()),
+            ),
+            (
+                Stat::Swift,
+                format!(
+                    "{}% Move Speed",
+                    (p.move_speed() / super::player::SPEED * 100.0).round()
+                ),
+            ),
+        ];
+        for (i, (st, t)) in derived.iter().enumerate() {
+            let (cx, cy) = (x + (i as i32 % 2) * 108, y + (i as i32 / 2) * 11);
+            c.sprite(a.tex(a.icon(stat_icon(*st))), cx, cy);
+            c.text(cx + 10, cy, t, INK);
+        }
+        y += 36;
+        c.rect(x, y - 2, l.pw - 24, 1, KHAKI);
+        // Every bonus from gear and food.
+        let shown: Vec<(Stat, i32)> = super::gear::ALL_STATS
+            .iter()
+            .map(|s| (*s, p.stat(*s)))
+            .filter(|(_, v)| *v != 0)
+            .collect();
+        if shown.is_empty() {
+            c.text(
+                x,
+                y + 2,
+                "No bonuses yet. Wear gear or eat a good meal!",
+                SHADOW,
+            );
+        }
+        for (i, (st, v)) in shown.iter().enumerate().take(16) {
+            let (cx, cy) = (x + (i as i32 % 2) * 108, y + (i as i32 / 2) * 10);
+            c.sprite(a.tex(a.icon(stat_icon(*st))), cx, cy);
+            c.text(cx + 10, cy, &st.line(*v), SHADOW);
+        }
+        // A little journal.
+        let jy = l.py + l.ph - 40;
+        c.rect(x, jy - 3, l.pw - 24, 1, KHAKI);
+        let journal = [
+            format!("Deepest floor {}", self.deepest),
+            format!("Day {}", self.clock.day),
+            format!("{} creatures calmed", self.stats.kills),
+            format!("{} crops harvested", self.stats.harvested),
+        ];
+        for (i, t) in journal.iter().enumerate() {
+            c.text(
+                x + (i as i32 % 2) * 108,
+                jy + (i as i32 / 2) * 10,
+                t,
+                ROSEWOOD,
+            );
+        }
+        // Food buffs.
+        let by = l.py + l.ph - 14;
+        let mut bx = x;
+        for b in &p.buffs {
+            c.sprite(a.tex(a.icon(b.from.def().icon)), bx, by - 5);
+            let t = super::tips::duration(b.left.ceil() as u16);
+            bx += 17 + c.text(bx + 17, by, &t, TEAL) + 6;
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_craft_tab(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        l: &Layout,
+        recipe: usize,
+        scroll: usize,
+        cat: usize,
+        mouse: Vec2,
+    ) {
+        // Category buttons.
+        for (i, (x, cw)) in cat_rects(l).into_iter().enumerate() {
+            let on = i == cat;
+            let name = if i == 0 { "All" } else { CATS[i - 1].name() };
+            c.rect(x, l.py + 21, cw, 11, if on { RUST } else { KHAKI });
+            c.text_center(x + cw / 2, l.py + 23, name, if on { CREAM } else { SHADOW });
+        }
+        let list = recipes_in(cat);
+        let rows = 7;
+        for row in 0..rows {
+            let i = scroll + row;
+            let Some(r) = list.get(i) else { break };
+            let y = l.py + 36 + row as i32 * 18;
+            let ok = r.can_craft(&self.player.inv);
+            if i == recipe {
+                c.rect(l.px + 6, y, 120, 17, GOLD);
+            }
+            let icon = a.tex(a.icon(r.out.def().icon));
+            if ok {
+                c.sprite(icon, l.px + 8, y + 1);
+            } else {
+                let dim = c.darken[0];
+                c.sprite_map(icon, l.px + 8, y + 1, |col| dim[col as usize]);
+            }
+            let name = r.out.def().name;
+            c.text(l.px + 27, y + 5, name, if ok { INK } else { ROSEWOOD });
+        }
+        // Scroll bar.
+        let n = list.len().max(1) as i32;
+        let track = rows as i32 * 18;
+        c.rect(l.px + 127, l.py + 36, 2, track, KHAKI);
+        if n > rows as i32 {
+            let th = (track * rows as i32 / n).max(6);
+            let ty = l.py + 36 + (track - th) * scroll as i32 / (n - rows as i32).max(1);
+            c.rect(l.px + 127, ty, 2, th, RUST);
+        }
+        // Details.
+        let Some(r) = list.get(recipe) else { return };
+        let dx = l.px + 133;
+        let dw = l.pw - 139;
+        c.panel(dx, l.py + 36, dw, 20, Style::Inset);
+        c.sprite(a.tex(a.icon(r.out.def().icon)), dx + 2, l.py + 38);
+        let title = if r.n > 1 {
+            format!("{} x{}", r.out.def().name, r.n)
+        } else {
+            r.out.def().name.to_string()
+        };
+        let lines = c.font.wrap(&title, dw - 22);
+        for (k, t) in lines.iter().take(2).enumerate() {
+            c.text(dx + 20, l.py + 38 + k as i32 * 9, t, INK);
+        }
+        let mut y = l.py + 60;
+        c.text(dx, y, "Needs:", SHADOW);
+        y += 10;
+        for (item, k) in r.needs {
+            let have = self.player.inv.count(*item);
+            c.sprite(a.tex(a.icon(item.def().icon)), dx, y - 3);
+            let col = if have >= *k as u32 { TEAL } else { CRIMSON };
+            c.text(dx + 18, y + 2, &format!("{have}/{k}"), col);
+            y += 16;
+        }
+        let note = if r.out.base().is_some() {
+            format!(
+                "Comes out at level {} with random stats.",
+                crafted_level(self, r.out)
+            )
+        } else if r.out.scroll_group().is_some() {
+            "A random enchantment for your depth.".to_string()
+        } else {
+            r.out.def().desc.to_string()
+        };
+        let desc = c.font.wrap(&note, dw);
+        for (k, t) in desc.iter().take(3).enumerate() {
+            c.text(dx, y + k as i32 * 9, t, SHADOW);
+        }
+        let ok = r.can_craft(&self.player.inv);
+        let (bx, by, bw, bh) = craft_button(l);
+        c.rect(bx, by, bw, bh, if ok { GREEN } else { KHAKI });
+        c.frame(bx, by, bw, bh, INK);
+        c.text_center(
+            bx + bw / 2,
+            by + 3,
+            if ok { "Craft (E)" } else { "Missing items" },
+            if ok { WHITE } else { ROSEWOOD },
+        );
+        // Hovering a gear recipe shows what the base item is like.
+        for row in 0..rows {
+            let y = l.py + 36 + row as i32 * 18;
+            if inside(mouse, l.px + 6, y, 120, 17) {
+                if let Some(r) = list.get(scroll + row) {
+                    if r.out.base().is_some() {
+                        let s = Stack::new(r.out, 1);
+                        self.stack_tooltip(c, a, l.px + l.pw + 4, y, &s);
+                    }
+                }
+            }
+        }
+    }
+
+    fn draw_shop(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        tab: ShopTab,
+        cursor: usize,
+        scroll: usize,
+        mouse: Vec2,
+    ) {
+        let (w, h) = (c.w(), c.h());
+        let l = panel_layout(w, h);
+        c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
+        let ti = [
+            ShopTab::Seeds,
+            ShopTab::Goods,
+            ShopTab::Specials,
+            ShopTab::Sell,
+        ]
+        .iter()
+        .position(|t| *t == tab)
+        .unwrap_or(0);
+        tabs(
+            c,
+            &l,
+            &["Seeds", "Goods", "Specials", "Sell"],
+            ti,
+            &SHOP_TABS,
+        );
+        // Your purse, in the corner at the bottom.
+        c.panel(
+            l.px + l.pw - 16 - money_width(c, self.money),
+            l.py + l.ph - 17,
+            money_width(c, self.money) + 10,
+            13,
+            Style::Inset,
+        );
+        draw_money(
+            c,
+            a,
+            l.px + l.pw - 11 - money_width(c, self.money),
+            l.py + l.ph - 14,
+            self.money,
+            INK,
+        );
+        if tab != ShopTab::Sell {
+            let rows = self.shop_rows(tab);
+            let mut tip = None;
+            for row in 0..7 {
+                let i = scroll + row;
+                let Some(&(s, price, sold)) = rows.get(i) else {
+                    break;
+                };
+                let y = l.py + 22 + row as i32 * 18;
+                if i == cursor {
+                    c.rect(l.px + 6, y, l.pw - 12, 17, GOLD);
+                }
+                self.draw_slot(c, a, l.px + 7, y, Some(s), false);
+                let name_col = match s.rarity() {
+                    Some(r) if r > Rarity::Common => r.ink(),
+                    _ => INK,
+                };
+                let name = if sold {
+                    format!("{} (sold)", s.name())
+                } else {
+                    s.name()
+                };
+                c.text(l.px + 28, y + 5, &name, if sold { KHAKI } else { name_col });
+                if let Some(g) = s.gear.filter(|_| tab == ShopTab::Specials) {
+                    c.tiny(
+                        l.px + 26 + c.text_width(&name) + 18,
+                        y + 7,
+                        &g.level.to_string(),
+                        CREAM,
+                        SHADOW,
+                    );
+                }
+                let afford = self.money >= price;
+                let mw = money_width(c, price);
+                draw_money(
+                    c,
+                    a,
+                    l.px + l.pw - 12 - mw,
+                    y + 5,
+                    price,
+                    if afford && !sold { RUST } else { ROSEWOOD },
+                );
+                if inside(mouse, l.px + 6, y, l.pw - 12, 17)
+                    || (i == cursor && !inside(mouse, l.px, l.py, l.pw, l.ph))
+                {
+                    tip = Some((s, y));
+                }
+            }
+            let talk = match tab {
+                ShopTab::Seeds => "Burrowby: \"New seeds as you go deeper!\"",
+                ShopTab::Goods => "Burrowby: \"Everything a delver needs.\"",
+                _ => "Burrowby: \"Fresh finds, every morning!\"",
+            };
+            c.text(l.px + 10, l.py + l.ph - 14, talk, SHADOW);
+            if let Some((s, y)) = tip {
+                if tab == ShopTab::Specials || s.item.def().kind != Kind::Material {
+                    self.stack_tooltip(c, a, l.px + l.pw + 4, y - 4, &s);
+                }
+            }
+        } else {
+            c.text(
+                l.px + 10,
+                l.py + 24,
+                "Click to sell a stack, right click sells one.",
+                SHADOW,
+            );
+            let g = bag_grid(&l, 40);
+            self.draw_grid(c, a, &g, &self.player.inv, Some(cursor));
+            if let Some(i) = g.hit(mouse).or(Some(cursor)) {
+                if let Some(s) = self.player.inv.slots[i] {
+                    let y = g.y + g.h() + 8;
+                    if can_sell(&s) {
+                        let t = format!("{} x{} -", s.name(), s.n);
+                        let tw = c.text(l.px + 10, y, &t, INK);
+                        draw_money(c, a, l.px + 14 + tw, y, s.value(), RUST);
+                    } else {
+                        c.text(l.px + 10, y, &format!("{} - keep this one!", s.name()), INK);
+                    }
+                    if g.hit(mouse).is_some() {
+                        let (sx, sy) = g.slot_pos(i);
+                        self.tip_at(c, a, &l, sx, sy, &s);
+                    }
+                }
+            }
+        }
     }
 }
 
-fn tabs(c: &mut Canvas, l: &Layout, names: &[&str], sel: usize, widths: &[i32]) {
+pub const SHOP_TABS: [i32; 4] = [36, 36, 46, 30];
+
+/// Tab positions: (x, width).
+pub fn tab_rects(l: &Layout, widths: &[i32]) -> Vec<(i32, i32)> {
     let mut x = l.px + 8;
-    for (i, n) in names.iter().enumerate() {
-        let w = widths[i];
+    widths
+        .iter()
+        .map(|w| {
+            let r = (x, *w);
+            x += w + 4;
+            r
+        })
+        .collect()
+}
+
+fn cat_rects(l: &Layout) -> Vec<(i32, i32)> {
+    let widths = [20, 28, 24, 28, 38, 32];
+    let mut x = l.px + 8;
+    widths
+        .iter()
+        .map(|w| {
+            let r = (x, *w);
+            x += w + 3;
+            r
+        })
+        .collect()
+}
+
+fn craft_button(l: &Layout) -> (i32, i32, i32, i32) {
+    (l.px + 133, l.py + l.ph - 22, l.pw - 139, 14)
+}
+
+pub fn chest_grid(l: &Layout) -> Grid {
+    Grid {
+        x: l.px + 34,
+        y: l.py + 20,
+        cols: 10,
+        rows: 3,
+        gap: 0,
+    }
+}
+
+pub fn tabs(c: &mut Canvas, l: &Layout, names: &[&str], sel: usize, widths: &[i32]) {
+    for (i, (x, w)) in tab_rects(l, widths).into_iter().enumerate() {
         if i == sel {
             c.rect(x, l.py + 5, w, 12, GOLD);
             c.frame(x, l.py + 5, w, 12, RUST);
@@ -1433,10 +2039,9 @@ fn tabs(c: &mut Canvas, l: &Layout, names: &[&str], sel: usize, widths: &[i32]) 
         c.text_center(
             x + w / 2,
             l.py + 7,
-            n,
+            names[i],
             if i == sel { INK } else { ROSEWOOD },
         );
-        x += w + 4;
     }
 }
 

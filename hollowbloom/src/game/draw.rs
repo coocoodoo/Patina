@@ -8,7 +8,7 @@ use super::world::{Floor, Obj, World};
 use crate::assets::Assets;
 use crate::assets::models::{ARM_L, ARM_R, BODY, HEAD, Humanoid, LEG_L, LEG_R};
 use crate::palette::*;
-use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, UvRect};
+use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, TexId, UvRect};
 use crate::util::hash2;
 
 /// Lighting and mood for a frame.
@@ -35,7 +35,7 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
         for x in (x0 - 6).max(0)..(x1 + 6).min(w.w) {
             let Some(o) = w.obj(x, z) else { continue };
             let lit = match o {
-                Obj::Lamp | Obj::House => env.night > 0.2,
+                Obj::Lamp | Obj::House | Obj::EnchantTable => env.night > 0.2,
                 Obj::Crop { crop, days, .. } => {
                     crop.def().glow && *days >= crop.def().days && env.night > 0.2
                 }
@@ -300,6 +300,31 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             );
         }
         Obj::Bench => r.mesh(&a.bank, &p.bench, &at, &lit),
+        Obj::EnchantTable => {
+            r.shadow(a.tex(a.disk), base, 0.45);
+            r.mesh(&a.bank, &p.enchant_table, &at, &lit);
+            // A little book floats above it, turning slowly, with runes circling round.
+            let bob = (env.time * 2.0 + x as f32).sin() * 0.04;
+            let book = Mat4::from_translation(base + Vec3::new(0.0, 0.86 + bob, 0.0))
+                * Mat4::from_rotation_y(env.time * 0.6)
+                * Mat4::from_rotation_x(-0.35);
+            r.mesh(
+                &a.bank,
+                &p.enchant_book,
+                &book,
+                &lit.with_glow(0.9).with_tag(3),
+            );
+            for k in 0..3 {
+                let ang = env.time * 1.4 + k as f32 * 2.094;
+                let q = base
+                    + Vec3::new(
+                        ang.cos() * 0.42,
+                        0.7 + (env.time * 2.3 + k as f32).sin() * 0.12,
+                        ang.sin() * 0.42,
+                    );
+                r.point(q, 1, [LAVENDER, MINT, BLUSH][k]);
+            }
+        }
         Obj::Crop { crop, days, .. } => {
             let def = crop.def();
             let name = match crop.stage(*days) {
@@ -374,9 +399,29 @@ pub enum Swing {
     Chop,
     Pour,
     Use,
+    /// A wand thrust forward.
+    Cast,
+    /// A staff raised high and brought down.
+    Raise,
 }
 
-/// Draws a humanoid at `pos` facing `yaw` (0 = +z). `held` is attached to the right hand.
+/// What a humanoid is wearing and holding.
+#[derive(Clone, Copy, Default)]
+pub struct Outfit<'a> {
+    /// Attached to the right hand, pointing down the arm.
+    pub held: Option<&'a Mesh>,
+    pub hat: Option<&'a Mesh>,
+    /// The hero's sprout, drawn on top of the head (and poking out of any hat).
+    pub sprout: Option<&'a Mesh>,
+    /// Drawn on each foot.
+    pub boot: Option<&'a Mesh>,
+    /// Strapped to the left arm.
+    pub shield: Option<&'a Mesh>,
+    /// Texture swaps for clothes (body, arms, legs).
+    pub remap: &'a [(TexId, TexId)],
+}
+
+/// Draws a humanoid at `pos` facing `yaw` (0 = +z) in an outfit.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_humanoid(
     r: &mut Renderer,
@@ -386,9 +431,26 @@ pub fn draw_humanoid(
     yaw: f32,
     pose: &Pose,
     o: &DrawOpts,
-    held: Option<&Mesh>,
-    hat: Option<&Mesh>,
+    fit: &Outfit,
 ) {
+    let before = r.remap.len();
+    r.remap.extend_from_slice(fit.remap);
+    draw_body(r, a, h, pos, yaw, pose, o, fit);
+    r.remap.truncate(before);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_body(
+    r: &mut Renderer,
+    a: &Assets,
+    h: &Humanoid,
+    pos: Vec3,
+    yaw: f32,
+    pose: &Pose,
+    o: &DrawOpts,
+    fit: &Outfit,
+) {
+    let held = fit.held;
     let root = Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw);
     let sw = pose.walk.sin() * pose.stride;
     let squash = 1.0 - pose.squash * 0.25;
@@ -402,15 +464,33 @@ pub fn draw_humanoid(
             * Mat4::from_translation(Vec3::new(s * h.hip_x, h.hip, 0.0))
             * Mat4::from_rotation_x(sw * s * 0.7);
         r.mesh(&a.bank, &h.parts[i], &m, o);
+        if let Some(boot) = fit.boot {
+            let foot = m * Mat4::from_translation(Vec3::new(0.0, -h.hip, 0.0));
+            let foot = if s < 0.0 {
+                foot * Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0))
+            } else {
+                foot
+            };
+            let bo = if s < 0.0 { o.two_sided() } else { *o };
+            r.mesh(&a.bank, boot, &foot, &bo);
+        }
     }
     let body = root * Mat4::from_translation(Vec3::new(0.0, h.hip - 0.02 + bob, 0.0));
     r.mesh(&a.bank, &h.parts[BODY], &body, o);
     // Arms: the right arm follows the swing.
+    let guard = fit.shield.is_some() && matches!(pose.swing, None | Some((_, Swing::Slash)));
     let left = root
         * Mat4::from_translation(Vec3::new(-h.shoulder_x, h.shoulder + bob, 0.0))
-        * Mat4::from_rotation_x(-sw * 0.6)
+        * Mat4::from_rotation_x(if guard { -0.5 - sw * 0.2 } else { -sw * 0.6 })
         * Mat4::from_rotation_z(-0.12);
     r.mesh(&a.bank, &h.parts[ARM_L], &left, o);
+    if let Some(shield) = fit.shield {
+        // Worn on the forearm, facing outwards and a little forwards.
+        let m = left
+            * Mat4::from_translation(Vec3::new(-0.07, -0.16, 0.02))
+            * Mat4::from_rotation_y(-1.2);
+        r.mesh(&a.bank, shield, &m, o);
+    }
     let (rx, rz, twist) = match pose.swing {
         Some((t, Swing::Slash)) => {
             let k = ease_out(t);
@@ -422,6 +502,14 @@ pub fn draw_humanoid(
         }
         Some((t, Swing::Pour)) => (-1.2, 0.0, (t * PI).sin() * 0.3),
         Some((t, Swing::Use)) => (-1.3 * (t * PI).sin(), 0.0, 0.0),
+        Some((t, Swing::Cast)) => {
+            let k = (t * PI).sin();
+            (-1.35 - k * 0.25, 0.0, 0.0)
+        }
+        Some((t, Swing::Raise)) => {
+            let k = ease_out(t);
+            (-3.0 + k * 1.9, 0.0, 0.0)
+        }
         None if held.is_some() => (-0.95 + sw * 0.15, 0.1, 0.0),
         None => (sw * 0.6, 0.12, 0.0),
     };
@@ -444,9 +532,15 @@ pub fn draw_humanoid(
         * Mat4::from_rotation_x(-0.22)
         * Mat4::from_rotation_z(sw * 0.05);
     r.mesh(&a.bank, &h.parts[HEAD], &head, o);
-    if let Some(hat) = hat {
-        let m = head * Mat4::from_translation(Vec3::new(0.0, 0.46, 0.0));
-        r.mesh(&a.bank, hat, &m, o);
+    let crown = head * Mat4::from_translation(Vec3::new(0.0, 0.46, 0.0));
+    if let Some(hat) = fit.hat {
+        r.mesh(&a.bank, hat, &crown, o);
+    }
+    if let Some(sprout) = fit.sprout {
+        // The sprout always finds its way out, a little higher with a hat on.
+        let lift = if fit.hat.is_some() { 0.1 } else { 0.0 };
+        let m = crown * Mat4::from_translation(Vec3::new(0.0, lift, 0.0));
+        r.mesh(&a.bank, sprout, &m, o);
     }
 }
 

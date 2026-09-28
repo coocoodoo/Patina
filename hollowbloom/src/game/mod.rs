@@ -1,18 +1,24 @@
 //! The game: title screen, playing state, settings and saving.
 
+pub mod combat;
 pub mod draw;
 pub mod dungeon;
+pub mod enchant;
 pub mod farm;
 pub mod foes;
 pub mod fx;
+pub mod gear;
 pub mod hud;
 pub mod items;
+pub mod loot;
 pub mod menus;
 pub mod play;
 pub mod player;
 pub mod save;
+pub mod scene;
 #[cfg(test)]
 mod tests;
+pub mod tips;
 pub mod world;
 
 use glam::{Vec2, Vec3};
@@ -240,6 +246,8 @@ impl Game {
                     bob: (t.t * 2.0).sin().abs() * 0.02,
                     ..Default::default()
                 };
+                let kit = player::Player::new(glam::Vec2::ZERO);
+                let dressed = scene::dress(a, &kit.equip, kit.held_stack());
                 draw::draw_humanoid(
                     r,
                     a,
@@ -248,8 +256,7 @@ impl Game {
                     0.3,
                     &pose,
                     &DrawOpts::at(p).with_tag(1),
-                    None,
-                    Some(&a.sprout),
+                    &dressed.outfit(Some(&a.sprout)),
                 );
                 r.fb.outline(INK);
                 let mut c = Canvas {

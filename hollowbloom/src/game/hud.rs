@@ -3,16 +3,16 @@
 use glam::Vec3;
 
 use super::foes::boss_name;
-use super::items::{Kind, ToolKind};
+use super::gear::Class;
 use super::menus::Menu;
 use super::play::Play;
 use super::player::HOTBAR;
+use super::tips::{draw_money, money_width};
 use super::world::{Area, Floor, Obj, Wall};
 use crate::assets::Assets;
 use crate::palette::*;
 use crate::render::Camera;
 use crate::ui::{Canvas, Style};
-use crate::util::thousands;
 
 impl Play {
     pub fn draw_hud(&self, c: &mut Canvas, a: &Assets, cam: &Camera) {
@@ -55,17 +55,17 @@ impl Play {
             return;
         }
 
-        // Health and energy.
+        // Health, energy and mana.
         let p = &self.player;
-        c.panel(3, 3, 94, 25, Style::Dark);
+        c.panel(3, 3, 94, 35, Style::Dark);
         c.text_shadow(7, 6, "♥", PINK, INK);
-        let low = p.hp * 4 < p.max_hp && (self.time * 4.0).fract() < 0.5;
+        let low = p.hp * 4 < p.max_hp() && (self.time * 4.0).fract() < 0.5;
         c.bar(
             15,
             7,
             60,
             7,
-            p.hp as f32 / p.max_hp as f32,
+            p.hp as f32 / p.max_hp() as f32,
             if low { SALMON } else { CRIMSON },
             PINK,
             SHADOW,
@@ -77,12 +77,50 @@ impl Play {
             17,
             60,
             7,
-            p.energy.max(0.0) / p.max_energy as f32,
+            p.energy.max(0.0) / p.max_energy() as f32,
             CLAY,
             GOLD,
             SHADOW,
         );
         c.tiny(94, 18, &(p.energy.max(0.0) as i32).to_string(), WHITE, INK);
+        c.text_shadow(7, 26, "★", LAVENDER, INK);
+        let flash = p.no_mana_t > 0.0 && (self.time * 8.0).fract() < 0.5;
+        c.bar(
+            15,
+            27,
+            60,
+            7,
+            p.mana / p.max_mana() as f32,
+            if flash { SALMON } else { PURPLE },
+            LAVENDER,
+            SHADOW,
+        );
+        c.tiny(94, 28, &(p.mana as i32).to_string(), WHITE, INK);
+        // Food buffs, with how long they have left.
+        let mut bx = 4;
+        for b in &p.buffs {
+            let icon = a.tex(a.icon(b.from.def().icon));
+            c.panel(bx, 40, 14, 14, Style::Dark);
+            for sy in 0..8 {
+                for sx in 0..8 {
+                    let col = icon.get(sx * 2, sy * 2);
+                    if col != CLEAR {
+                        c.px(bx + 3 + sx, 43 + sy, col);
+                    }
+                }
+            }
+            let secs = b.left.ceil() as i32;
+            let t = if secs >= 60 {
+                format!("{}", secs / 60)
+            } else {
+                format!("{secs}")
+            };
+            let blink = b.left < 10.0 && (self.time * 4.0).fract() < 0.5;
+            if !blink {
+                c.tiny(bx + 14, 50, &t, WHITE, INK);
+            }
+            bx += 16;
+        }
 
         // Clock, date and money.
         let pw = 86;
@@ -108,8 +146,8 @@ impl Play {
         };
         c.text(px + pw - 12, 6, icon, icon_col);
         c.text(px + 6, 16, &self.clock.label(), RUST);
-        c.sprite(a.tex(a.icon("coin")), px + 6, 27);
-        c.text(px + 16, 27, &thousands(self.gold), INK);
+        let mw = money_width(c, self.money);
+        draw_money(c, a, px + pw - 6 - mw, 26, self.money, INK);
         if let Area::Hollow { depth } = self.area {
             c.panel(px, 40, pw, 14, Style::Dark);
             c.text_shadow(px + 6, 43, &format!("Floor {depth}"), CREAM, INK);
@@ -149,12 +187,12 @@ impl Play {
         for i in 0..HOTBAR {
             let x = hx + i as i32 * 19;
             let s = p.inv.slots[i];
-            Play::draw_slot(c, a, x, hy, s, i == p.sel);
+            self.draw_slot(c, a, x, hy, s, i == p.sel);
             if let Some(s) = s {
-                if matches!(s.item.def().kind, Kind::Tool(ToolKind::Can, _)) {
+                if s.item.class() == Some(Class::Can) {
                     let frac = p.water as f32 / p.can_capacity() as f32;
                     c.rect(x + 2, hy + 15, 14, 2, SHADOW);
-                    c.rect(x + 2, hy + 15, (14.0 * frac) as i32, 2, SKY);
+                    c.rect(x + 2, hy + 15, (14.0 * frac.min(1.0)) as i32, 2, SKY);
                 }
             }
             let key = if i == 9 {
@@ -172,10 +210,11 @@ impl Play {
         }
         // Name of the selected item, briefly.
         if self.sel_name_t < 1.6 {
-            if let Some(item) = p.held() {
-                let name = item.def().name;
-                let tw = c.text_width(name);
-                c.text_outline((w - tw) / 2, hy - 14, name, CREAM, INK);
+            if let Some(s) = p.held_stack() {
+                let name = s.name();
+                let tw = c.text_width(&name);
+                let col = s.rarity().map_or(CREAM, |r| r.color());
+                c.text_outline((w - tw) / 2, hy - 14, &name, col, INK);
             }
         } else if let Some(hint) = &self.hint {
             let t = format!("[E] {hint}");
@@ -200,10 +239,11 @@ impl Play {
             let mut x = 7;
             if let Some(i) = t.icon {
                 let icon = a.tex(a.icon(i.def().icon));
-                // Draw the icon at half size by sampling every other pixel.
+                // Small icons as they are; big ones at half size.
+                let step = if icon.w > 8 { 2 } else { 1 };
                 for sy in 0..8 {
                     for sx in 0..8 {
-                        let col = icon.get(sx * 2, sy * 2);
+                        let col = icon.get(sx * step, sy * step);
                         if col != CLEAR {
                             c.px(x + sx, ty + 1 + sy, col);
                         }
@@ -211,7 +251,7 @@ impl Play {
                 }
                 x += 12;
             }
-            c.text_shadow(x, ty, &label, CREAM, INK);
+            c.text_shadow(x, ty, &label, t.color, INK);
             ty -= 14;
         }
 

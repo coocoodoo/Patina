@@ -130,7 +130,7 @@ fn till_plant_water_and_grow() {
         !s.play.farm.flag(35, 16, WATERED) || s.play.rain,
         "water dries overnight unless it rains"
     );
-    assert_eq!(s.play.player.energy, s.play.player.max_energy as f32);
+    assert_eq!(s.play.player.energy, s.play.player.max_energy() as f32);
     s.tap(KeyCode::KeyE, 2);
     assert!(matches!(s.play.menu, Menu::None));
 }
@@ -172,10 +172,10 @@ fn harvest_ripe_crop() {
 fn shipping_pays_overnight() {
     let mut s = Sim::new();
     s.play.shipping.push(Stack::new(Item::Glowcap, 10));
-    let gold = s.play.gold;
+    let money = s.play.money;
     s.play.start_fade(Trans::Sleep { passed_out: false });
     s.frames(60);
-    assert_eq!(s.play.gold, gold + 600);
+    assert_eq!(s.play.money, money + 600);
     assert!(s.play.shipping.is_empty());
 }
 
@@ -341,10 +341,11 @@ fn crafting_consumes_ingredients() {
     let mut s = Sim::new();
     s.play.player.inv.add(Item::Wood, 25);
     s.play.menu = Menu::Inventory {
-        craft: true,
+        tab: super::menus::Tab::Craft,
         cursor: 0,
         recipe: 1,
         scroll: 0,
+        cat: 0,
     };
     s.tap(KeyCode::Enter, 2);
     assert_eq!(s.play.player.inv.count(Item::Chest), 1);
@@ -359,7 +360,7 @@ fn save_and_load_round_trip() {
         std::env::set_var("HOLLOWBLOOM_DATA", &dir);
     }
     let mut p = Play::new(99);
-    p.gold = 1234;
+    p.money = 1234;
     p.clock.day = 7;
     p.deepest = 23;
     p.waystones = vec![10, 20];
@@ -373,7 +374,7 @@ fn save_and_load_round_trip() {
     );
     super::save::write(&p).expect("save");
     let q = super::save::read().expect("load");
-    assert_eq!(q.gold, 1234);
+    assert_eq!(q.money, 1234);
     assert_eq!(q.clock.day, 7);
     assert_eq!(q.deepest, 23);
     assert_eq!(q.waystones, vec![10, 20]);
@@ -385,7 +386,7 @@ fn save_and_load_round_trip() {
 #[test]
 fn fainting_sends_you_home() {
     let mut s = Sim::new();
-    s.play.gold = 500;
+    s.play.money = 500;
     s.play.start_fade(Trans::Descend {
         depth: 4,
         via_waystone: false,
@@ -396,7 +397,7 @@ fn fainting_sends_you_home() {
     s.frames(90);
     assert_eq!(s.play.area, Area::Farm);
     assert_eq!(s.play.clock.day, day + 1);
-    assert_eq!(s.play.gold, 450, "a tenth of your gold is lost");
+    assert_eq!(s.play.money, 450, "a tenth of your money is lost");
     assert!(s.play.player.hp > 0);
 }
 
@@ -458,4 +459,459 @@ fn every_rendered_pixel_is_in_the_palette() {
             "the scene should use a good part of the palette"
         );
     }
+}
+
+// ------------------------------------------------------------------------------------------
+// Gear, magic, coins and enchanting
+// ------------------------------------------------------------------------------------------
+
+use super::gear::{Affix, Class, Gear, Group, Rarity, SOCKETS, Slot, Stat};
+use super::menus::{Pick, Tab};
+
+/// Goes down to a floor and keeps just one foe, parked in front of the hero.
+fn one_foe_ahead(s: &mut Sim, depth: u32, dist: f32) {
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    s.frames(60);
+    let p = s.play.player.pos;
+    s.play.foes.truncate(1);
+    let f = &mut s.play.foes[0];
+    f.pos = p + Vec2::new(0.0, dist);
+    f.alert = false;
+    f.speed = 0.0;
+    s.play.player.facing = Vec2::new(0.0, 1.0);
+    s.play.player.hurt = 100.0;
+}
+
+#[test]
+fn wand_bolts_defeat_foes() {
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 1, 2.5);
+    s.select(9);
+    assert_eq!(s.play.player.held(), Some(Item::TwigWand));
+    let mana = s.play.player.mana;
+    for _ in 0..30 {
+        if s.play.foes.is_empty() {
+            break;
+        }
+        s.play.foes[0].pos = s.play.player.pos + Vec2::new(0.0, 2.5);
+        s.play.player.mana = s.play.player.max_mana() as f32;
+        s.tap(KeyCode::KeyJ, 30);
+    }
+    assert!(s.play.foes.is_empty(), "bolts should defeat the foe");
+    assert!(s.play.player.max_mana() as f32 >= mana);
+}
+
+#[test]
+fn casting_costs_mana_and_stops_when_empty() {
+    let mut s = Sim::new();
+    s.select(9);
+    s.play.player.mana = 6.0;
+    s.tap(KeyCode::KeyJ, 30);
+    assert!(s.play.player.mana < 6.0, "a bolt costs mana");
+    s.play.player.mana = 1.0;
+    s.play.bolts.clear();
+    s.tap(KeyCode::KeyJ, 2);
+    assert!(s.play.bolts.is_empty(), "no bolt without mana");
+}
+
+#[test]
+fn staff_blast_hits_a_crowd() {
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 5, 2.4);
+    s.play.start_fade(Trans::Descend {
+        depth: 5,
+        via_waystone: false,
+    });
+    s.frames(60);
+    let p = s.play.player.pos;
+    s.play.foes.truncate(3);
+    assert_eq!(s.play.foes.len(), 3);
+    for (i, f) in s.play.foes.iter_mut().enumerate() {
+        f.pos = p + Vec2::new(-0.5 + i as f32 * 0.5, 2.4);
+        f.speed = 0.0;
+        f.hp = 10_000;
+        f.max_hp = 10_000;
+    }
+    s.play.player.inv.slots[0] = Some(Stack::new(Item::OakStaff, 1));
+    s.select(0);
+    s.play.player.facing = Vec2::new(0.0, 1.0);
+    s.play.player.hurt = 100.0;
+    s.tap(KeyCode::KeyJ, 40);
+    let hurt = s.play.foes.iter().filter(|f| f.hp < 10_000).count();
+    assert_eq!(hurt, 3, "the blast should reach all three");
+}
+
+#[test]
+fn armor_softens_blows() {
+    let mut s = Sim::new();
+    s.play.player.equip = [None; 5];
+    s.play.player.refresh();
+    s.play.player.hp = 60;
+    let io_hurt = |s: &mut Sim| {
+        s.play.player.hurt = 0.0;
+        s.play.player.dodge = 0.0;
+        let before = s.play.player.hp;
+        let audio = Audio::silent();
+        let input = Input::default();
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &input,
+            audio: &audio,
+            view: (480, 270),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        s.play.hurt_player(30, Vec2::X, None, &mut io);
+        before - s.play.player.hp
+    };
+    let bare = io_hurt(&mut s);
+    for (item, slot) in [
+        (Item::IronHelm, Slot::Head),
+        (Item::IronPlate, Slot::Chest),
+        (Item::IronGreaves, Slot::Legs),
+        (Item::IronBoots, Slot::Feet),
+    ] {
+        s.play.player.equip[slot as usize] = Some(Stack::new(item, 1));
+    }
+    s.play.player.refresh();
+    s.play.player.hp = 60;
+    let armored = io_hurt(&mut s);
+    assert!(armored < bare, "armor helps: {armored} vs {bare}");
+    assert!(armored >= 1);
+}
+
+#[test]
+fn wearing_gear_from_the_bag() {
+    let mut s = Sim::new();
+    s.play.player.inv.slots[12] = Some(Stack::new(Item::FrogHood, 1));
+    s.play.menu = Menu::Inventory {
+        tab: Tab::Bag,
+        cursor: 12,
+        recipe: 0,
+        scroll: 0,
+        cat: 0,
+    };
+    s.tap(KeyCode::Enter, 2);
+    assert_eq!(
+        s.play.player.worn(Slot::Head).map(|w| w.item),
+        Some(Item::FrogHood)
+    );
+    assert_eq!(
+        s.play.player.inv.slots[12].map(|w| w.item),
+        Some(Item::StrawHat),
+        "the old hat goes back in the bag"
+    );
+    // The frog hood's innate dodge shows up in the stats.
+    s.frames(1);
+    assert!(s.play.player.stat(Stat::Dodge) > 0);
+}
+
+#[test]
+fn enchanting_binds_a_scroll() {
+    let mut s = Sim::new();
+    let mut rng = crate::util::Rng::new(1);
+    let scroll = Stack::with_gear(
+        Item::WeaponScroll,
+        super::gear::scroll_with(Stat::Burn, 10, 0.9),
+    );
+    s.play.player.inv.slots[20] = Some(scroll);
+    s.play.money = 10_000;
+    let _ = &mut rng;
+    s.play.menu = Menu::Enchant {
+        gear: Some(Pick::Bag(0)),
+        scroll: Some(20),
+        socket: 0,
+        cursor: 48,
+        msg: None,
+        glow: 0.0,
+    };
+    s.tap(KeyCode::Enter, 2);
+    let sword = s.play.player.inv.slots[0].unwrap();
+    let e = sword.gear.unwrap().enchants[0].expect("enchanted");
+    assert_eq!(e.stat, Stat::Burn);
+    assert!(
+        s.play.player.inv.slots[20].is_none(),
+        "the scroll is used up"
+    );
+    assert!(s.play.money < 10_000, "binding costs coins");
+    // Holding the sword now brings its burn chance along.
+    s.select(0);
+    s.frames(1);
+    assert!(s.play.player.stat(Stat::Burn) > 0);
+}
+
+#[test]
+fn scrolls_only_fit_their_own_kind() {
+    let mut s = Sim::new();
+    let scroll = Stack::with_gear(
+        Item::ArmorScroll,
+        super::gear::scroll_with(Stat::Defense, 10, 0.5),
+    );
+    s.play.player.inv.slots[20] = Some(scroll);
+    s.play.money = 10_000;
+    s.play.menu = Menu::Enchant {
+        gear: Some(Pick::Bag(0)),
+        scroll: Some(20),
+        socket: 0,
+        cursor: 48,
+        msg: None,
+        glow: 0.0,
+    };
+    s.tap(KeyCode::Enter, 2);
+    let sword = s.play.player.inv.slots[0].unwrap();
+    assert!(sword.gear.unwrap().enchants().next().is_none());
+    assert!(s.play.player.inv.slots[20].is_some());
+    assert_eq!(s.play.money, 10_000);
+    // Armor scrolls do fit armour, including what is worn.
+    s.play.menu = Menu::Enchant {
+        gear: Some(Pick::Worn(Slot::Chest)),
+        scroll: Some(20),
+        socket: 0,
+        cursor: 48,
+        msg: None,
+        glow: 0.0,
+    };
+    s.tap(KeyCode::Enter, 2);
+    let worn = s.play.player.worn(Slot::Chest).unwrap();
+    assert_eq!(
+        worn.gear.unwrap().enchants[0].map(|e| e.stat),
+        Some(Stat::Defense)
+    );
+}
+
+#[test]
+fn coins_go_to_the_purse() {
+    let mut s = Sim::new();
+    let money = s.play.money;
+    let at = s.play.player.world_pos();
+    for st in super::loot::coin_stacks(357) {
+        let mut d = super::fx::Drop::new(st, at, &mut s.play.rng);
+        d.vel = glam::Vec3::ZERO;
+        s.play.drops.push(d);
+    }
+    s.frames(120);
+    assert!(s.play.drops.is_empty());
+    assert_eq!(s.play.money, money + 357);
+}
+
+#[test]
+fn monsters_drop_coins() {
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 12, 0.9);
+    s.play.player.inv.slots[0] = Some(super::loot::roll_gear(
+        Item::Sword3,
+        40,
+        0.0,
+        &mut crate::util::Rng::new(2),
+    ));
+    s.select(0);
+    // Plenty of coin find, so something always drops.
+    s.play.player.equip[Slot::Feet as usize] = Some(Stack::with_gear(Item::RainBoots, {
+        let mut g = Gear::plain(40);
+        g.affixes[0] = Some(Affix {
+            stat: Stat::Greed,
+            val: 50,
+        });
+        g
+    }));
+    let money = s.play.money;
+    for _ in 0..20 {
+        if s.play.foes.is_empty() {
+            break;
+        }
+        s.play.foes[0].pos = s.play.player.pos + Vec2::new(0.0, 0.9);
+        s.tap(KeyCode::KeyJ, 25);
+    }
+    assert!(s.play.foes.is_empty());
+    s.frames(150);
+    // Coins fly out and get collected on the way; most kills pay.
+    assert!(s.play.money >= money, "never lose money for a kill");
+}
+
+#[test]
+fn sickle_harvests_a_patch() {
+    let mut s = Sim::new();
+    for z in 15..19 {
+        for x in 34..39 {
+            clear_farm_tile(&mut s.play, x, z);
+        }
+    }
+    for z in 16..19 {
+        for x in 35..38 {
+            s.play.farm.set_floor(x, z, Floor::Tilled);
+            s.play.farm.set_obj(
+                x,
+                z,
+                Some(Obj::Crop {
+                    crop: Crop::Radish,
+                    days: 3,
+                    harvested: false,
+                }),
+            );
+        }
+    }
+    s.stand(36, 15, Vec2::new(0.0, 1.0));
+    s.select(8);
+    assert_eq!(s.play.player.held(), Some(Item::Sickle));
+    s.tap(KeyCode::KeyJ, 40);
+    assert!(
+        s.play.player.inv.count(Item::Radish) >= 6,
+        "a sickle sweep harvests a patch, got {}",
+        s.play.player.inv.count(Item::Radish)
+    );
+}
+
+#[test]
+fn hoe_with_reach_tills_a_row() {
+    let mut s = Sim::new();
+    for z in 15..20 {
+        clear_farm_tile(&mut s.play, 36, z);
+    }
+    let mut g = Gear::plain(1);
+    g.affixes[0] = Some(Affix {
+        stat: Stat::Reach,
+        val: 2,
+    });
+    s.play.player.inv.slots[1] = Some(Stack::with_gear(Item::Hoe, g));
+    s.stand(36, 15, Vec2::new(0.0, 1.0));
+    s.select(1);
+    s.tap(KeyCode::KeyJ, 40);
+    let tilled = (16..20)
+        .filter(|z| s.play.farm.floor(36, *z) == Floor::Tilled)
+        .count();
+    assert_eq!(tilled, 3, "reach 2 tills three tiles in a row");
+}
+
+#[test]
+fn food_buffs_last_a_while() {
+    let mut s = Sim::new();
+    s.play.player.inv.slots[7] = Some(Stack::new(Item::GarlicBread, 1));
+    s.select(7);
+    let dmg = s.play.player.weapon_damage();
+    s.tap(KeyCode::KeyE, 2);
+    assert!(
+        s.play.player.weapon_damage() > dmg,
+        "garlic bread adds damage"
+    );
+    assert_eq!(s.play.player.buffs.len(), 1);
+    s.play.player.buffs[0].left = 0.01;
+    s.frames(3);
+    assert!(s.play.player.buffs.is_empty());
+    assert_eq!(s.play.player.weapon_damage(), dmg);
+}
+
+#[test]
+fn crafted_gear_is_rolled() {
+    let mut s = Sim::new();
+    s.play.player.inv.add(Item::CopperOre, 10);
+    s.play.player.inv.add(Item::Wood, 5);
+    let list = super::menus::recipes_in(0);
+    let i = list.iter().position(|r| r.out == Item::Sword1).unwrap();
+    s.play.menu = Menu::Inventory {
+        tab: Tab::Craft,
+        cursor: 0,
+        recipe: i,
+        scroll: i.saturating_sub(3),
+        cat: 0,
+    };
+    s.tap(KeyCode::Enter, 2);
+    let made = s
+        .play
+        .player
+        .inv
+        .slots
+        .iter()
+        .flatten()
+        .find(|st| st.item == Item::Sword1)
+        .expect("a copper sword");
+    assert!(made.gear.unwrap().level >= 8);
+}
+
+#[test]
+fn gear_and_outfit_survive_saving() {
+    let dir = std::env::temp_dir().join(format!("hollowbloom-gear-{}", std::process::id()));
+    // SAFETY: only this test touches this variable's directory.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", &dir);
+    }
+    let mut p = Play::new(5);
+    let mut rng = crate::util::Rng::new(4);
+    let mut sword = super::loot::roll_gear(Item::FrostFang, 44, 1.0, &mut rng);
+    if let Some(g) = &mut sword.gear {
+        g.enchant(
+            2,
+            Affix {
+                stat: Stat::Chill,
+                val: 12,
+            },
+        );
+    }
+    p.player.inv.slots[15] = Some(sword);
+    p.player.equip[Slot::Shield as usize] = Some(Stack::new(Item::TurtleShell, 1));
+    p.player.base_mana = 50;
+    super::save::write(&p).expect("save");
+    let q = super::save::read().expect("load");
+    assert_eq!(q.player.inv.slots[15], Some(sword));
+    assert_eq!(
+        q.player.worn(Slot::Shield).map(|s| s.item),
+        Some(Item::TurtleShell)
+    );
+    assert_eq!(q.player.base_mana, 50);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn every_item_has_art() {
+    let a = crate::assets::Assets::new();
+    for it in super::items::ALL_ITEMS {
+        let icon = it.def().icon;
+        assert!(a.icons.contains_key(icon), "{it:?} has no icon {icon}");
+        match it.class() {
+            Some(Class::Head) => assert!(a.hat_mesh(icon).is_some(), "{it:?} hat"),
+            Some(Class::Chest) => assert!(a.chest_skin(icon).is_some(), "{it:?} chest"),
+            Some(Class::Legs) => assert!(a.leg_skin(icon).is_some(), "{it:?} legs"),
+            Some(Class::Feet) => assert!(a.boot_mesh(icon).is_some(), "{it:?} boots"),
+            Some(Class::Shield) => assert!(a.shield_mesh(icon).is_some(), "{it:?} shield"),
+            Some(_) => assert!(a.held_mesh(icon).is_some(), "{it:?} held"),
+            None => {}
+        }
+    }
+    for c in super::items::ALL_CROPS {
+        assert!(a.icons.contains_key(c.def().young), "{c:?} young sprite");
+    }
+    for st in super::gear::ALL_STATS {
+        assert!(
+            a.icons.contains_key(super::tips::stat_icon(st)),
+            "{st:?} icon"
+        );
+    }
+    for slot in super::gear::SLOTS {
+        assert!(a.icons.contains_key(slot.ghost_icon()));
+    }
+    for name in [
+        "socket",
+        "ghost_scroll",
+        "coin_gold",
+        "coin_silver",
+        "coin_copper",
+    ] {
+        assert!(a.icons.contains_key(name), "{name}");
+    }
+    // Every icon is a neat 16x16 or 8x8 picture.
+    for (name, id) in &a.icons {
+        let t = a.tex(*id);
+        assert!(
+            (t.w == 16 && t.h == 16)
+                || (t.w == 8 && t.h == 8)
+                || *name == "pointer"
+                || *name == "sparkle",
+            "{name} is {}x{}",
+            t.w,
+            t.h
+        );
+    }
+    let _ = (Group::Weapon, Rarity::Common, SOCKETS);
 }

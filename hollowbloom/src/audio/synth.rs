@@ -38,6 +38,12 @@ pub enum Sfx {
     Chest,
     Denied,
     Alert,
+    Rare,
+    Equip,
+    Magic,
+    Blast,
+    Enchant,
+    Block,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -73,6 +79,12 @@ pub const ALL: &[Sfx] = &[
     Sfx::Chest,
     Sfx::Denied,
     Sfx::Alert,
+    Sfx::Rare,
+    Sfx::Equip,
+    Sfx::Magic,
+    Sfx::Blast,
+    Sfx::Enchant,
+    Sfx::Block,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -327,5 +339,87 @@ pub fn make(s: Sfx) -> Vec<f32> {
         }
         Sfx::Denied => sweep(0.15, 150.0, 120.0, 8.0, |p| square(p, 0.5) * 0.4),
         Sfx::Alert => arp(&[(note(88), 0.04), (note(93), 0.08)], 0.25, 20.0),
+        Sfx::Rare => {
+            // A bright little fanfare with a shimmer on top.
+            let mut b = arp(
+                &[
+                    (note(84), 0.05),
+                    (note(88), 0.05),
+                    (note(91), 0.05),
+                    (note(96), 0.32),
+                ],
+                0.25,
+                5.0,
+            );
+            let (mut a, mut c) = (0.0, 0.0);
+            let shimmer = render(0.45, |t, _| {
+                a += note(103) / RATE;
+                c += (note(103) + 7.0) / RATE;
+                (sine(a) + sine(c)) * 0.12 * (-t * 5.0).exp() * (t * 40.0).min(1.0)
+            });
+            for (i, v) in shimmer.iter().enumerate() {
+                if let Some(x) = b.get_mut(i + (RATE * 0.12) as usize) {
+                    *x += v;
+                }
+            }
+            b
+        }
+        Sfx::Equip => {
+            let mut b = render(0.09, |t, n| n * 0.45 * (-t * 30.0).exp());
+            lowpass(&mut b, 0.45);
+            b.extend(sweep(0.07, 900.0, 1400.0, 25.0, |p| square(p, 0.5) * 0.3));
+            b
+        }
+        Sfx::Magic => {
+            let (mut a, mut c) = (0.0, 0.0);
+            render(0.2, |t, _| {
+                let f = 1500.0 - t * 4000.0;
+                a += f.max(500.0) / RATE;
+                c += (f * 1.5).max(700.0) / RATE;
+                (sine(a) * 0.5 + square(c, 0.25) * 0.15) * (-t * 12.0).exp()
+            })
+        }
+        Sfx::Blast => {
+            let mut phase = 0.0;
+            let mut b = render(0.42, |t, n| {
+                phase += (220.0 - t * 400.0).max(45.0) / RATE;
+                (sine(phase) * 0.7 + n * 0.5 * (-t * 9.0).exp()) * (-t * 6.0).exp()
+            });
+            lowpass(&mut b, 0.3);
+            b
+        }
+        Sfx::Enchant => {
+            // Rising sparkles over a soft, slightly detuned chord.
+            let mut b = Vec::new();
+            for n in [72, 76, 79, 84, 88, 91, 96] {
+                let f = note(n);
+                let mut phase = 0.0;
+                b.extend(render(0.06, |t, _| {
+                    phase += f / RATE;
+                    (square(phase, 0.25) * 0.3 + sine(phase) * 0.3) * (-t * 20.0).exp()
+                }));
+            }
+            let (mut a, mut c, mut d) = (0.0, 0.0, 0.0);
+            let pad = render(1.0, |t, _| {
+                a += note(72) / RATE;
+                c += note(76) * 1.003 / RATE;
+                d += note(79) * 0.997 / RATE;
+                (sine(a) + sine(c) + sine(d)) * 0.12 * (1.0 - t) * (t * 8.0).min(1.0)
+            });
+            let start = b.len() / 3;
+            b.resize(start + pad.len(), 0.0);
+            for (i, v) in pad.iter().enumerate() {
+                b[start + i] += v;
+            }
+            b
+        }
+        Sfx::Block => {
+            let (mut a, mut c) = (0.0, 0.0);
+            render(0.3, |t, n| {
+                a += 1320.0 / RATE;
+                c += 1830.0 / RATE;
+                (sine(a) * 0.4 + sine(c) * 0.3) * (-t * 14.0).exp() + n * 0.4 * (-t * 60.0).exp()
+            })
+        }
     }
 }

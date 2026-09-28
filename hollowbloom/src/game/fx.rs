@@ -2,7 +2,7 @@
 
 use glam::{Vec2, Vec3};
 
-use super::items::Item;
+use super::items::{Item, Stack};
 use super::world::World;
 use crate::palette::*;
 use crate::render::Renderer;
@@ -81,6 +81,26 @@ impl Fx {
         }
     }
 
+    /// A ring of sparks racing outwards along the ground (magic blasts).
+    pub fn ring(&mut self, pos: Vec3, speed: f32, n: usize, colors: &[u8]) {
+        for i in 0..n {
+            let a = i as f32 / n as f32 * std::f32::consts::TAU;
+            let r = self.rng();
+            let color = colors[r.below(colors.len())];
+            let s = speed * (0.85 + r.f32() * 0.3);
+            let up = 0.3 + r.f32() * 0.5;
+            let life = 0.35 + r.f32() * 0.15;
+            self.parts.push(Particle {
+                pos: pos + Vec3::Y * 0.15,
+                vel: Vec3::new(a.cos() * s, up, a.sin() * s),
+                life,
+                color,
+                size: if i % 3 == 0 { 2 } else { 1 },
+                grav: 0.0,
+            });
+        }
+    }
+
     pub fn popup(&mut self, pos: Vec3, text: impl Into<String>, color: u8) {
         self.pops.push(Popup {
             text: text.into(),
@@ -126,45 +146,36 @@ impl Fx {
     }
 }
 
-/// An item lying in the world (or coins).
+/// An item (or a pile of coins) lying in the world.
 pub struct Drop {
-    pub item: Option<Item>,
-    pub n: u16,
-    pub gold: u32,
+    pub stack: Stack,
     pub pos: Vec3,
     pub vel: Vec3,
     pub age: f32,
 }
 
 impl Drop {
-    pub fn item(item: Item, n: u16, at: Vec3, rng: &mut Rng) -> Drop {
+    pub fn new(stack: Stack, at: Vec3, rng: &mut Rng) -> Drop {
+        let coin = stack.item.coin_value().is_some();
+        let (spread, up) = if coin { (2.0, 3.8) } else { (1.6, 3.2) };
         Drop {
-            item: Some(item),
-            n,
-            gold: 0,
+            stack,
             pos: at + Vec3::Y * 0.3,
             vel: Vec3::new(
-                rng.range_f(-1.6, 1.6),
-                3.2 + rng.f32(),
-                rng.range_f(-1.6, 1.6),
+                rng.range_f(-spread, spread),
+                up + rng.f32(),
+                rng.range_f(-spread, spread),
             ),
             age: 0.0,
         }
     }
 
-    pub fn coins(gold: u32, at: Vec3, rng: &mut Rng) -> Drop {
-        Drop {
-            item: None,
-            n: 1,
-            gold,
-            pos: at + Vec3::Y * 0.3,
-            vel: Vec3::new(
-                rng.range_f(-1.4, 1.4),
-                3.4 + rng.f32(),
-                rng.range_f(-1.4, 1.4),
-            ),
-            age: 0.0,
-        }
+    pub fn item(item: Item, n: u16, at: Vec3, rng: &mut Rng) -> Drop {
+        Drop::new(Stack::new(item, n), at, rng)
+    }
+
+    pub fn is_coin(&self) -> bool {
+        self.stack.item.coin_value().is_some()
     }
 
     /// Physics and pull towards the player; returns true when collected.
@@ -173,8 +184,9 @@ impl Drop {
         let flat = Vec2::new(self.pos.x, self.pos.z);
         let to = player - flat;
         let d = to.length();
-        if can_take && self.age > 0.45 && d < 1.8 {
-            let pull = (1.8 - d + 0.5) * 7.0;
+        let range = if self.is_coin() { 2.4 } else { 1.8 };
+        if can_take && self.age > 0.45 && d < range {
+            let pull = (range - d + 0.5) * 7.0;
             let step = to.normalize_or_zero() * pull * dt;
             self.pos.x += step.x;
             self.pos.z += step.y;

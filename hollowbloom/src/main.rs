@@ -25,6 +25,7 @@ USAGE:
 OPTIONS:
     --mute          start without sound
     --shots DIR     render a tour of the game to PNG files in DIR (no window needed)
+    --wardrobe FILE render the hero in every piece of gear to one PNG
     --bench         measure rendering speed
     -h, --help      show this help
 
@@ -48,6 +49,14 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--palette-chart") {
         headless::palette_chart(args.get(i + 1).map(String::as_str).unwrap_or("palette.png"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--wardrobe") {
+        headless::wardrobe(
+            args.get(i + 1)
+                .map(String::as_str)
+                .unwrap_or("wardrobe.png"),
+        );
         return;
     }
     if args.iter().any(|a| a == "--bench") {

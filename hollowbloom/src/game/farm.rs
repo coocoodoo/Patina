@@ -1,7 +1,7 @@
 //! The farm: layout generation and the overnight update (growth, sprinklers, weeds).
 
 use super::items::Crop;
-use super::world::{Area, Floor, Obj, WATERED, Wall, World};
+use super::world::{Area, FERTILE, Floor, Obj, WATERED, Wall, World};
 use crate::util::{Rng, hash2};
 
 pub const FARM_W: i32 = 64;
@@ -15,6 +15,7 @@ pub struct Landmarks {
     pub hollow: (i32, i32),
     pub stall: (i32, i32),
     pub spawn: (i32, i32),
+    pub enchant: (i32, i32),
 }
 
 pub const MARKS: Landmarks = Landmarks {
@@ -24,6 +25,7 @@ pub const MARKS: Landmarks = Landmarks {
     hollow: (52, 17),
     stall: (44, 12),
     spawn: (29, 11),
+    enchant: (34, 9),
 };
 
 fn reserved(x: i32, z: i32) -> bool {
@@ -144,6 +146,7 @@ pub fn generate(seed: u64) -> World {
     w.set_obj(27, 10, Some(Obj::FlowerPot { var: 0 }));
     w.set_obj(33, 11, Some(Obj::Lamp));
     w.set_obj(24, 12, Some(Obj::Bench));
+    w.set_obj(MARKS.enchant.0, MARKS.enchant.1, Some(Obj::EnchantTable));
 
     // The Hollow entrance, 3x2, anchored at the opening.
     let (ex, ez) = MARKS.hollow;
@@ -279,6 +282,7 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
     for z in 0..w.h {
         for x in 0..w.w {
             let watered = rain || w.flag(x, z, WATERED);
+            let fertile = w.flag(x, z, FERTILE);
             if let Some(Obj::Crop {
                 crop,
                 days,
@@ -288,6 +292,10 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
                 let total = crop.def().days;
                 if watered && *days < total {
                     *days += 1;
+                    // Growth from an enchanted can: an extra day now and then.
+                    if fertile && *days < total {
+                        *days += 1;
+                    }
                     night.grown += 1;
                     if *days >= total {
                         night.ready += 1;
@@ -296,6 +304,7 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
                 let _ = harvested;
             }
             w.set_flag(x, z, WATERED, false);
+            w.set_flag(x, z, FERTILE, false);
             // Bare tilled soil sometimes settles back.
             if w.floor(x, z) == Floor::Tilled && w.obj(x, z).is_none() && r.chance(0.1) {
                 w.set_floor(x, z, Floor::Soil);

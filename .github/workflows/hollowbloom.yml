@@ -22,6 +22,9 @@ jobs:
       - name: Render the screenshot tour (no display needed)
         run: cargo run -p hollowbloom --release -- --shots shots
 
+      - name: Render the wardrobe
+        run: cargo run -p hollowbloom --release -- --wardrobe shots/wardrobe.png
+
       - uses: actions/upload-artifact@v4
         with:
           name: hollowbloom-screenshots

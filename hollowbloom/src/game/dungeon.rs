@@ -98,36 +98,51 @@ pub fn biome_seeds(biome: usize) -> &'static [(Item, f32)] {
     match biome {
         0 => &[
             (Item::CarrotSeeds, 5.0),
+            (Item::MossberrySeeds, 3.0),
+            (Item::BunnyrootSeeds, 3.0),
             (Item::GlowcapSpores, 2.5),
-            (Item::TurnipSeeds, 2.0),
+            (Item::TurnipSeeds, 1.5),
+            (Item::SeedPotato, 1.5),
             (Item::MelonSeeds, 0.8),
         ],
         1 => &[
             (Item::BerrySeeds, 5.0),
-            (Item::CarrotSeeds, 2.0),
+            (Item::PrismPearSeeds, 3.0),
+            (Item::GeodeGourdSeeds, 1.5),
             (Item::MelonSeeds, 1.5),
+            (Item::CarrotSeeds, 1.0),
             (Item::LilyBulb, 0.6),
         ],
         2 => &[
             (Item::PumpkinSeeds, 4.0),
+            (Item::PuffballSpores, 4.0),
             (Item::GlowcapSpores, 3.0),
-            (Item::MelonSeeds, 1.5),
+            (Item::JellySpores, 2.5),
+            (Item::MelonSeeds, 1.0),
+            (Item::TruffleSpores, 0.6),
         ],
         3 => &[
             (Item::PepperSeeds, 5.0),
-            (Item::PumpkinSeeds, 2.0),
-            (Item::MelonSeeds, 1.0),
+            (Item::FlameTulipBulb, 3.0),
+            (Item::LavaLemonSeeds, 3.0),
+            (Item::MagmaMelonSeeds, 1.0),
+            (Item::PumpkinSeeds, 1.0),
         ],
         4 => &[
             (Item::LilyBulb, 4.0),
-            (Item::BerrySeeds, 3.0),
+            (Item::SnowPeaSeeds, 4.0),
+            (Item::IcePlumSeeds, 3.0),
+            (Item::FrostMintSeeds, 3.0),
+            (Item::BerrySeeds, 1.5),
             (Item::MoonbloomSeeds, 0.4),
         ],
         _ => &[
+            (Item::GhostPepperSeeds, 3.0),
+            (Item::AncientGrainSeeds, 3.0),
             (Item::MoonbloomSeeds, 1.0),
-            (Item::PepperSeeds, 2.0),
-            (Item::LilyBulb, 2.0),
-            (Item::PumpkinSeeds, 2.0),
+            (Item::LilyBulb, 1.0),
+            (Item::StarfruitSeeds, 0.6),
+            (Item::TruffleSpores, 0.4),
         ],
     }
 }
@@ -321,6 +336,10 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
         let c = (stairs.0 + 2, stairs.1 + 1);
         world.set_wall(c.0, c.1, Wall::None);
         world.set_obj(c.0, c.1, Some(Obj::Campfire));
+        // A little enchanting table so travellers can bind their scrolls.
+        let t = (stairs.0 - 3, stairs.1);
+        world.set_wall(t.0, t.1, Wall::None);
+        world.set_obj(t.0, t.1, Some(Obj::EnchantTable));
         Some(p)
     } else {
         None

@@ -3,9 +3,8 @@
 use glam::{Mat4, Vec2, Vec3};
 
 use super::draw::{Pose, draw_humanoid};
-use super::dungeon::{Foe, biome_seeds};
+use super::dungeon::Foe;
 use super::fx::{Fx, Shot};
-use super::items::Item;
 use super::world::World;
 use crate::assets::Assets;
 use crate::palette::*;
@@ -47,6 +46,12 @@ pub struct Enemy {
     pub hops: u32,
     pub squash: f32,
     pub seed: u32,
+    /// Seconds of burning left, and how much each tick hurts.
+    pub burn: f32,
+    pub burn_dmg: i32,
+    pub burn_tick: f32,
+    /// Seconds of chill left (chilled foes move at half speed).
+    pub chill: f32,
 }
 
 pub struct Base {
@@ -134,6 +139,10 @@ impl Enemy {
             hops: 0,
             squash: 0.0,
             seed,
+            burn: 0.0,
+            burn_dmg: 0,
+            burn_tick: 0.5,
+            chill: 0.0,
         }
     }
 
@@ -491,51 +500,6 @@ impl Enemy {
         }
     }
 
-    /// Items this enemy leaves behind.
-    pub fn loot(&self, rng: &mut Rng) -> Vec<(Item, u16)> {
-        let mut out = Vec::new();
-        let mut roll = |item: Item, p: f32, lo: u16, hi: u16, out: &mut Vec<(Item, u16)>| {
-            if rng.chance(p) {
-                out.push((item, lo + rng.below((hi - lo + 1) as usize) as u16));
-            }
-        };
-        match self.foe {
-            Foe::Slime => roll(Item::SlimeGel, 0.75, 1, 2, &mut out),
-            Foe::Bat => roll(Item::BatWing, 0.55, 1, 1, &mut out),
-            Foe::Shroom => {
-                roll(Item::Spore, 0.5, 1, 2, &mut out);
-                roll(Item::GlowcapSpores, 0.12, 1, 2, &mut out);
-            }
-            Foe::Crab => roll(Item::Crystal, 0.4, 1, 2, &mut out),
-            Foe::Wisp => roll(Item::Spore, 0.45, 1, 2, &mut out),
-            Foe::Beetle => {
-                roll(Item::Amber, 0.15, 1, 1, &mut out);
-                roll(Item::Spore, 0.3, 1, 1, &mut out);
-            }
-            Foe::Imp => roll(Item::EmberOre, 0.3, 1, 2, &mut out),
-            Foe::Skeleton => {
-                roll(Item::Bone, 0.7, 1, 2, &mut out);
-                roll(Item::GoldOre, 0.2, 1, 2, &mut out);
-            }
-            Foe::Golem => {
-                roll(Item::Stone, 0.9, 3, 6, &mut out);
-                roll(Item::IronOre, 0.4, 1, 3, &mut out);
-                roll(Item::FrostGem, 0.12, 1, 1, &mut out);
-            }
-            Foe::Ghost => roll(Item::Spore, 0.5, 1, 2, &mut out),
-        }
-        let seeds = biome_seeds(self.biome);
-        if rng.chance(if self.boss { 1.0 } else { 0.1 }) {
-            let w: Vec<f32> = seeds.iter().map(|s| s.1).collect();
-            out.push((seeds[rng.weighted(&w)].0, if self.boss { 5 } else { 1 }));
-        }
-        if self.boss {
-            out.push((Item::HeartCrystal, 1));
-            out.push((Item::Feather, 1));
-        }
-        out
-    }
-
     pub fn color(&self) -> u8 {
         match (self.foe, self.biome) {
             (Foe::Slime, 0) => GREEN,
@@ -587,6 +551,8 @@ impl Enemy {
             o.mode = Mode::Solid(WHITE);
         } else if self.st == St::Windup && (self.anim * 20.0).sin() > 0.0 {
             o.glow = 1.3;
+        } else if self.burn > 0.0 {
+            o.glow = 0.9 + (self.anim * 12.0).sin() * 0.15;
         }
         if self.foe == Foe::Ghost {
             o.screen_door = true;
@@ -741,7 +707,7 @@ impl Enemy {
                     // Bosses are drawn at double size.
                     draw_humanoid_scaled(r, a, h, root, self.yaw, &pose, &ho, s);
                 } else {
-                    draw_humanoid(r, a, h, root, self.yaw, &pose, &ho, None, None);
+                    draw_humanoid(r, a, h, root, self.yaw, &pose, &ho, &Default::default());
                 }
             }
         }
@@ -769,5 +735,5 @@ fn draw_humanoid_scaled(
     big.neck *= s;
     big.shoulder_x *= s;
     big.hip_x *= s;
-    draw_humanoid(r, a, &big, pos, yaw, pose, o, None, None);
+    draw_humanoid(r, a, &big, pos, yaw, pose, o, &Default::default());
 }

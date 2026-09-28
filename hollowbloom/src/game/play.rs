@@ -1,22 +1,25 @@
 //! The playing state: the farm, the Hollow, and everything the player does in them.
 
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 
-use super::draw::{self, Env, Pose, Swing, draw_humanoid, full_uv};
+use super::combat::{Bolt, Flash};
+use super::draw::Env;
 use super::dungeon::{self, Level, biome_for, is_waystone_floor, ore_item};
 use super::farm::{self, MARKS};
 use super::foes::{Enemy, St, boss_name};
-use super::fx::{Drop, Fx, Shot, shot_colors};
-use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack, ToolKind};
+use super::fx::{Drop, Fx, Shot};
+use super::gear::{Class, Rarity, Stat};
+use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack};
+use super::loot::{self, Fortune};
 use super::menus::Menu;
-use super::player::{Act, ActKind, HOTBAR, Player, RADIUS, SPEED};
-use super::world::{Area, Floor, Obj, WATERED, Wall, World};
+use super::player::{Act, ActKind, HOTBAR, Player, RADIUS};
+use super::world::{Area, FERTILE, Floor, Obj, WATERED, Wall, World};
 use super::{Io, Settings};
-use crate::assets::{Assets, BIOME_STYLES};
+use crate::assets::BIOME_STYLES;
 use crate::audio::{Sfx, Song};
 use crate::input::Action;
 use crate::palette::*;
-use crate::render::{Camera, DrawOpts, Light, Mode, PointLight, Renderer, UvRect};
+use crate::render::Camera;
 use crate::util::{Rng, damp, hash2, wrap_angle};
 
 pub const MIN_PER_SEC: f32 = 1.55;
@@ -68,6 +71,7 @@ pub struct Toast {
     pub icon: Option<Item>,
     pub n: u32,
     pub t: f32,
+    pub color: u8,
 }
 
 pub struct Banner {
@@ -93,10 +97,17 @@ pub struct Play {
     pub foes: Vec<Enemy>,
     pub drops: Vec<Drop>,
     pub shots: Vec<Shot>,
+    /// The hero's wand bolts.
+    pub bolts: Vec<Bolt>,
+    /// Brief flashes of light from magic.
+    pub flashes: Vec<Flash>,
+    /// Burrowby's specials already bought today.
+    pub bought: Vec<usize>,
     pub fx: Fx,
     pub rng: Rng,
     pub clock: Clock,
-    pub gold: u64,
+    /// Money, counted in copper (10 copper = 1 silver, 100 copper = 1 gold).
+    pub money: u64,
     pub deepest: u32,
     pub waystones: Vec<u32>,
     pub shipping: Vec<Stack>,
@@ -113,6 +124,8 @@ pub struct Play {
     pub time: f32,
     pub target: Option<(i32, i32)>,
     pub target_ok: bool,
+    /// The ground point under the mouse, when aiming with it.
+    pub aim: Option<Vec2>,
     pub hint: Option<String>,
     pub sel_name_t: f32,
     pub revealed: Vec<bool>,
@@ -146,13 +159,16 @@ impl Play {
             foes: Vec::new(),
             drops: Vec::new(),
             shots: Vec::new(),
+            bolts: Vec::new(),
+            flashes: Vec::new(),
+            bought: Vec::new(),
             fx: Fx::default(),
             rng: Rng::new(seed ^ 0xC0FFEE),
             clock: Clock {
                 day: 1,
                 min: DAY_START + 60.0,
             },
-            gold: 150,
+            money: 150,
             deepest: 0,
             waystones: Vec::new(),
             shipping: Vec::new(),
@@ -175,6 +191,7 @@ impl Play {
             time: 0.0,
             target: None,
             target_ok: false,
+            aim: None,
             hint: None,
             sel_name_t: 0.0,
             revealed: Vec::new(),
@@ -194,10 +211,19 @@ impl Play {
         p.menu = Menu::dialog(
             "Welcome home! This little farm sits right on top of the Hollow, a cave that goes \
              down forever. Seeds from the deep grow up here, so delve, dig and plant.\n\
-             Till with the hoe, plant, water every day and sleep to let things grow. Every \
-             tenth floor down there, a waystone can bring you home.",
+             Till with the hoe, plant, water every day and sleep to let things grow. The \
+             Hollow is full of treasure: gear, coins and scrolls you can bind to your gear at \
+             the enchanting table by the house. Every tenth floor, a waystone brings you home.",
         );
         p
+    }
+
+    /// The hero's luck, for loot rolls.
+    pub fn fortune(&self) -> Fortune {
+        Fortune {
+            luck: self.player.luck(),
+            greed: self.player.greed(),
+        }
     }
 
     pub fn world(&self) -> &World {
@@ -222,11 +248,21 @@ impl Play {
     }
 
     pub fn toast(&mut self, text: impl Into<String>, icon: Option<Item>, n: u32) {
+        self.toast_colored(text, icon, n, CREAM);
+    }
+
+    pub fn toast_colored(
+        &mut self,
+        text: impl Into<String>,
+        icon: Option<Item>,
+        n: u32,
+        color: u8,
+    ) {
         let text = text.into();
         if let Some(t) = self
             .toasts
             .iter_mut()
-            .find(|t| t.icon.is_some() && t.icon == icon && t.t < 2.0)
+            .find(|t| t.icon.is_some() && t.icon == icon && t.text == text && t.t < 2.0)
         {
             t.n += n;
             t.t = 0.0;
@@ -237,6 +273,7 @@ impl Play {
             icon,
             n,
             t: 0.0,
+            color,
         });
         if self.toasts.len() > 5 {
             self.toasts.remove(0);
@@ -345,6 +382,7 @@ impl Play {
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
+        self.bolts.clear();
         let biome = biome_for(depth);
         for (i, s) in level.spawns.iter().enumerate() {
             self.foes.push(Enemy::new(
@@ -380,6 +418,7 @@ impl Play {
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
+        self.bolts.clear();
         self.area = Area::Farm;
         let (x, z) = MARKS.hollow;
         self.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 1.6);
@@ -398,9 +437,10 @@ impl Play {
         let day = self.clock.day;
         let mut earned = 0u64;
         for s in self.shipping.drain(..) {
-            earned += s.item.def().price as u64 * s.n as u64;
+            earned += s.value();
         }
-        self.gold += earned;
+        self.money += earned;
+        self.bought.clear();
         self.stats.earned += earned;
         let night = farm::new_day(&mut self.farm, day + 1, false);
         self.rain = Rng::new(self.seed ^ ((day as u64 + 1) * 31)).chance(0.18);
@@ -418,12 +458,15 @@ impl Play {
         self.clock.day += 1;
         self.clock.min = DAY_START;
         let p = &mut self.player;
+        p.buffs.clear();
+        p.refresh();
         p.energy = if passed_out {
-            p.max_energy as f32 * 0.6
+            p.max_energy() as f32 * 0.6
         } else {
-            p.max_energy as f32
+            p.max_energy() as f32
         };
-        p.hp = p.max_hp;
+        p.hp = p.max_hp();
+        p.mana = p.max_mana() as f32;
         p.water = p.can_capacity();
         let (dx, dz) = MARKS.door;
         p.pos = Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);
@@ -432,6 +475,7 @@ impl Play {
         self.level = None;
         self.foes.clear();
         self.shots.clear();
+        self.bolts.clear();
         self.drops.clear();
         self.area = Area::Farm;
         self.cam_pos = self.player.world_pos();
@@ -448,15 +492,18 @@ impl Play {
     }
 
     fn faint(&mut self) {
-        let lost = (self.gold / 10).min(1000);
-        self.gold -= lost;
+        let lost = (self.money / 10).min(1000);
+        self.money -= lost;
         self.sleep(true);
         if let Some(s) = &mut self.last_summary {
             s.fainted = true;
-            s.earned = s.earned.saturating_sub(0);
         }
-        self.toast(format!("Lost {lost}g while you were out"), None, 0);
-        self.player.hp = self.player.max_hp / 2;
+        self.toast(
+            format!("Lost {} while you were out", loot::money_text(lost)),
+            None,
+            0,
+        );
+        self.player.hp = self.player.max_hp() / 2;
     }
 
     // --------------------------------------------------------------------------------------
@@ -565,21 +612,16 @@ impl Play {
             self.select(n, io);
         }
 
+        self.player.refresh();
         self.update_player(io);
         self.update_foes(io);
+        self.update_statuses(dt, io);
+        self.update_bolts(dt, io);
         self.update_drops(io);
         self.update_cat(dt);
+        self.update_vitals(dt);
         self.fx.update(dt);
         self.shake = (self.shake - dt * 2.5).max(0.0);
-
-        // Regeneration while on the farm.
-        if self.area == Area::Farm
-            && self.player.hp < self.player.max_hp
-            && (self.time * 2.0) as i32 % 2 == 0
-            && self.time.fract() < dt * 2.0
-        {
-            self.player.hp += 1;
-        }
         if let Area::Hollow { .. } = self.area {
             self.reveal();
         }
@@ -589,6 +631,45 @@ impl Play {
             self.toast("You fainted!", None, 0);
             self.start_fade(Trans::Faint);
         }
+    }
+
+    /// Regeneration, mana, food buffs and magic flashes.
+    fn update_vitals(&mut self, dt: f32) {
+        let p = &mut self.player;
+        // Health: the Regen stat every five seconds, heartsip, and a slow trickle at home.
+        let mut rate = p.stat(Stat::Regen).max(0) as f32 / 5.0;
+        if self.area == Area::Farm {
+            rate += 1.0;
+        }
+        p.regen_acc += rate * dt;
+        if p.regen_acc >= 1.0 {
+            let heal = p.regen_acc.floor();
+            p.regen_acc -= heal;
+            if p.hp > 0 {
+                p.hp = (p.hp + heal as i32).min(p.max_hp());
+            }
+        }
+        let spirit = p.stat(Stat::Spirit).max(0) as f32;
+        p.mana = (p.mana + (2.5 + spirit * 0.3) * dt).min(p.max_mana() as f32);
+        p.no_mana_t = (p.no_mana_t - dt).max(0.0);
+        let mut ended = Vec::new();
+        for b in &mut p.buffs {
+            b.left -= dt;
+            if b.left <= 0.0 {
+                ended.push(b.from);
+            }
+        }
+        p.buffs.retain(|b| b.left > 0.0);
+        if !ended.is_empty() {
+            p.refresh();
+        }
+        for item in ended {
+            self.toast(format!("{} wore off", item.def().name), None, 0);
+        }
+        for f in &mut self.flashes {
+            f.t += dt;
+        }
+        self.flashes.retain(|f| f.t < 0.35);
     }
 
     fn select(&mut self, n: usize, io: &Io) {
@@ -659,7 +740,7 @@ impl Play {
             mv *= 0.25;
         }
         let tired = p.energy <= 0.0;
-        let speed = if tired { SPEED * 0.65 } else { SPEED };
+        let speed = p.move_speed() * if tired { 0.65 } else { 1.0 };
         if mv.length_squared() > 0.0 {
             p.pos = world.move_circle(p.pos, mv * speed * dt, RADIUS);
             if !busy {
@@ -725,13 +806,9 @@ impl Play {
     }
 
     fn held_repeats(&self) -> bool {
-        matches!(
-            self.player.held().and_then(|i| i.tool()),
-            Some((
-                ToolKind::Sword | ToolKind::Pickaxe | ToolKind::Axe | ToolKind::Hoe | ToolKind::Can,
-                _
-            ))
-        )
+        self.player
+            .held_class()
+            .is_some_and(|c| ActKind::for_class(c).is_some())
     }
 
     /// The tile the player is working on: the one under the mouse when it is close,
@@ -749,8 +826,10 @@ impl Play {
             }
         };
         let mut t = front;
+        self.aim = None;
         if input.mouse_aim {
             if let Some(g) = self.cam.ground(input.mouse.x, input.mouse.y, 0.0) {
+                self.aim = Some(Vec2::new(g.x, g.z));
                 let (mx, mz) = (g.x.floor() as i32, g.z.floor() as i32);
                 if (mx - px).abs() <= 1 && (mz - pz).abs() <= 1 {
                     t = (mx, mz);
@@ -783,54 +862,61 @@ impl Play {
             return false;
         };
         match item.def().kind {
-            Kind::Tool(ToolKind::Hoe, _) => {
-                self.area == Area::Farm
-                    && matches!(w.floor(x, z), Floor::Grass | Floor::Soil)
-                    && w.wall(x, z) == Wall::None
-                    && w.obj(x, z)
-                        .is_none_or(|o| matches!(o, Obj::Weed { .. } | Obj::Flower { .. }))
-            }
-            Kind::Tool(ToolKind::Can, _) => {
-                w.floor(x, z) == Floor::Tilled || w.floor(x, z) == Floor::Water
-            }
-            Kind::Tool(ToolKind::Pickaxe, _) => {
-                matches!(
-                    w.wall(x, z),
-                    Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Timber
-                ) || w.obj(x, z).is_some_and(|o| {
+            Kind::Gear(b) => match b.class {
+                Class::Hoe => {
+                    self.area == Area::Farm
+                        && matches!(w.floor(x, z), Floor::Grass | Floor::Soil)
+                        && w.wall(x, z) == Wall::None
+                        && w.obj(x, z)
+                            .is_none_or(|o| matches!(o, Obj::Weed { .. } | Obj::Flower { .. }))
+                }
+                Class::Can => w.floor(x, z) == Floor::Tilled || w.floor(x, z) == Floor::Water,
+                Class::Sickle => w.obj(x, z).is_some_and(|o| match o {
+                    Obj::Weed { .. } | Obj::Flower { .. } => true,
+                    Obj::Crop { crop, days, .. } => crop.stage(*days) == 3,
+                    _ => false,
+                }),
+                Class::Pickaxe => {
                     matches!(
-                        o,
-                        Obj::Rock { .. }
-                            | Obj::Boulder { .. }
-                            | Obj::Crystal { .. }
-                            | Obj::Stalagmite { .. }
-                            | Obj::Lamp
-                            | Obj::Sprinkler { .. }
-                            | Obj::FlowerPot { .. }
-                            | Obj::Torch
-                            | Obj::Chest { .. }
-                            | Obj::Pot { .. }
-                            | Obj::Crate { .. }
-                    )
-                }) || matches!(w.floor(x, z), Floor::Planks | Floor::Cobble)
-            }
-            Kind::Tool(ToolKind::Axe, _) => {
-                w.obj(x, z).is_some_and(|o| {
-                    matches!(
-                        o,
-                        Obj::Tree { .. }
-                            | Obj::Pine { .. }
-                            | Obj::Stump { .. }
-                            | Obj::Log { .. }
-                            | Obj::Fence
-                            | Obj::Bench
-                            | Obj::Workbench
-                            | Obj::Chest { .. }
-                            | Obj::Crate { .. }
-                            | Obj::Weed { .. }
-                    )
-                }) || w.wall(x, z) == Wall::Timber
-            }
+                        w.wall(x, z),
+                        Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Timber
+                    ) || w.obj(x, z).is_some_and(|o| {
+                        matches!(
+                            o,
+                            Obj::Rock { .. }
+                                | Obj::Boulder { .. }
+                                | Obj::Crystal { .. }
+                                | Obj::Stalagmite { .. }
+                                | Obj::Lamp
+                                | Obj::Sprinkler { .. }
+                                | Obj::FlowerPot { .. }
+                                | Obj::Torch
+                                | Obj::Chest { .. }
+                                | Obj::Pot { .. }
+                                | Obj::Crate { .. }
+                                | Obj::EnchantTable
+                        )
+                    }) || matches!(w.floor(x, z), Floor::Planks | Floor::Cobble)
+                }
+                Class::Axe => {
+                    w.obj(x, z).is_some_and(|o| {
+                        matches!(
+                            o,
+                            Obj::Tree { .. }
+                                | Obj::Pine { .. }
+                                | Obj::Stump { .. }
+                                | Obj::Log { .. }
+                                | Obj::Fence
+                                | Obj::Bench
+                                | Obj::Workbench
+                                | Obj::Chest { .. }
+                                | Obj::Crate { .. }
+                                | Obj::Weed { .. }
+                        )
+                    }) || w.wall(x, z) == Wall::Timber
+                }
+                _ => false,
+            },
             Kind::Seed(_) => {
                 self.area == Area::Farm && w.floor(x, z) == Floor::Tilled && w.obj(x, z).is_none()
             }
@@ -895,6 +981,7 @@ impl Play {
             Obj::StairsDown => "Descend",
             Obj::Waystone => "Touch the waystone",
             Obj::Workbench => "Craft",
+            Obj::EnchantTable => "Enchant",
             Obj::Crop { crop, days, .. } if crop.stage(*days) == 3 => "Harvest",
             Obj::Bench => "Sit",
             _ => return None,
@@ -912,31 +999,43 @@ impl Play {
         };
         let tile = self.target.unwrap_or(self.player.tile());
         let dir = self.player.facing;
-        let energy = |t: u8| 2.0 - t as f32 * 0.25;
-        let kind = match item.def().kind {
-            Kind::Tool(ToolKind::Sword, t) => Some((ActKind::Sword(t), 0.0)),
-            Kind::Tool(ToolKind::Pickaxe, t) => Some((ActKind::Pick(t), energy(t))),
-            Kind::Tool(ToolKind::Axe, t) => Some((ActKind::Axe(t), energy(t))),
-            Kind::Tool(ToolKind::Hoe, _) => Some((ActKind::Hoe, 2.0)),
-            Kind::Tool(ToolKind::Can, t) => Some((ActKind::Water, energy(t) * 0.7)),
-            _ => None,
-        };
-        if let Some((kind, cost)) = kind {
-            let p = &mut self.player;
-            p.energy = (p.energy - cost).max(-10.0);
-            p.act = Some(Act {
-                kind,
-                t: 0.0,
-                fired: false,
-                tile,
-                dir,
-            });
-            if matches!(kind, ActKind::Sword(_)) {
-                io.audio.play(Sfx::Swing);
-            }
+        let kind = item.class().and_then(ActKind::for_class);
+        let Some(kind) = kind else {
+            self.use_item(item, tile, io);
             return;
+        };
+        let p = &mut self.player;
+        match kind {
+            ActKind::Bolt | ActKind::Blast => {
+                let cost = p.mana_cost(if kind == ActKind::Bolt { 5.0 } else { 12.0 });
+                if p.mana < cost {
+                    if p.no_mana_t <= 0.0 {
+                        p.no_mana_t = 1.2;
+                        self.toast("Not enough mana.", None, 0);
+                        io.audio.play(Sfx::Denied);
+                    }
+                    return;
+                }
+                p.mana -= cost;
+            }
+            ActKind::Slash => {}
+            _ => {
+                let base = match kind {
+                    ActKind::Water => 1.4,
+                    ActKind::Reap => 1.2,
+                    _ => 2.0,
+                };
+                let cost = p.tool_cost(base);
+                p.energy = (p.energy - cost).max(-10.0);
+            }
         }
-        self.use_item(item, tile, io);
+        let dur = kind.base_duration() * p.haste();
+        p.act = Some(Act::new(kind, dur, tile, dir));
+        match kind {
+            ActKind::Slash | ActKind::Reap => io.audio.play(Sfx::Swing),
+            ActKind::Bolt | ActKind::Blast => io.audio.play_at(Sfx::Swing, 0.5, 1.4),
+            _ => {}
+        }
     }
 
     /// Non-tool items: plant, place, eat, special.
@@ -1001,13 +1100,34 @@ impl Play {
                     Placeable::Workbench => w.set_obj(x, z, Some(Obj::Workbench)),
                     Placeable::FlowerPot => w.set_obj(x, z, Some(Obj::FlowerPot { var: 0 })),
                     Placeable::Bench => w.set_obj(x, z, Some(Obj::Bench)),
+                    Placeable::EnchantTable => w.set_obj(x, z, Some(Obj::EnchantTable)),
                 }
                 io.audio.play(Sfx::Place);
                 self.fx
                     .burst(tile_center(x, z), 6, &[SAND, KHAKI], 1.2, 1.0);
             }
-            Kind::Produce { hp, energy } | Kind::Food { hp, energy } => {
-                self.eat(item, hp, energy, io)
+            Kind::Produce { hp, energy } => self.eat(item, hp, energy, 0, None, io),
+            Kind::Food {
+                hp,
+                energy,
+                mana,
+                buff,
+            } => self.eat(item, hp, energy, mana, buff, io),
+            Kind::Gear(b) if b.class.is_armor() => {
+                // Wear it straight from the hotbar.
+                if self.player.equip_from(sel) {
+                    io.audio.play(Sfx::Equip);
+                    self.toast(format!("Wearing {}", item.def().name), Some(item), 0);
+                    self.fx.motes(
+                        self.player.world_pos() + Vec3::Y * 0.5,
+                        8,
+                        &[WHITE, CREAM, SKY],
+                        0.3,
+                    );
+                }
+            }
+            Kind::Scroll(_) => {
+                self.toast("Bind scrolls at an enchanting table.", None, 0);
             }
             Kind::Feather => {
                 if let Area::Hollow { .. } = self.area {
@@ -1022,8 +1142,8 @@ impl Play {
             }
             Kind::HeartCrystal => {
                 self.player.inv.take_one(sel);
-                self.player.max_hp += 10;
-                self.player.hp = self.player.max_hp;
+                self.player.base_hp += 10;
+                self.player.hp = self.player.max_hp();
                 io.audio.play(Sfx::LevelUp);
                 self.fx
                     .motes(self.player.world_pos(), 16, &[PINK, BLUSH, WHITE], 0.4);
@@ -1031,30 +1151,55 @@ impl Play {
             }
             Kind::SunStone => {
                 self.player.inv.take_one(sel);
-                self.player.max_energy += 15;
-                self.player.energy = self.player.max_energy as f32;
+                self.player.base_energy += 15;
+                self.player.energy = self.player.max_energy() as f32;
                 io.audio.play(Sfx::LevelUp);
                 self.fx
                     .motes(self.player.world_pos(), 16, &[GOLD, CREAM, WHITE], 0.4);
                 self.toast("Max energy +15", None, 0);
             }
+            Kind::WishStar => {
+                self.player.inv.take_one(sel);
+                self.player.base_mana += 10;
+                self.player.mana = self.player.max_mana() as f32;
+                io.audio.play(Sfx::LevelUp);
+                self.fx
+                    .motes(self.player.world_pos(), 16, &[LAVENDER, BLUSH, WHITE], 0.4);
+                self.toast("Max mana +10", None, 0);
+            }
             _ => {}
         }
     }
 
-    fn eat(&mut self, item: Item, hp: i32, energy: i32, io: &mut Io) {
+    fn eat(
+        &mut self,
+        item: Item,
+        hp: i32,
+        energy: i32,
+        mana: i32,
+        buff: Option<super::items::Buff>,
+        io: &mut Io,
+    ) {
         let p = &mut self.player;
         if p.eat_t > 0.0 {
             return;
         }
-        if p.hp >= p.max_hp && p.energy >= p.max_energy as f32 {
+        let full = p.hp >= p.max_hp()
+            && p.energy >= p.max_energy() as f32
+            && (mana == 0 || p.mana >= p.max_mana() as f32);
+        if full && buff.is_none() {
             self.toast("You're full.", None, 0);
             return;
         }
         let sel = p.sel;
         p.inv.take_one(sel);
-        p.hp = (p.hp + hp).min(p.max_hp);
-        p.energy = (p.energy + energy as f32).min(p.max_energy as f32);
+        if let Some(b) = buff {
+            p.add_buff(b, item);
+            p.refresh();
+        }
+        p.hp = (p.hp + hp).min(p.max_hp());
+        p.energy = (p.energy + energy as f32).min(p.max_energy() as f32);
+        p.mana = (p.mana + mana as f32).min(p.max_mana() as f32);
         p.eat_t = 0.6;
         io.audio.play(Sfx::Eat);
         let pos = p.world_pos() + Vec3::Y * 0.9;
@@ -1065,7 +1210,29 @@ impl Play {
             self.fx
                 .popup(pos + Vec3::new(0.3, 0.2, 0.0), format!("+{energy}"), GOLD);
         }
-        self.toast(format!("Ate {}", item.def().name), None, 0);
+        if mana > 0 {
+            self.fx.popup(
+                pos + Vec3::new(-0.3, 0.2, 0.0),
+                format!("+{mana}"),
+                LAVENDER,
+            );
+        }
+        match buff {
+            Some(b) => {
+                self.fx.motes(
+                    self.player.world_pos() + Vec3::Y * 0.4,
+                    10,
+                    &[b.stat.def().color, WHITE],
+                    0.3,
+                );
+                self.toast(
+                    format!("{}: {}", item.def().name, b.stat.line(b.val as i32)),
+                    Some(item),
+                    0,
+                );
+            }
+            None => self.toast(format!("Ate {}", item.def().name), None, 0),
+        }
     }
 
     fn interact(&mut self, io: &mut Io) {
@@ -1101,7 +1268,7 @@ impl Play {
         }
         // Nothing there: use the held item (eat, plant, place).
         if let Some(item) = self.player.held() {
-            if item.tool().is_none() {
+            if item.class().and_then(ActKind::for_class).is_none() {
                 self.use_item(item, (tx, tz), io);
             }
         }
@@ -1124,11 +1291,7 @@ impl Play {
             }
             Obj::Bin => self.menu = Menu::Ship { cursor: 0 },
             Obj::Stall => {
-                self.menu = Menu::Shop {
-                    cursor: 0,
-                    sell: false,
-                    scroll: 0,
-                };
+                self.menu = Menu::shop();
             }
             Obj::Hollow => {
                 let mut floors = vec![1];
@@ -1143,6 +1306,7 @@ impl Play {
                 }
             }
             Obj::Workbench => self.menu = Menu::inventory(true),
+            Obj::EnchantTable => self.menu = Menu::enchant(),
             Obj::Sign { text } => {
                 let msg = match text {
                     0 => {
@@ -1155,7 +1319,7 @@ impl Play {
             Obj::LootChest { opened: false } => {
                 self.world_mut()
                     .set_obj(ax, az, Some(Obj::LootChest { opened: true }));
-                self.open_loot(ax, az);
+                self.open_loot(ax, az, io);
                 io.audio.play(Sfx::Chest);
             }
             Obj::StairsDown => {
@@ -1210,7 +1374,8 @@ impl Play {
                     0.2,
                 );
                 self.toast("Ahh, a nice rest.", None, 0);
-                self.player.energy = (self.player.energy + 5.0).min(self.player.max_energy as f32);
+                self.player.energy =
+                    (self.player.energy + 5.0).min(self.player.max_energy() as f32);
             }
             _ => return false,
         }
@@ -1222,7 +1387,12 @@ impl Play {
 
     fn harvest(&mut self, x: i32, z: i32, crop: Crop, io: &mut Io) {
         let def = crop.def();
-        let n = 1 + self.rng.below(def.yield_max as usize) as u16;
+        let mut n = 1 + self.rng.below(def.yield_max as usize) as u16;
+        if self.rng.chance(self.player.sheet.frac(Stat::Bounty, 90)) {
+            n += 1;
+            self.fx
+                .popup(tile_center(x, z) + Vec3::Y * 0.8, "Bounty!", ORANGE);
+        }
         let mut left = self.player.inv.add(def.produce, n);
         if left > 0 {
             let at = tile_center(x, z);
@@ -1234,13 +1404,13 @@ impl Play {
         } else {
             self.toast(def.produce.def().name, Some(def.produce), n as u32);
         }
-        // Dungeon crops sometimes give a seed back.
-        if crop != Crop::Turnip && self.rng.chance(0.12) {
-            let seed = super::items::ALL_ITEMS
-                .iter()
-                .copied()
-                .find(|i| matches!(i.def().kind, Kind::Seed(c) if c == crop));
-            if let Some(s) = seed {
+        // Crops sometimes give a seed back.
+        if crop != Crop::Turnip
+            && self
+                .rng
+                .chance(0.12 + self.player.sheet.frac(Stat::Forage, 60))
+        {
+            if let Some(s) = Item::seed_of(crop) {
                 if self.player.inv.add(s, 1) == 0 {
                     self.toast(s.def().name, Some(s), 1);
                 }
@@ -1269,63 +1439,40 @@ impl Play {
         );
     }
 
-    fn open_loot(&mut self, x: i32, z: i32) {
+    fn open_loot(&mut self, x: i32, z: i32, io: &mut Io) {
         let depth = self.depth().max(1);
-        let biome = biome_for(depth);
         let at = tile_center(x, z);
-        let seeds = dungeon::biome_seeds(biome);
-        let w: Vec<f32> = seeds.iter().map(|s| s.1).collect();
-        let mut loot: Vec<(Item, u16)> = Vec::new();
-        loot.push((seeds[self.rng.weighted(&w)].0, 2 + self.rng.below(3) as u16));
-        let ores = [
-            Item::CopperOre,
-            Item::IronOre,
-            Item::GoldOre,
-            Item::Crystal,
-            Item::EmberOre,
-            Item::FrostGem,
-        ];
-        let top = ((depth / 9) as usize).min(5);
-        loot.push((ores[self.rng.below(top + 1)], 3 + self.rng.below(4) as u16));
-        let foods = [
-            Item::HealingTonic,
-            Item::VeggieStew,
-            Item::StaminaTonic,
-            Item::GlowSoup,
-        ];
-        loot.push((foods[self.rng.below(foods.len())], 1));
-        if self.rng.chance(0.25) {
-            loot.push((Item::Feather, 1));
-        }
-        if self.rng.chance(0.06 + depth as f32 * 0.002) {
-            loot.push((
-                if self.rng.chance(0.5) {
-                    Item::HeartCrystal
-                } else {
-                    Item::SunStone
-                },
-                1,
-            ));
-        }
-        if self.rng.chance(0.2) {
-            loot.push((Item::Amber, 1));
-        }
-        for (item, n) in loot {
-            self.drops.push(Drop::item(item, n, at, &mut self.rng));
-        }
-        let gold = 10 + depth * 4 + self.rng.below(20) as u32;
-        self.drops.push(Drop::coins(gold, at, &mut self.rng));
+        let fortune = self.fortune();
+        let loot = loot::chest_loot(depth, biome_for(depth), fortune, &mut self.rng);
+        self.spill(loot, at, io);
         self.fx
             .motes(at + Vec3::Y * 0.4, 16, &[GOLD, CREAM, WHITE], 0.4);
     }
 
-    /// The moment a swing connects.
+    /// Throws loot out onto the floor, with a chime for anything rare.
+    pub fn spill(&mut self, loot: Vec<Stack>, at: Vec3, io: &mut Io) {
+        let mut best = None;
+        for s in loot {
+            best = best.max(s.rarity());
+            self.drops.push(Drop::new(s, at, &mut self.rng));
+        }
+        if best >= Some(Rarity::Rare) {
+            io.audio.play(Sfx::Rare);
+        }
+    }
+
+    /// The moment a swing, cast or tool use connects.
     fn fire(&mut self, kind: ActKind, (x, z): (i32, i32), dir: Vec2, io: &mut Io) {
         match kind {
-            ActKind::Sword(t) => {
-                let dmg = self.player.sword_damage(t);
-                let reach = 1.35 + t as f32 * 0.05;
-                let hits = self.melee(dmg, reach, 1.15, dir, io);
+            ActKind::Slash => {
+                let dmg = self.player.weapon_damage();
+                let lvl = self
+                    .player
+                    .held_stack()
+                    .and_then(|s| s.gear)
+                    .map_or(1, |g| g.level);
+                let reach = 1.35 + (lvl as f32 / 60.0).min(1.0) * 0.25;
+                let hits = self.melee(dmg, reach, 1.15, dir, 6.0, io);
                 // Cut grass and smash pots in the arc.
                 let p = self.player.pos;
                 for (dx, dz) in [(0.0, 0.0), (0.7, 0.0), (-0.7, 0.0), (0.0, 0.7), (0.0, -0.7)] {
@@ -1337,146 +1484,125 @@ impl Play {
                     self.hit_soft(x, z, io);
                 }
             }
-            ActKind::Pick(t) => {
-                let power = 2 + t as i32 * 2;
-                if self.melee(
-                    self.player.sword_damage(0) / 2 + t as i32 * 2,
-                    1.0,
-                    0.9,
-                    dir,
-                    io,
-                ) == 0
-                {
+            ActKind::Bolt => self.cast_bolt(dir, io),
+            ActKind::Blast => {
+                let at = self.blast_point(dir);
+                self.cast_blast(at, io);
+            }
+            ActKind::Mine => {
+                let dmg = self.player.weapon_damage();
+                if self.melee(dmg, 1.0, 0.9, dir, 4.0, io) == 0 {
+                    let power = self.player.tool_power();
                     self.mine(x, z, power, io);
                 }
             }
-            ActKind::Axe(t) => {
-                let power = 2 + t as i32 * 2;
-                if self.melee(
-                    self.player.sword_damage(0) / 2 + t as i32 * 2,
-                    1.0,
-                    0.9,
-                    dir,
-                    io,
-                ) == 0
-                {
+            ActKind::Chop => {
+                let dmg = self.player.weapon_damage();
+                if self.melee(dmg, 1.0, 0.9, dir, 4.0, io) == 0 {
+                    let power = self.player.tool_power();
                     self.chop(x, z, power, io);
                 }
             }
-            ActKind::Hoe => self.till(x, z, io),
-            ActKind::Water => self.water(x, z, io),
+            ActKind::Till => {
+                let n = self
+                    .player
+                    .held_stack()
+                    .and_then(|s| s.main_value())
+                    .unwrap_or(1)
+                    + self.player.reach();
+                for (tx, tz) in self.line((x, z), n) {
+                    self.till(tx, tz, io);
+                }
+            }
+            ActKind::Water => {
+                let n = 1 + self.player.reach();
+                if self.world().floor(x, z) == Floor::Water {
+                    self.water(x, z, io);
+                } else {
+                    for (tx, tz) in self.line((x, z), n) {
+                        if self.world().floor(tx, tz) != Floor::Water {
+                            self.water(tx, tz, io);
+                        }
+                    }
+                }
+            }
+            ActKind::Reap => self.reap_patch((x, z), dir, io),
         }
     }
 
-    /// Hits enemies in an arc. Returns how many were hit.
-    fn melee(&mut self, dmg: i32, reach: f32, half_angle: f32, dir: Vec2, io: &mut Io) -> usize {
+    /// Where a staff blast lands: under the mouse when it is close, otherwise ahead.
+    fn blast_point(&self, dir: Vec2) -> Vec2 {
         let p = self.player.pos;
-        let mut hits = 0;
-        let mut xp = 0;
-        let mut dead = Vec::new();
-        for (i, f) in self.foes.iter_mut().enumerate() {
-            let d = f.pos - p;
-            let dist = d.length();
-            if dist > reach + f.radius || f.hurt_cd > 0.0 {
-                continue;
-            }
-            let ang = d.normalize_or_zero().angle_to(dir).abs();
-            if dist > 0.4 && ang > half_angle {
-                continue;
-            }
-            let crit = self.rng.chance(0.08);
-            let amount = if crit { dmg * 2 } else { dmg } + self.rng.below(3) as i32;
-            f.hp -= amount;
-            f.flash = 0.12;
-            f.hurt_cd = 0.22;
-            let heavy = if f.boss || f.foe == dungeon::Foe::Golem {
-                0.3
-            } else {
-                1.0
-            };
-            f.vel = d.normalize_or_zero() * 6.0 * heavy;
-            if f.st == St::Windup && !f.boss {
-                f.st = St::Rest;
-                f.t = 0.4;
-            }
-            f.alert = true;
-            hits += 1;
-            self.fx.popup(
-                f.world_pos() + Vec3::Y * (0.7 * f.scale()),
-                amount.to_string(),
-                if crit { GOLD } else { WHITE },
-            );
-            self.fx.burst(
-                f.world_pos() + Vec3::Y * 0.3,
-                6,
-                &[WHITE, CREAM, f.color()],
-                2.5,
-                1.5,
-            );
-            if f.hp <= 0 {
-                dead.push(i);
-                xp += f.xp;
-            }
+        let ahead = p + dir.normalize_or_zero() * 2.4;
+        let mut at = match self.aim {
+            Some(a) if (a - p).length() < 4.5 => a,
+            _ => ahead,
+        };
+        // Keep it on this side of walls.
+        let w = self.world();
+        if !w.clear_line(p, at) || w.opaque(at.x.floor() as i32, at.y.floor() as i32) {
+            at = p + dir.normalize_or_zero() * 1.2;
         }
-        if hits > 0 {
-            io.audio.play(Sfx::Hit);
-            io.audio.play_at(Sfx::EnemyHurt, 0.8, 1.0);
-            self.shake = self.shake.max(0.35);
-        }
-        for i in dead.into_iter().rev() {
-            let f = self.foes.remove(i);
-            self.kill(f, io);
-        }
-        if xp > 0 {
-            let ups = self.player.gain_xp(xp);
-            if ups > 0 {
-                io.audio.play(Sfx::LevelUp);
-                self.fx
-                    .popup_big(self.player.world_pos() + Vec3::Y * 1.2, "LEVEL UP!", GOLD);
-                self.fx
-                    .motes(self.player.world_pos(), 20, &[GOLD, CREAM, WHITE], 0.5);
-                self.toast(
-                    format!("Level {}! Max HP {}", self.player.level, self.player.max_hp),
-                    None,
-                    0,
-                );
-            }
-        }
-        hits
+        at
     }
 
-    fn kill(&mut self, f: Enemy, io: &mut Io) {
-        io.audio.play(Sfx::EnemyDie);
-        let at = f.world_pos();
-        self.fx.burst(
-            at + Vec3::Y * 0.3,
-            if f.boss { 40 } else { 14 },
-            &[f.color(), WHITE, CREAM],
-            3.0,
-            2.5,
-        );
-        for (item, n) in f.loot(&mut self.rng) {
-            self.drops.push(Drop::item(item, n, at, &mut self.rng));
+    /// `n` tiles in a row, starting at `start` and heading away from the hero.
+    fn line(&self, start: (i32, i32), n: i32) -> Vec<(i32, i32)> {
+        let (px, pz) = self.player.tile();
+        let (mut dx, mut dz) = (start.0 - px, start.1 - pz);
+        if dx == 0 && dz == 0 {
+            let f = self.player.facing;
+            if f.x.abs() > f.y.abs() {
+                dx = f.x.signum() as i32;
+            } else {
+                dz = f.y.signum() as i32;
+            }
+        } else if dx != 0 && dz != 0 {
+            // Diagonal: go along the stronger facing axis.
+            let f = self.player.facing;
+            if f.x.abs() > f.y.abs() {
+                dz = 0;
+            } else {
+                dx = 0;
+            }
         }
-        let depth = self.depth().max(1);
-        if self.rng.chance(0.6) || f.boss {
-            let g = 1 + self.rng.below(3 + depth as usize) as u32 * if f.boss { 12 } else { 1 };
-            self.drops.push(Drop::coins(g, at, &mut self.rng));
+        (0..n.max(1))
+            .map(|k| (start.0 + dx.signum() * k, start.1 + dz.signum() * k))
+            .collect()
+    }
+
+    /// A sickle sweep: harvests ripe crops and cuts grass in a patch in front, and nicks
+    /// anything in the way.
+    fn reap_patch(&mut self, (x, z): (i32, i32), dir: Vec2, io: &mut Io) {
+        let dmg = self.player.weapon_damage();
+        self.melee(dmg, 1.4, 1.3, dir, 4.0, io);
+        let r = 1 + self.player.reach() / 2;
+        let mut any = false;
+        for dz in -r..=r {
+            for dx in -r..=r {
+                let (tx, tz) = (x + dx, z + dz);
+                match self.world().obj(tx, tz).cloned() {
+                    Some(Obj::Crop { crop, days, .. }) if crop.stage(days) == 3 => {
+                        if self.area == Area::Farm {
+                            self.harvest(tx, tz, crop, io);
+                            any = true;
+                        }
+                    }
+                    Some(Obj::Weed { .. } | Obj::Flower { .. }) => {
+                        self.hit_soft(tx, tz, io);
+                        any = true;
+                    }
+                    _ => {}
+                }
+            }
         }
-        self.stats.kills += 1;
-        if f.boss {
-            self.toast(format!("{} defeated!", boss_name(f.foe)), None, 0);
-            self.banner = Some(Banner {
-                title: "Guardian defeated".into(),
-                sub: "The waystone awakens".into(),
-                t: 0.0,
-            });
-            self.shake = 1.2;
+        if !any {
+            self.hit_soft(x, z, io);
         }
     }
 
     /// Sword/any-hit things: weeds, flowers, pots, crates.
-    fn hit_soft(&mut self, x: i32, z: i32, io: &mut Io) {
+    pub fn hit_soft(&mut self, x: i32, z: i32, io: &mut Io) {
         let Some(o) = self.world().obj(x, z).cloned() else {
             return;
         };
@@ -1490,9 +1616,12 @@ impl Play {
                     self.drops
                         .push(Drop::item(Item::Fiber, 1, at, &mut self.rng));
                 }
-                if self.rng.chance(0.04) {
-                    self.drops
-                        .push(Drop::item(Item::TurnipSeeds, 1, at, &mut self.rng));
+                if self
+                    .rng
+                    .chance(0.04 + self.player.sheet.frac(Stat::Forage, 60) * 0.5)
+                {
+                    let seed = self.forage_seed();
+                    self.drops.push(Drop::item(seed, 1, at, &mut self.rng));
                 }
                 io.audio.play_at(Sfx::Swing, 0.5, 1.4);
             }
@@ -1514,33 +1643,39 @@ impl Play {
                     [CLAY, RUST, SAND]
                 };
                 self.fx.burst(at + Vec3::Y * 0.3, 12, &col, 2.5, 2.0);
-                self.breakable_loot(at);
+                let depth = self.depth().max(1);
+                let fortune = self.fortune();
+                let loot = loot::pot_loot(depth, biome_for(depth), fortune, &mut self.rng);
+                self.spill(loot, at, io);
             }
             _ => {}
         }
     }
 
-    fn breakable_loot(&mut self, at: Vec3) {
-        let depth = self.depth().max(1);
-        let r = self.rng.f32();
-        if r < 0.45 {
-            let g = 1 + self.rng.below(2 + depth as usize / 2) as u32;
-            self.drops.push(Drop::coins(g, at, &mut self.rng));
-        } else if r < 0.6 {
-            let seeds = dungeon::biome_seeds(biome_for(depth));
-            let w: Vec<f32> = seeds.iter().map(|s| s.1).collect();
-            let s = seeds[self.rng.weighted(&w)].0;
-            self.drops.push(Drop::item(s, 1, at, &mut self.rng));
-        } else if r < 0.72 {
-            self.drops
-                .push(Drop::item(Item::Torch, 2, at, &mut self.rng));
-        } else if r < 0.8 {
-            self.drops
-                .push(Drop::item(Item::HealingTonic, 1, at, &mut self.rng));
-        } else if r < 0.9 {
-            self.drops
-                .push(Drop::item(Item::SlimeGel, 1, at, &mut self.rng));
+    /// A seed found while working: from the Hollow's biome, or the valley's own on the farm.
+    fn forage_seed(&mut self) -> Item {
+        match self.area {
+            Area::Hollow { depth } => loot::biome_seed(biome_for(depth), &mut self.rng),
+            Area::Farm => {
+                let seeds = [
+                    Item::TurnipSeeds,
+                    Item::RadishSeeds,
+                    Item::WheatSeeds,
+                    Item::SeedPotato,
+                    Item::PeaSeeds,
+                    Item::GarlicBulb,
+                    Item::RoseSeeds,
+                    Item::CarrotSeeds,
+                ];
+                seeds[self.rng.below(seeds.len())]
+            }
         }
+    }
+
+    /// A lucky extra drop (Bounty) when breaking something.
+    fn bounty(&mut self) -> bool {
+        let b = self.player.sheet.frac(Stat::Bounty, 90);
+        b > 0.0 && self.rng.chance(b)
     }
 
     fn mine(&mut self, x: i32, z: i32, power: i32, io: &mut Io) {
@@ -1570,24 +1705,39 @@ impl Play {
                 self.world_mut().set_wall(x, z, Wall::None);
                 io.audio.play(Sfx::Break);
                 self.fx.burst(at + Vec3::Y * 0.5, 14, &chips, 3.0, 2.0);
+                let forage = self.player.sheet.frac(Stat::Forage, 60);
                 match wall {
                     Wall::Ore(o) => {
-                        let n = 1 + self.rng.below(2) as u16;
+                        let n = 1 + self.rng.below(2) as u16 + u16::from(self.bounty());
                         self.drops
                             .push(Drop::item(ore_item(o), n, at, &mut self.rng));
                         if self.rng.chance(0.5) {
                             self.drops
                                 .push(Drop::item(Item::Stone, 1, at, &mut self.rng));
                         }
+                        if self.rng.chance(0.06 + forage) {
+                            let gem = loot::random_gem(depth, &mut self.rng);
+                            self.drops.push(Drop::item(gem, 1, at, &mut self.rng));
+                            self.fx.motes(at + Vec3::Y * 0.5, 8, &[WHITE, CREAM], 0.3);
+                        }
                     }
                     Wall::Rock => {
                         if self.rng.chance(0.55) {
+                            let n = 1 + u16::from(self.bounty());
                             self.drops
-                                .push(Drop::item(Item::Stone, 1, at, &mut self.rng));
+                                .push(Drop::item(Item::Stone, n, at, &mut self.rng));
                         }
                         if self.rng.chance(0.03) {
                             self.drops
                                 .push(Drop::item(Item::Amber, 1, at, &mut self.rng));
+                        }
+                        if self.rng.chance(0.012 + forage * 0.25) {
+                            let gem = loot::random_gem(depth, &mut self.rng);
+                            self.drops.push(Drop::item(gem, 1, at, &mut self.rng));
+                        }
+                        if self.rng.chance(0.004 + forage * 0.02) {
+                            let relic = loot::random_relic(depth, &mut self.rng);
+                            self.drops.push(Drop::item(relic, 1, at, &mut self.rng));
                         }
                     }
                     Wall::Brick => {
@@ -1633,12 +1783,19 @@ impl Play {
                 if hp <= 0 {
                     self.world_mut().set_obj(x, z, None);
                     io.audio.play(Sfx::Break);
-                    let n = 1 + self.rng.below(2) as u16;
+                    let n = 1 + self.rng.below(2) as u16 + u16::from(self.bounty());
                     self.drops
                         .push(Drop::item(Item::Stone, n, at, &mut self.rng));
                     if self.area == Area::Farm && self.rng.chance(0.15) {
                         self.drops
                             .push(Drop::item(Item::CopperOre, 1, at, &mut self.rng));
+                    }
+                    if self
+                        .rng
+                        .chance(0.015 + self.player.sheet.frac(Stat::Forage, 60) * 0.3)
+                    {
+                        let gem = loot::random_gem(depth.max(1), &mut self.rng);
+                        self.drops.push(Drop::item(gem, 1, at, &mut self.rng));
                     }
                 } else {
                     self.world_mut().set_obj(x, z, Some(Obj::Rock { hp, var }));
@@ -1676,8 +1833,12 @@ impl Play {
                         4 => Item::FrostGem,
                         _ => Item::Crystal,
                     };
-                    let n = 1 + self.rng.below(2) as u16;
+                    let n = 1 + self.rng.below(2) as u16 + u16::from(self.bounty());
                     self.drops.push(Drop::item(item, n, at, &mut self.rng));
+                    if self.rng.chance(0.08) {
+                        let gem = loot::random_gem(depth.max(1), &mut self.rng);
+                        self.drops.push(Drop::item(gem, 1, at, &mut self.rng));
+                    }
                 } else {
                     self.world_mut()
                         .set_obj(x, z, Some(Obj::Crystal { hp, var }));
@@ -1696,7 +1857,8 @@ impl Play {
             | Obj::Sprinkler { .. }
             | Obj::FlowerPot { .. }
             | Obj::Torch
-            | Obj::Chest { .. } => {
+            | Obj::Chest { .. }
+            | Obj::EnchantTable => {
                 self.pick_up(x, z, o, io);
             }
             _ => {}
@@ -1727,12 +1889,23 @@ impl Play {
                     self.world_mut().set_obj(x, z, Some(Obj::Stump { hp: 6 }));
                     io.audio.play(Sfx::Break);
                     self.shake = 0.5;
-                    let n = 4 + self.rng.below(3) as u16;
+                    let n = 4 + self.rng.below(3) as u16 + 3 * u16::from(self.bounty());
                     self.drops
                         .push(Drop::item(Item::Wood, n, at, &mut self.rng));
                     if self.rng.chance(0.25) {
                         self.drops
                             .push(Drop::item(Item::Fiber, 2, at, &mut self.rng));
+                    }
+                    if self
+                        .rng
+                        .chance(0.05 + self.player.sheet.frac(Stat::Forage, 60))
+                    {
+                        let seed = self.forage_seed();
+                        self.drops.push(Drop::item(seed, 1, at, &mut self.rng));
+                    }
+                    if self.rng.chance(0.01) {
+                        self.drops
+                            .push(Drop::item(Item::GoldenAcorn, 1, at, &mut self.rng));
                     }
                     self.fx.burst(at + Vec3::Y * 1.2, 20, &leaves, 2.5, 1.0);
                 } else {
@@ -1794,10 +1967,11 @@ impl Play {
             Obj::Workbench => Item::Workbench,
             Obj::Chest { items } => {
                 for s in items.iter().flatten() {
-                    self.drops.push(Drop::item(s.item, s.n, at, &mut self.rng));
+                    self.drops.push(Drop::new(*s, at, &mut self.rng));
                 }
                 Item::Chest
             }
+            Obj::EnchantTable => Item::EnchantTable,
             _ => return,
         };
         self.world_mut().set_obj(x, z, None);
@@ -1823,9 +1997,14 @@ impl Play {
             io.audio.play(Sfx::Till);
             self.fx
                 .burst(at + Vec3::Y * 0.05, 8, &[RUST, CLAY, MAROON], 1.6, 1.8);
-            if self.rng.chance(0.03) {
-                self.drops
-                    .push(Drop::item(Item::CarrotSeeds, 1, at, &mut self.rng));
+            let forage = self.player.sheet.frac(Stat::Forage, 60);
+            if self.rng.chance(0.03 + forage * 0.4) {
+                let seed = self.forage_seed();
+                self.drops.push(Drop::item(seed, 1, at, &mut self.rng));
+            }
+            if self.rng.chance(0.004 + forage * 0.02) {
+                let relic = loot::random_relic(1, &mut self.rng);
+                self.drops.push(Drop::item(relic, 1, at, &mut self.rng));
             }
         }
     }
@@ -1852,6 +2031,12 @@ impl Play {
             .burst(at + Vec3::Y * 0.4, 10, &[WHITE, SKY, BLUE], 1.2, 0.5);
         if floor == Floor::Tilled {
             self.world_mut().set_flag(x, z, WATERED, true);
+            let growth = self.player.sheet.frac(Stat::Growth, 60);
+            if growth > 0.0 && self.rng.chance(growth) {
+                self.world_mut().set_flag(x, z, FERTILE, true);
+                self.fx
+                    .motes(at + Vec3::Y * 0.2, 5, &[LIME, MINT, WHITE], 0.25);
+            }
         }
     }
 
@@ -1873,8 +2058,10 @@ impl Play {
         let before = shots.len();
         for f in self.foes.iter_mut() {
             let was_alert = f.alert;
+            // Chilled creatures move (and think) at half speed.
+            let fdt = if f.chill > 0.0 { dt * 0.5 } else { dt };
             f.update(
-                dt,
+                fdt,
                 world,
                 ppos,
                 &mut shots,
@@ -1911,11 +2098,11 @@ impl Play {
             self.foes.extend(spawns);
         }
         // Contact damage.
-        let mut hurt: Option<(i32, Vec2)> = None;
-        for f in &self.foes {
+        let mut hurt: Option<(i32, Vec2, Option<usize>)> = None;
+        for (i, f) in self.foes.iter().enumerate() {
             let d = ppos - f.pos;
-            if d.length() < f.radius + RADIUS && f.grounded() && f.flash <= 0.0 {
-                hurt = Some((f.dmg, d.normalize_or_zero()));
+            if d.length() < f.radius + RADIUS && f.grounded() && f.flash <= 0.0 && f.hp > 0 {
+                hurt = Some((f.dmg, d.normalize_or_zero(), Some(i)));
             }
         }
         // Bats back off after touching you.
@@ -1933,33 +2120,16 @@ impl Play {
                 return false;
             }
             if (s.pos - ppos).length() < s.radius + RADIUS {
-                hurt = Some((s.dmg, s.vel.normalize_or_zero()));
+                hurt = Some((s.dmg, s.vel.normalize_or_zero(), None));
                 return false;
             }
             true
         });
         self.shots = shots;
-        if let Some((dmg, dir)) = hurt {
-            self.hurt_player(dmg, dir, io);
+        if let Some((dmg, dir, from)) = hurt {
+            self.hurt_player(dmg, dir, from, io);
+            self.reap(io);
         }
-    }
-
-    pub fn hurt_player(&mut self, dmg: i32, dir: Vec2, io: &mut Io) {
-        let p = &mut self.player;
-        if p.invulnerable() {
-            return;
-        }
-        p.hp -= dmg;
-        p.hurt = 0.9;
-        p.flash = 0.25;
-        p.vel = dir * 7.0;
-        p.act = None;
-        self.shake = self.shake.max(0.6);
-        io.audio.play(Sfx::PlayerHurt);
-        let pos = p.world_pos() + Vec3::Y * 1.0;
-        self.fx.popup(pos, format!("-{dmg}"), RED);
-        self.fx
-            .burst(pos - Vec3::Y * 0.5, 8, &[RED, SALMON, WHITE], 2.0, 1.5);
     }
 
     fn update_drops(&mut self, io: &mut Io) {
@@ -1971,30 +2141,35 @@ impl Play {
         let ppos = self.player.pos;
         let mut picked: Vec<usize> = Vec::new();
         for (i, d) in self.drops.iter_mut().enumerate() {
-            let can = match d.item {
-                Some(item) => self.player.inv.can_fit(item, d.n),
-                None => true,
-            };
+            let can = d.is_coin() || self.player.inv.can_fit_stack(&d.stack);
             if d.update(dt, world, ppos, can) {
                 picked.push(i);
             }
         }
         for i in picked.into_iter().rev() {
             let d = self.drops.remove(i);
-            match d.item {
-                Some(item) => {
-                    let left = self.player.inv.add(item, d.n);
-                    let got = d.n - left;
-                    if got > 0 {
-                        self.toast(item.def().name, Some(item), got as u32);
-                        io.audio
-                            .play_at(Sfx::Pickup, 0.8, 1.0 + self.rng.f32() * 0.1);
-                    }
-                }
-                None => {
-                    self.gold += d.gold as u64;
-                    self.toast(format!("+{}g", d.gold), None, 0);
-                    io.audio.play_at(Sfx::Coin, 0.7, 1.0);
+            let item = d.stack.item;
+            if let Some(v) = item.coin_value() {
+                let worth = v as u64 * d.stack.n as u64;
+                self.money += worth;
+                self.stats.earned += worth;
+                self.toast(item.def().name, Some(item), d.stack.n as u32);
+                io.audio
+                    .play_at(Sfx::Coin, 0.6, 0.95 + self.rng.f32() * 0.15);
+                continue;
+            }
+            let left = self.player.inv.add_stack(d.stack);
+            let got = d.stack.n - left;
+            if got > 0 {
+                let name = d.stack.name();
+                let color = d.stack.rarity().map_or(CREAM, |r| r.color());
+                self.toast_colored(name, Some(item), got as u32, color);
+                let chime = d.stack.rarity().is_some_and(|r| r >= Rarity::Rare);
+                if chime {
+                    io.audio.play(Sfx::Rare);
+                } else {
+                    io.audio
+                        .play_at(Sfx::Pickup, 0.8, 1.0 + self.rng.f32() * 0.1);
                 }
             }
         }
@@ -2041,244 +2216,6 @@ impl Play {
             }
         }
     }
-
-    // --------------------------------------------------------------------------------------
-    // Drawing
-    // --------------------------------------------------------------------------------------
-
-    pub fn draw_scene(&mut self, r: &mut Renderer, a: &Assets) {
-        r.cam = self.cam.clone();
-        r.cam.update(r.width(), r.height());
-        let env = self.env();
-        let mut lights = Vec::new();
-        let ppos = self.player.world_pos();
-        match self.area {
-            Area::Hollow { .. } => lights.push(PointLight {
-                pos: ppos + Vec3::Y * 1.2,
-                radius: 6.8,
-                power: 0.8,
-                warmth: 5.0,
-            }),
-            Area::Farm if env.night > 0.2 => lights.push(PointLight {
-                pos: ppos + Vec3::Y * 1.0,
-                radius: 3.8,
-                power: 0.4 * env.night,
-                warmth: 6.0,
-            }),
-            _ => {}
-        }
-        for f in &self.foes {
-            if let Some(l) = f.light() {
-                lights.push(l);
-            }
-        }
-        for s in &self.shots {
-            lights.push(PointLight {
-                pos: s.world_pos(),
-                radius: 2.2,
-                power: 0.6,
-                warmth: if s.color == ORANGE { 8.0 } else { 2.0 },
-            });
-        }
-        // Fireflies on warm summer nights.
-        let fireflies: Vec<Vec3> = if self.area == Area::Farm && env.night > 0.5 {
-            (0..10)
-                .map(|i| {
-                    let t = self.time * 0.3 + i as f32 * 1.7;
-                    let base = self.cam.target;
-                    Vec3::new(
-                        base.x + (t * 1.3).sin() * 7.0 + (i as f32 * 2.1).cos() * 3.0,
-                        0.6 + (t * 2.0).sin() * 0.3,
-                        base.z + (t * 0.9).cos() * 4.0,
-                    )
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let world = match &mut self.level {
-            Some(l) if matches!(self.area, Area::Hollow { .. }) => &mut l.world,
-            _ => &mut self.farm,
-        };
-        draw::draw_world(r, a, world, &env, &lights);
-
-        // Target cursor.
-        if let (Some((tx, tz)), Some(item)) = (self.target, self.player.held()) {
-            let shows = matches!(
-                item.def().kind,
-                Kind::Tool(
-                    ToolKind::Hoe | ToolKind::Can | ToolKind::Pickaxe | ToolKind::Axe,
-                    _
-                ) | Kind::Seed(_)
-                    | Kind::Place(_)
-            );
-            if shows && self.fade.is_none() {
-                let tex = if self.target_ok {
-                    a.cursor
-                } else {
-                    a.cursor_bad
-                };
-                let y = if world.wall(tx, tz) != Wall::None {
-                    1.02
-                } else {
-                    0.03
-                };
-                let pulse = 0.46 + (self.time * 6.0).sin() * 0.03;
-                r.decal(
-                    a.tex(tex),
-                    UvRect::new(0.0, 0.0, 16.0, 16.0),
-                    Vec3::new(tx as f32 + 0.5, y, tz as f32 + 0.5),
-                    Vec2::splat(pulse),
-                    &DrawOpts {
-                        mode: Mode::Unlit,
-                        zwrite: false,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
-
-        // Dropped items bob and spin gently.
-        for d in &self.drops {
-            let bob = (self.time * 4.0 + d.age).sin() * 0.04;
-            let base = d.pos + Vec3::Y * bob;
-            r.shadow(a.tex(a.disk), Vec3::new(d.pos.x, 0.0, d.pos.z), 0.14);
-            let id = match d.item {
-                Some(i) => a.icon(i.def().icon),
-                None => a.icon("coin"),
-            };
-            let size = if d.item.is_some() { 0.5 } else { 0.3 };
-            r.billboard(
-                a.tex(id),
-                full_uv(a, id),
-                base - Vec3::Y * 0.05,
-                Vec2::splat(size),
-                &DrawOpts::at(base).with_tag(3).with_glow(0.8),
-            );
-        }
-
-        for f in &self.foes {
-            f.draw(r, a);
-        }
-        for s in &self.shots {
-            let c = shot_colors(s.color);
-            r.point(s.world_pos(), 3, c[1]);
-            r.point(s.world_pos(), 1, c[0]);
-            let tail = s.world_pos() - Vec3::new(s.vel.x, 0.0, s.vel.y) * 0.05;
-            r.point(tail, 2, c[2]);
-        }
-
-        // The cat.
-        if self.area == Area::Farm {
-            let c = &self.cat;
-            let base = Vec3::new(c.pos.x, 0.0, c.pos.y);
-            r.shadow(a.tex(a.disk), base, 0.22);
-            let hop = if c.pet > 0.0 {
-                (self.time * 10.0).sin().abs() * 0.05
-            } else {
-                0.0
-            };
-            let m = Mat4::from_translation(base + Vec3::Y * hop) * Mat4::from_rotation_y(c.yaw);
-            let o = DrawOpts::at(base).with_tag(1);
-            r.mesh(&a.bank, &a.critters.cat, &m, &o);
-            let wag = (self.time * 5.0).sin() * 0.5;
-            let tail = m
-                * Mat4::from_translation(Vec3::new(0.0, 0.2, -0.2))
-                * Mat4::from_rotation_x(0.8)
-                * Mat4::from_rotation_y(wag);
-            r.mesh(&a.bank, &a.critters.cat_tail, &tail, &o);
-        }
-
-        self.draw_player(r, a);
-        self.fx.draw(r);
-        for f in &fireflies {
-            let on = ((self.time * 3.0 + f.x).sin() * 0.5 + 0.5) > 0.3;
-            if on {
-                r.point(*f, 1, CREAM);
-            }
-        }
-        // Rain.
-        if self.rain && self.area == Area::Farm {
-            let t = self.cam.target;
-            for i in 0..90 {
-                let fx = (hash2(i, 0, 1) % 1000) as f32 / 1000.0;
-                let fz = (hash2(i, 1, 1) % 1000) as f32 / 1000.0;
-                let fall = (self.time * 1.8 + fx * 7.0).fract();
-                let p = Vec3::new(
-                    t.x - 11.0 + fx * 22.0,
-                    3.5 - fall * 3.5,
-                    t.z - 7.0 + fz * 13.0,
-                );
-                r.point(p, 1, SKY);
-                r.point(p + Vec3::Y * 0.12, 1, BLUE);
-            }
-        }
-        r.fb.outline(INK);
-    }
-
-    fn draw_player(&self, r: &mut Renderer, a: &Assets) {
-        let p = &self.player;
-        let mut pos = p.world_pos();
-        let mut pose = Pose {
-            walk: p.walk,
-            stride: p.stride,
-            ..Default::default()
-        };
-        if p.dodge > 0.0 {
-            pos.y += (p.dodge / 0.26 * std::f32::consts::PI).sin() * 0.25;
-            pose.squash = 0.5;
-        }
-        if let Some(act) = &p.act {
-            pose.swing = Some((act.progress(), act.kind.swing()));
-        } else if p.eat_t > 0.0 {
-            pose.swing = Some((1.0 - p.eat_t / 0.6, Swing::Use));
-        }
-        let held = p.held().and_then(|i| i.tool()).map(|(k, t)| match k {
-            ToolKind::Sword => &a.tools.sword[t as usize % 6],
-            ToolKind::Pickaxe => &a.tools.pick[t as usize % 6],
-            ToolKind::Axe => &a.tools.axe[t as usize % 6],
-            ToolKind::Hoe => &a.tools.hoe,
-            ToolKind::Can => &a.tools.can[t as usize % 3],
-        });
-        r.shadow(a.tex(a.disk), p.world_pos(), 0.3);
-        let blink = p.hurt > 0.0 && (self.time * 20.0).sin() > 0.3;
-        let mut o = DrawOpts {
-            light: Light::At(p.world_pos()),
-            tag: 1,
-            ..Default::default()
-        };
-        if p.flash > 0.0 {
-            o.mode = Mode::Solid(WHITE);
-        }
-        if !blink {
-            draw_humanoid(r, a, &a.hero, pos, p.yaw, &pose, &o, held, Some(&a.sprout));
-            // A soft silhouette where walls hide the hero.
-            let ghost = DrawOpts {
-                mode: Mode::Hidden(LAVENDER),
-                zwrite: false,
-                tag: 1,
-                ..o
-            };
-            draw_humanoid(
-                r,
-                a,
-                &a.hero,
-                pos,
-                p.yaw,
-                &pose,
-                &ghost,
-                held,
-                Some(&a.sprout),
-            );
-        }
-        if let Some(act) = &p.act {
-            if let ActKind::Sword(t) = act.kind {
-                let col = [KHAKI, GOLD, SKY, CREAM, MINT, ORANGE][t as usize % 6];
-                let yaw = act.dir.x.atan2(act.dir.y);
-                draw::slash_arc(r, p.world_pos(), yaw, act.progress(), 1.25, col);
-            }
-        }
-    }
 }
 
 pub fn tile_center(x: i32, z: i32) -> Vec3 {
@@ -2288,9 +2225,9 @@ pub fn tile_center(x: i32, z: i32) -> Vec3 {
 /// Moves the stack in `slot` of `from` into `to`, as much as fits.
 pub fn transfer(from: &mut Inventory, slot: usize, to: &mut Inventory) {
     if let Some(s) = from.slots[slot] {
-        let left = to.add(s.item, s.n);
+        let left = to.add_stack(s);
         from.slots[slot] = if left > 0 {
-            Some(Stack::new(s.item, left))
+            Some(Stack { n: left, ..s })
         } else {
             None
         };

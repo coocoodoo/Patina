@@ -43,7 +43,7 @@ pub const LEGEND: &[(char, u8)] = &[
     ('M', MINT),
 ];
 
-fn art(rows: &[&str], slots: [u8; 4]) -> Texture {
+pub fn art(rows: &[&str], slots: [u8; 4]) -> Texture {
     let mut legend: Vec<(char, u8)> = LEGEND.to_vec();
     for (i, c) in slots.iter().enumerate() {
         legend.push((char::from(b'0' + i as u8), *c));
@@ -51,7 +51,7 @@ fn art(rows: &[&str], slots: [u8; 4]) -> Texture {
     Texture::from_art(rows, &legend)
 }
 
-const NO: [u8; 4] = [CLEAR; 4];
+pub const NO: [u8; 4] = [CLEAR; 4];
 
 const WOOD: &[&str] = &[
     "................",
@@ -102,7 +102,7 @@ const FIBER: &[&str] = &[
     "....KK..KK..KK..",
 ];
 
-const NUGGET: &[&str] = &[
+pub const NUGGET: &[&str] = &[
     "................",
     "................",
     "................",
@@ -119,7 +119,7 @@ const NUGGET: &[&str] = &[
     ".....KKKKKK.....",
 ];
 
-const GEM: &[&str] = &[
+pub const GEM: &[&str] = &[
     "................",
     "......KKKK......",
     ".....K11w2K.....",
@@ -136,7 +136,7 @@ const GEM: &[&str] = &[
     "......KKKK......",
 ];
 
-const GEL: &[&str] = &[
+pub const GEL: &[&str] = &[
     "................",
     "................",
     "................",
@@ -152,7 +152,7 @@ const GEL: &[&str] = &[
     "....KKKKKKKK....",
 ];
 
-const WING: &[&str] = &[
+pub const WING: &[&str] = &[
     "................",
     "................",
     "..K.............",
@@ -169,7 +169,7 @@ const WING: &[&str] = &[
     "........K.......",
 ];
 
-const BONE: &[&str] = &[
+pub const BONE: &[&str] = &[
     "................",
     "................",
     "................",
@@ -184,7 +184,7 @@ const BONE: &[&str] = &[
     ".KKK........KKK.",
 ];
 
-const SPORE: &[&str] = &[
+pub const SPORE: &[&str] = &[
     "................",
     "................",
     ".......K........",
@@ -203,7 +203,7 @@ const SPORE: &[&str] = &[
     ".......K........",
 ];
 
-const HEART_GEM: &[&str] = &[
+pub const HEART_GEM: &[&str] = &[
     "................",
     "................",
     "...KKK...KKK....",
@@ -220,7 +220,7 @@ const HEART_GEM: &[&str] = &[
     ".......K........",
 ];
 
-const FEATHER: &[&str] = &[
+pub const FEATHER: &[&str] = &[
     "................",
     "...........KK...",
     "..........K1wK..",
@@ -237,7 +237,7 @@ const FEATHER: &[&str] = &[
     ".K..............",
 ];
 
-const PACKET: &[&str] = &[
+pub const PACKET: &[&str] = &[
     "................",
     "................",
     "....KKKKKKKK....",
@@ -292,7 +292,7 @@ const CARROT: &[&str] = &[
     "..K.............",
 ];
 
-const MUSHROOM: &[&str] = &[
+pub const MUSHROOM: &[&str] = &[
     "................",
     "................",
     ".....KKKKKK.....",
@@ -310,7 +310,7 @@ const MUSHROOM: &[&str] = &[
     "......KKKK......",
 ];
 
-const BERRIES: &[&str] = &[
+pub const BERRIES: &[&str] = &[
     "................",
     ".........K......",
     "........KgK.....",
@@ -327,7 +327,7 @@ const BERRIES: &[&str] = &[
     "........KK......",
 ];
 
-const MELON: &[&str] = &[
+pub const MELON: &[&str] = &[
     "................",
     "................",
     ".......KuK......",
@@ -359,7 +359,7 @@ const PUMPKIN: &[&str] = &[
     "...KKKKKKKKKK...",
 ];
 
-const PEPPER: &[&str] = &[
+pub const PEPPER: &[&str] = &[
     "................",
     "........KK......",
     ".......KgK......",
@@ -376,7 +376,7 @@ const PEPPER: &[&str] = &[
     ".......KK.......",
 ];
 
-const FLOWER: &[&str] = &[
+pub const FLOWER: &[&str] = &[
     "................",
     "......KK........",
     ".....K00K.KK....",
@@ -394,7 +394,7 @@ const FLOWER: &[&str] = &[
     "........K.......",
 ];
 
-const BOWL: &[&str] = &[
+pub const BOWL: &[&str] = &[
     "................",
     "................",
     "................",
@@ -410,7 +410,7 @@ const BOWL: &[&str] = &[
     ".....KKKKKK.....",
 ];
 
-const TART: &[&str] = &[
+pub const TART: &[&str] = &[
     "................",
     "................",
     "................",
@@ -425,7 +425,7 @@ const TART: &[&str] = &[
     "....KKKKKKKK....",
 ];
 
-const POTION: &[&str] = &[
+pub const POTION: &[&str] = &[
     "................",
     "......KKKK......",
     "......KuuK......",
@@ -441,7 +441,7 @@ const POTION: &[&str] = &[
     ".....KKKKKK.....",
 ];
 
-const SWORD: &[&str] = &[
+pub const SWORD: &[&str] = &[
     "................",
     "............KK..",
     "...........K10K.",
@@ -459,7 +459,7 @@ const SWORD: &[&str] = &[
     ".KK.............",
 ];
 
-const PICKAXE: &[&str] = &[
+pub const PICKAXE: &[&str] = &[
     "................",
     "....KKKKKK......",
     "...K00111KK.....",
@@ -475,7 +475,7 @@ const PICKAXE: &[&str] = &[
     "..KK............",
 ];
 
-const AXE: &[&str] = &[
+pub const AXE: &[&str] = &[
     "................",
     ".........KKK....",
     "........K001K...",
@@ -489,7 +489,7 @@ const AXE: &[&str] = &[
     ".KK.............",
 ];
 
-const HOE: &[&str] = &[
+pub const HOE: &[&str] = &[
     "................",
     "...........KKKK.",
     "..........K0011K",
@@ -506,7 +506,7 @@ const HOE: &[&str] = &[
     "..KK............",
 ];
 
-const CAN: &[&str] = &[
+pub const CAN: &[&str] = &[
     "................",
     "................",
     ".....KKKKK......",
@@ -707,7 +707,7 @@ const BENCH: &[&str] = &[
     "..KKK......KKK..",
 ];
 
-const COIN: &[&str] = &[
+pub const COIN: &[&str] = &[
     "..KKKK..", ".KYyyYK.", "KYyYYYuK", "KYyYYYuK", "KYYYYYuK", "KYYYYuuK", ".KuuuuK.", "..KKKK..",
 ];
 
@@ -763,7 +763,7 @@ const SPROUT: &[&str] = &[
     "......KgK.......",
 ];
 
-const YOUNG: &[&str] = &[
+pub const YOUNG: &[&str] = &[
     "................",
     "................",
     "................",

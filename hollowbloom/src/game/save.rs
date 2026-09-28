@@ -10,7 +10,7 @@ use super::play::{Play, Stats};
 use super::player::{Player, PlayerSave};
 use super::world::{Floor, Obj, Wall, World};
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 pub struct FarmSave {
@@ -28,6 +28,7 @@ pub struct SaveData {
     pub seed: u64,
     pub day: u32,
     pub minutes: f32,
+    /// Money in copper (the key is from version 1, when there was only gold).
     pub gold: u64,
     pub deepest: u32,
     pub waystones: Vec<u32>,
@@ -36,6 +37,9 @@ pub struct SaveData {
     pub shipping: Vec<Stack>,
     pub rain: bool,
     pub stats: Stats,
+    /// Burrowby's specials bought on the saved day.
+    #[serde(default)]
+    pub bought: Vec<usize>,
 }
 
 const FLOORS: [(Floor, char); 11] = [
@@ -171,7 +175,7 @@ pub fn write(p: &Play) -> Result<(), String> {
         seed: p.seed,
         day: p.clock.day,
         minutes: p.clock.min,
-        gold: p.gold,
+        gold: p.money,
         deepest: p.deepest,
         waystones: p.waystones.clone(),
         player: p.player.save(),
@@ -179,6 +183,7 @@ pub fn write(p: &Play) -> Result<(), String> {
         shipping: p.shipping.clone(),
         rain: p.rain,
         stats: p.stats.clone(),
+        bought: p.bought.clone(),
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let path = path().ok_or("no data directory")?;
@@ -199,16 +204,35 @@ pub fn read() -> Result<Play, String> {
     p.clock.min = d
         .minutes
         .clamp(super::play::DAY_START, super::play::DAY_END - 60.0);
-    p.gold = d.gold;
+    p.money = d.gold;
     p.deepest = d.deepest;
     p.waystones = d.waystones;
     load_farm(&d.farm, &mut p.farm);
+    // Farms from before enchanting get a table by the house.
+    let has_table = p
+        .farm
+        .objs
+        .iter()
+        .any(|o| matches!(o, Some(Obj::EnchantTable)));
+    let (ex, ez) = super::farm::MARKS.enchant;
+    if !has_table && p.farm.obj(ex, ez).is_none() && p.farm.wall(ex, ez) == Wall::None {
+        p.farm.set_obj(ex, ez, Some(Obj::EnchantTable));
+    }
     let (dx, dz) = super::farm::MARKS.door;
     let pos = glam::Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);
     p.player = Player::load(d.player, pos);
     p.shipping = d.shipping;
     p.rain = d.rain;
     p.stats = d.stats;
+    p.bought = d.bought;
+    // Farm chests may hold gear from older saves without rolls.
+    for o in p.farm.objs.iter_mut().flatten() {
+        if let Obj::Chest { items } = o {
+            for s in items.iter_mut().flatten() {
+                s.normalize();
+            }
+        }
+    }
     p.cam_pos = p.player.world_pos();
     p.banner = Some(super::play::Banner {
         title: format!("Day {}", p.clock.day),

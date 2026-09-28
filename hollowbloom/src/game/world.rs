@@ -13,6 +13,8 @@ pub const CHUNK: i32 = 16;
 pub const WALL_H: f32 = 1.0;
 pub const WATER_Y: f32 = -0.22;
 pub const WATERED: u8 = 1;
+/// Watered by a can with Growth: the crop may grow an extra day tonight.
+pub const FERTILE: u8 = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
 pub enum Floor {
@@ -126,6 +128,7 @@ pub enum Obj {
         days: u8,
         harvested: bool,
     },
+    EnchantTable,
 }
 
 impl Obj {
@@ -151,6 +154,7 @@ impl Obj {
             Obj::Crystal { .. } => Some((0.5, 4.0, 0.6, 1.5)),
             Obj::Mushroom { .. } => Some((0.3, 3.0, 0.45, 2.5)),
             Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
+            Obj::EnchantTable => Some((0.9, 3.4, 0.5, 1.4)),
             _ => None,
         }
     }

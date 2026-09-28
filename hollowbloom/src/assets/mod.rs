@@ -1,6 +1,8 @@
 //! Every texture, sprite, font and model the game uses, generated at start-up.
 
 pub mod font;
+pub mod gear_art;
+pub mod item_art;
 pub mod models;
 pub mod sprites;
 pub mod tiles;
@@ -8,9 +10,10 @@ pub mod tiles;
 use std::collections::HashMap;
 
 use crate::palette::*;
-use crate::render::{TexBank, TexId, Texture};
+use crate::render::{Mesh, TexBank, TexId, Texture};
 use font::Font;
-use models::{Critters, Humanoid, Props, ToolMeshes};
+use gear_art::GearArt;
+use models::{Critters, Humanoid, Props};
 
 pub const BIOMES: usize = 6;
 pub const ORES: usize = 6;
@@ -301,15 +304,17 @@ pub struct Assets {
     pub flame: [TexId; 4],
     pub hero: Humanoid,
     pub sprout: crate::render::Mesh,
-    pub tools: ToolMeshes,
     pub critters: Critters,
     pub props: Props,
+    pub gear: GearArt,
 }
 
 impl Assets {
     pub fn new() -> Assets {
         let mut bank = TexBank::default();
-        let icons = sprites::build(&mut bank);
+        let mut icons = sprites::build(&mut bank);
+        item_art::build(&mut bank, &mut icons);
+        let gear = gear_art::build(&mut bank, &mut icons);
         let grass = [
             bank.add(tiles::grass(1, false)),
             bank.add(tiles::grass(2, false)),
@@ -397,7 +402,6 @@ impl Assets {
         ];
         let hero = models::humanoid(&mut bank, &models::HERO);
         let sprout = models::sprout(&mut bank);
-        let tools = models::tools(&mut bank);
         let critters = models::critters(&mut bank);
         let props = models::props(&mut bank);
         let foes = foe_skins(&mut bank, &critters);
@@ -430,10 +434,36 @@ impl Assets {
             flame,
             hero,
             sprout,
-            tools,
             critters,
             props,
+            gear,
         }
+    }
+
+    /// The 3D model of a weapon or tool held in the hand.
+    pub fn held_mesh(&self, icon: &str) -> Option<&Mesh> {
+        self.gear.held.get(icon)
+    }
+
+    pub fn hat_mesh(&self, icon: &str) -> Option<&Mesh> {
+        self.gear.hats.get(icon)
+    }
+
+    pub fn boot_mesh(&self, icon: &str) -> Option<&Mesh> {
+        self.gear.boots.get(icon)
+    }
+
+    pub fn shield_mesh(&self, icon: &str) -> Option<&Mesh> {
+        self.gear.shields.get(icon)
+    }
+
+    /// Body and sleeve textures for chest armour.
+    pub fn chest_skin(&self, icon: &str) -> Option<(TexId, TexId)> {
+        self.gear.chest.get(icon).copied()
+    }
+
+    pub fn leg_skin(&self, icon: &str) -> Option<TexId> {
+        self.gear.legs.get(icon).copied()
     }
 
     pub fn icon(&self, name: &str) -> TexId {

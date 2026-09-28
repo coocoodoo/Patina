@@ -38,7 +38,7 @@ pub fn skin_box(m: &mut Mesh, min: Vec3, max: Vec3, tex: TexId, t: &Texture) {
     );
 }
 
-fn lathe(
+pub fn lathe(
     m: &mut Mesh,
     c: Vec3,
     prof: &[(f32, f32)],
@@ -71,9 +71,18 @@ pub const LEG_R: usize = 5;
 
 /// A chibi humanoid split into parts, each built around its pivot:
 /// legs hang from the hip, arms from the shoulder, the head sits on the neck.
+/// The textures a humanoid is dressed in, so clothes can be swapped in.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HumanTex {
+    pub body: TexId,
+    pub arm: TexId,
+    pub leg: TexId,
+}
+
 #[derive(Clone)]
 pub struct Humanoid {
     pub parts: [Mesh; 6],
+    pub tex: HumanTex,
     pub hip: f32,
     pub shoulder: f32,
     pub neck: f32,
@@ -114,7 +123,7 @@ pub const HERO: Look = Look {
     scale: 1.0,
 };
 
-fn head_tex(l: &Look) -> Texture {
+pub fn head_tex(l: &Look) -> Texture {
     let [hl, hm, hd] = l.hair;
     let [sl, sm, sd] = l.skin;
     let mut t = Texture::new(32, 16, hm);
@@ -199,7 +208,7 @@ fn head_tex(l: &Look) -> Texture {
     t
 }
 
-fn body_tex(l: &Look) -> Texture {
+pub fn body_tex(l: &Look) -> Texture {
     let [cl, cm, cd] = l.shirt;
     let mut t = Texture::new(16, 16, cm);
     // Front 6x5 at (0,0): collar, tunic, belt with buckle.
@@ -233,7 +242,7 @@ fn body_tex(l: &Look) -> Texture {
     t
 }
 
-fn limb_tex(main: u8, dark: u8, end: u8) -> Texture {
+pub fn limb_tex(main: u8, dark: u8, end: u8) -> Texture {
     let mut t = Texture::new(4, 4, main);
     for x in 0..4 {
         t.set(x, 3, end);
@@ -284,6 +293,7 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
     }
     Humanoid {
         parts,
+        tex: HumanTex { body, arm, leg },
         hip: 0.18 * s,
         shoulder: 0.43 * s,
         neck: 0.43 * s,
@@ -322,162 +332,6 @@ pub fn sprout(bank: &mut TexBank) -> Mesh {
             * Mat4::from_rotation_z(std::f32::consts::PI - 0.5),
     );
     m
-}
-
-/// Tools held in the right hand, pointing down the arm (-y), grip at the origin.
-pub struct ToolMeshes {
-    pub sword: Vec<Mesh>,
-    pub pick: Vec<Mesh>,
-    pub axe: Vec<Mesh>,
-    pub hoe: Mesh,
-    pub can: Vec<Mesh>,
-}
-
-pub fn tools(bank: &mut TexBank) -> ToolMeshes {
-    let handle = bank.add(Texture::new(4, 4, RUST));
-    let guard = bank.add(Texture::new(4, 4, GOLD));
-    let tier_cols = [
-        [KHAKI, ROSEWOOD],
-        [GOLD, CLAY],
-        [WHITE, SKY],
-        [CREAM, GOLD],
-        [MINT, AQUA],
-        [GOLD, RED],
-    ];
-    let mut sword = Vec::new();
-    let mut pick = Vec::new();
-    let mut axe = Vec::new();
-    let mut tier_tex = Vec::new();
-    for [a, b] in tier_cols {
-        let mut t = Texture::new(4, 4, b);
-        t.set(0, 0, a);
-        t.set(1, 1, a);
-        t.set(0, 2, a);
-        tier_tex.push(bank.add(t));
-    }
-    for &tt in &tier_tex {
-        let mut m = Mesh::new();
-        let w = Texture::new(4, 4, 0);
-        skin_box(
-            &mut m,
-            Vec3::new(-0.02, -0.08, -0.02),
-            Vec3::new(0.02, 0.04, 0.02),
-            handle,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(-0.08, -0.1, -0.025),
-            Vec3::new(0.08, -0.07, 0.025),
-            guard,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(-0.03, -0.44, -0.012),
-            Vec3::new(0.03, -0.1, 0.012),
-            tt,
-            &w,
-        );
-        sword.push(m);
-
-        let mut m = Mesh::new();
-        skin_box(
-            &mut m,
-            Vec3::new(-0.02, -0.4, -0.02),
-            Vec3::new(0.02, 0.04, 0.02),
-            handle,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(-0.2, -0.44, -0.03),
-            Vec3::new(0.2, -0.38, 0.03),
-            tt,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(-0.24, -0.42, -0.02),
-            Vec3::new(-0.18, -0.34, 0.02),
-            tt,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(0.18, -0.42, -0.02),
-            Vec3::new(0.24, -0.34, 0.02),
-            tt,
-            &w,
-        );
-        pick.push(m);
-
-        let mut m = Mesh::new();
-        skin_box(
-            &mut m,
-            Vec3::new(-0.02, -0.4, -0.02),
-            Vec3::new(0.02, 0.04, 0.02),
-            handle,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(0.0, -0.46, -0.025),
-            Vec3::new(0.16, -0.3, 0.025),
-            tt,
-            &w,
-        );
-        axe.push(m);
-    }
-    let w = Texture::new(4, 4, 0);
-    let mut hoe = Mesh::new();
-    skin_box(
-        &mut hoe,
-        Vec3::new(-0.02, -0.42, -0.02),
-        Vec3::new(0.02, 0.04, 0.02),
-        handle,
-        &w,
-    );
-    skin_box(
-        &mut hoe,
-        Vec3::new(-0.02, -0.46, -0.02),
-        Vec3::new(0.14, -0.4, 0.02),
-        tier_tex[2],
-        &w,
-    );
-    let mut can = Vec::new();
-    for tt in [tier_tex[2], tier_tex[1], tier_tex[4]] {
-        let mut m = Mesh::new();
-        skin_box(
-            &mut m,
-            Vec3::new(-0.08, -0.2, -0.08),
-            Vec3::new(0.08, -0.04, 0.08),
-            tt,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(-0.015, -0.04, -0.015),
-            Vec3::new(0.015, 0.03, 0.015),
-            handle,
-            &w,
-        );
-        skin_box(
-            &mut m,
-            Vec3::new(0.06, -0.16, -0.015),
-            Vec3::new(0.2, -0.13, 0.015),
-            tt,
-            &w,
-        );
-        can.push(m);
-    }
-    ToolMeshes {
-        sword,
-        pick,
-        axe,
-        hoe,
-        can,
-    }
 }
 
 /// Two small dark eyes on a front surface at height `y`, `z` in front.
@@ -1060,6 +914,8 @@ pub struct Props {
     pub hollow: Mesh,
     pub stall: Mesh,
     pub sign: Mesh,
+    pub enchant_table: Mesh,
+    pub enchant_book: Mesh,
 }
 
 pub fn props(bank: &mut TexBank) -> Props {
@@ -1907,7 +1763,92 @@ pub fn props(bank: &mut TexBank) -> Props {
         0,
     );
 
+    // The enchanting table: a carved pedestal under a starry cloth, with two candles.
+    let mut enchant_table = Mesh::new();
+    let carved = bank.add(tiles::bricks(SLATE, LAVENDER, INK, 51));
+    let cloth = bank.add(tiles::stripes(PURPLE, GRAPE));
+    let wax = bank.add(tiles::solid(CREAM));
+    let flame_t = bank.add(tiles::solid(GOLD));
+    lathe(
+        &mut enchant_table,
+        Vec3::ZERO,
+        &[
+            (0.34, 0.0),
+            (0.34, 0.08),
+            (0.2, 0.14),
+            (0.16, 0.5),
+            (0.26, 0.56),
+            (0.0, 0.56),
+        ],
+        8,
+        0.0,
+        carved,
+        true,
+    );
+    tiled_box(
+        &mut enchant_table,
+        Vec3::new(-0.36, 0.56, -0.3),
+        Vec3::new(0.36, 0.64, 0.3),
+        cloth,
+        0,
+    );
+    // The cloth hangs down at the front and back.
+    for z in [-0.31, 0.29] {
+        tiled_box(
+            &mut enchant_table,
+            Vec3::new(-0.3, 0.4, z),
+            Vec3::new(0.3, 0.6, z + 0.02),
+            cloth,
+            0,
+        );
+    }
+    for x in [-0.28, 0.28] {
+        skin_box(
+            &mut enchant_table,
+            Vec3::new(x - 0.035, 0.64, -0.2),
+            Vec3::new(x + 0.035, 0.8, -0.13),
+            wax,
+            &w4,
+        );
+        skin_box(
+            &mut enchant_table,
+            Vec3::new(x - 0.015, 0.8, -0.18),
+            Vec3::new(x + 0.015, 0.86, -0.15),
+            flame_t,
+            &w4,
+        );
+    }
+    // A little open book of spells.
+    let mut enchant_book = Mesh::new();
+    let page = bank.add(tiles::stripes(WHITE, CREAM));
+    let cover = bank.add(tiles::solid(CRIMSON));
+    for side in [-1.0f32, 1.0] {
+        let mut leaf = Mesh::new();
+        skin_box(
+            &mut leaf,
+            Vec3::new(0.0, -0.01, -0.09),
+            Vec3::new(0.15, 0.0, 0.09),
+            cover,
+            &w4,
+        );
+        skin_box(
+            &mut leaf,
+            Vec3::new(0.01, 0.0, -0.08),
+            Vec3::new(0.14, 0.03, 0.08),
+            page,
+            &w4,
+        );
+        let m = if side > 0.0 {
+            Mat4::from_rotation_z(0.25)
+        } else {
+            Mat4::from_rotation_y(std::f32::consts::PI) * Mat4::from_rotation_z(0.25)
+        };
+        enchant_book.append(&leaf, m);
+    }
+
     Props {
+        enchant_table,
+        enchant_book,
         trees,
         pines,
         stump,
