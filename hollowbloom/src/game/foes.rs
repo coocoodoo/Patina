@@ -52,7 +52,15 @@ pub struct Enemy {
     pub burn_tick: f32,
     /// Seconds of chill left (chilled foes move at half speed).
     pub chill: f32,
+    /// How riled up the moon has them: how far they notice you, how fast they move and how
+    /// quickly they strike (1 = a half moon).
+    pub fury: f32,
+    /// Under a full moon: glowing red, tougher, and carrying better loot.
+    pub moonlit: bool,
 }
+
+/// The outline tag for creatures maddened by the full moon (outlined in red).
+pub const MOONLIT_TAG: u8 = 6;
 
 pub struct Base {
     pub hp: i32,
@@ -149,6 +157,22 @@ impl Enemy {
             burn_dmg: 0,
             burn_tick: 0.5,
             chill: 0.0,
+            fury: 1.0,
+            moonlit: false,
+        }
+    }
+
+    /// Tonight's moon stirs them up (or calms them down). A full moon makes them glow red,
+    /// hit harder and take more beating, and they drop better things for it.
+    pub fn feel_the_moon(&mut self, phase: super::sky::MoonPhase) {
+        self.fury = phase.fury();
+        self.speed *= self.fury.sqrt();
+        if phase.full() {
+            self.moonlit = true;
+            self.max_hp = (self.max_hp as f32 * 1.6).ceil() as i32;
+            self.hp = self.max_hp;
+            self.dmg = (self.dmg as f32 * 1.25).ceil() as i32;
+            self.xp = self.xp * 3 / 2 + 1;
         }
     }
 
@@ -223,7 +247,8 @@ impl Enemy {
         let dist = to.length();
         let dirp = to.normalize_or_zero();
         if !self.alert {
-            let sees = dist < 7.0 && (self.passes_walls() || world.clear_line(self.pos, player));
+            let sees = dist < 7.0 * self.fury
+                && (self.passes_walls() || world.clear_line(self.pos, player));
             if sees || (self.boss && dist < 9.0) {
                 self.alert = true;
                 fx.popup(self.world_pos() + Vec3::Y * (0.8 * self.scale()), "!", GOLD);
@@ -232,11 +257,12 @@ impl Enemy {
                 return;
             }
         }
-        if dist > 16.0 && !self.boss {
+        if dist > 16.0 * self.fury.max(1.0) && !self.boss {
             self.alert = false;
             return;
         }
-        self.t -= dt;
+        // A bigger moon, a shorter fuse.
+        self.t -= dt * self.fury;
         match self.foe {
             Foe::Slime => self.slime(dt, world, dirp, dist, spawns, rng, depth),
             Foe::Bat => {
@@ -677,6 +703,14 @@ impl Enemy {
     }
 
     pub fn light(&self) -> Option<PointLight> {
+        if self.moonlit {
+            return Some(PointLight {
+                pos: self.world_pos() + Vec3::Y * 0.4,
+                radius: 2.4 * self.scale(),
+                power: 0.4,
+                warmth: 8.0,
+            });
+        }
         match self.foe {
             Foe::Wisp => Some(PointLight {
                 pos: self.world_pos() + Vec3::Y * 0.3,
@@ -700,13 +734,31 @@ impl Enemy {
         }
     }
 
+    /// The full moon's red aura, drawn over everything once the scene is lit.
+    pub fn draw_moonglow(&self, r: &mut Renderer) {
+        if !self.moonlit {
+            return;
+        }
+        let s = self.scale();
+        let pulse = (self.anim * 3.0).sin() * 0.5 + 0.5;
+        let at = self.world_pos() + Vec3::Y * (0.35 * s);
+        r.halo(at, 0.55 * s + pulse * 0.1, RED, 0.35 + pulse * 0.2);
+        // Motes of red light drifting up off them.
+        for k in 0..3 {
+            let t = (self.anim * 0.8 + k as f32 * 0.33).fract();
+            let a = self.anim * 1.3 + k as f32 * 2.1;
+            let q = at + Vec3::new(a.cos() * 0.3 * s, t * 0.8 * s, a.sin() * 0.3 * s);
+            r.point(q, 1, if k == 0 { SALMON } else { RED });
+        }
+    }
+
     pub fn draw(&self, r: &mut Renderer, a: &Assets) {
         let s = self.scale();
         let base = Vec3::new(self.pos.x, 0.0, self.pos.y);
         r.shadow(a.tex(a.disk), base, self.radius * 0.95);
         let mut o = DrawOpts {
             light: Light::At(base),
-            tag: 2,
+            tag: if self.moonlit { MOONLIT_TAG } else { 2 },
             ..Default::default()
         };
         if self.flash > 0.0 {

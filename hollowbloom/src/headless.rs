@@ -1049,14 +1049,31 @@ fn portrait(
     yaw: f32,
     bg: u8,
 ) {
+    portrait_from(a, r, sheet, (x0, y0), equip, held, yaw, bg, 30.0, None);
+}
+
+/// Like `portrait`, looking down at `pitch` degrees, and optionally as a villager.
+#[allow(clippy::too_many_arguments)]
+fn portrait_from(
+    a: &crate::assets::Assets,
+    r: &mut Renderer,
+    sheet: &mut crate::render::Frame,
+    (x0, y0): (usize, usize),
+    equip: &[Option<Stack>; 5],
+    held: Option<&Stack>,
+    yaw: f32,
+    bg: u8,
+    pitch: f32,
+    who: Option<crate::game::folk::Villager>,
+) {
     use crate::game::draw::{Pose, draw_humanoid};
     use crate::game::scene::dress;
     use crate::render::{DrawOpts, Light, Mode};
     use glam::Vec3;
 
     let (cw, ch) = (r.width(), r.height());
-    r.cam.target = Vec3::new(0.0, 0.42, 0.0);
-    r.cam.pitch = 30f32.to_radians();
+    r.cam.target = Vec3::new(0.0, 0.5, 0.0);
+    r.cam.pitch = pitch.to_radians();
     r.cam.dist = 3.3;
     r.cam.update(cw, ch);
     r.fb.clear(bg);
@@ -1067,17 +1084,34 @@ fn portrait(
         tag: 1,
         ..Default::default()
     };
-    let dressed = dress(a, equip, held);
-    draw_humanoid(
-        r,
-        a,
-        &a.hero,
-        Vec3::ZERO,
-        yaw,
-        &Pose::default(),
-        &o,
-        &dressed.outfit(Some(&a.sprout)),
-    );
+    match who {
+        Some(v) => {
+            let (dressed, remap) = crate::game::scene::villager_dress(a, v);
+            draw_humanoid(
+                r,
+                a,
+                &a.folk[v as usize],
+                Vec3::ZERO,
+                yaw,
+                &Pose::default(),
+                &o,
+                &dressed.outfit_with(&remap),
+            );
+        }
+        None => {
+            let dressed = dress(a, equip, held);
+            draw_humanoid(
+                r,
+                a,
+                &a.hero,
+                Vec3::ZERO,
+                yaw,
+                &Pose::default(),
+                &o,
+                &dressed.outfit(Some(&a.sprout)),
+            );
+        }
+    }
     r.fb.outline(crate::palette::INK);
     for y in 0..ch {
         for x in 0..cw {
@@ -1328,7 +1362,61 @@ pub fn wardrobe(path: &str) {
         Ok(()) => println!("wrote {all_path}"),
         Err(e) => eprintln!("failed to write {all_path}: {e}"),
     }
-    let _ = Slot::Head;
+
+    // Every hat from the game's own camera, from the front and both sides, then everyone
+    // in town who wears one: nothing should poke through a crown.
+    let hats: Vec<Item> = items
+        .iter()
+        .copied()
+        .filter(|i| i.class().and_then(|c| c.slot()) == Some(Slot::Head))
+        .collect();
+    let wearers: Vec<crate::game::folk::Villager> = crate::game::folk::VILLAGERS
+        .iter()
+        .copied()
+        .filter(|v| crate::game::folk::outfit(*v)[Slot::Head as usize].is_some())
+        .collect();
+    let (cw, ch) = (64usize, 64usize);
+    let views = [0.0f32, 0.9, -0.9, std::f32::consts::PI];
+    let cols = views.len() * 3;
+    let n = hats.len() + wearers.len();
+    let mut sheet = Frame::new(cols * cw, n.div_ceil(3) * ch);
+    sheet.clear(INK);
+    let mut r = Renderer::new(cw, ch);
+    let base = outfit(&[Item::FarmerTunic, Item::PatchedTrousers, Item::RainBoots]);
+    for k in 0..n {
+        let (row, block) = (k / 3, k % 3);
+        for (j, yaw) in views.iter().enumerate() {
+            let x0 = (block * views.len() + j) * cw;
+            let y0 = row * ch;
+            let mut equip = base;
+            let who = if k < hats.len() {
+                equip[Slot::Head as usize] = Some(Stack::new(hats[k], 1));
+                None
+            } else {
+                Some(wearers[k - hats.len()])
+            };
+            portrait_from(
+                &a,
+                &mut r,
+                &mut sheet,
+                (x0, y0),
+                &equip,
+                None,
+                *yaw,
+                SLATE,
+                47.0,
+                who,
+            );
+        }
+    }
+    let hats_path = match path.rsplit_once('.') {
+        Some((stem, ext)) => format!("{stem}_hats.{ext}"),
+        None => format!("{path}_hats"),
+    };
+    match save_png(Path::new(&hats_path), &sheet, 2) {
+        Ok(()) => println!("wrote {hats_path}"),
+        Err(e) => eprintln!("failed to write {hats_path}: {e}"),
+    }
 }
 
 /// The light maps as an image: rows are light levels, columns palette colours, in three
@@ -1473,6 +1561,8 @@ pub fn town_shots(dir: &str) {
             big.cam.update(1440, 1000);
             let env = p.env();
             crate::game::draw::draw_world(&mut big, a, &mut p.town, &env, &[]);
+            big.ambient_occlusion(crate::game::draw::AO_STRENGTH);
+            crate::game::draw::draw_grass(&mut big, a, &p.town, &env);
             big.fb.outline(crate::palette::INK);
         }
         let path = dir.join(format!("t04_town_overview_{name}.png"));
@@ -2174,4 +2264,112 @@ pub fn home_shots(dir: &str) {
         };
     }
     snap_room(&mut game, &mut r, &input, dir, "h16_rods_at_the_smithy");
+}
+
+/// Light and shade: the sun's shadows through the day and a full moon, and ambient
+/// occlusion on the farm, in town, in the Hollow and indoors.
+pub fn light_shots(dir: &str) {
+    use crate::game::town::Place;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261003);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.rain = false;
+        // A few things lying about by the house.
+        let (dx, dz) = crate::game::farm::MARKS.door;
+        let mut rng = Rng::new(3);
+        for (k, it) in [Item::Turnip, Item::Wood, Item::CopperOre, Item::Stone]
+            .into_iter()
+            .enumerate()
+        {
+            let at = glam::Vec3::new(dx as f32 + 1.2 + k as f32 * 0.6, 0.0, dz as f32 + 2.3);
+            let mut d = crate::game::fx::Drop::new(Stack::new(it, 1), at, &mut rng);
+            d.pos = at + glam::Vec3::Y * 0.12;
+            d.vel = glam::Vec3::ZERO;
+            d.age = 3.0;
+            p.drops.push(d);
+        }
+        p.player.pos = Vec2::new(dx as f32 + 0.5, dz as f32 + 2.2);
+        p.player.facing = Vec2::new(0.0, 1.0);
+    }
+    for (name, min, day) in [
+        ("l01_farm_morning", 430.0, 1),
+        ("l02_farm_noon", 760.0, 1),
+        ("l03_farm_evening", 1110.0, 1),
+        ("l04_farm_full_moon", 1330.0, 5),
+        ("l05_farm_new_moon", 1330.0, 1),
+    ] {
+        {
+            let p = play(&mut game);
+            p.clock.min = min;
+            p.clock.day = day;
+            p.toasts.clear();
+        }
+        tick(&mut game, &input, &audio, 2);
+        snap(&mut game, &mut r, &input, dir, name);
+    }
+    // Bramblewick's plaza mid-morning: the buildings throw long shadows.
+    {
+        let p = play(&mut game);
+        p.clock.min = 560.0;
+        p.clock.day = 2;
+        p.area = crate::game::world::Area::Town;
+        p.drops.clear();
+        p.player.pos = Vec2::new(35.5, 30.5);
+        p.player.facing = Vec2::new(0.0, 1.0);
+        p.arrive_folk();
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "l06_town_morning");
+    {
+        let p = play(&mut game);
+        p.clock.min = 900.0;
+        p.player.pos = Vec2::new(12.0, 21.5);
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "l07_town_afternoon");
+    // Underground and indoors: ambient occlusion alone.
+    for (name, depth) in [("l08_hollow_mossy", 3u32), ("l09_hollow_frost", 44)] {
+        descend(&mut game, &input, &audio, depth, false);
+        tick(&mut game, &input, &audio, 2);
+        snap(&mut game, &mut r, &input, dir, name);
+    }
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.level = None;
+        p.area = crate::game::world::Area::Farm;
+        p.clock.min = 700.0;
+        p.enter_house();
+        p.banner = None;
+        p.player.pos = Vec2::new(7.5, 7.5);
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "l10_home");
+    {
+        let p = play(&mut game);
+        p.leave_house();
+        p.area = crate::game::world::Area::Town;
+        p.enter_place(Place::Nook);
+        p.banner = None;
+        let (ex, ez) = p.room.as_ref().unwrap().exit;
+        p.player.pos = Vec2::new(ex as f32 + 0.5, ez as f32 - 3.5);
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "l11_nook");
 }

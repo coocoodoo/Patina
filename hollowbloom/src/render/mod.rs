@@ -5,18 +5,20 @@ pub mod frame;
 pub mod light;
 pub mod mesh;
 pub mod raster;
+pub mod shadow;
 pub mod texture;
 
 use glam::{Mat3, Mat4, Vec2, Vec3};
 
 pub use camera::Camera;
 pub use frame::Frame;
-pub use light::{LightGrid, PointLight, face_shade};
+pub use light::{LightGrid, PointLight};
 pub use mesh::{BoxUv, Mesh, UvRect};
 pub use raster::{CVert, Mat, Mode, draw_tri, opacity};
+pub use shadow::ShadowMap;
 pub use texture::{TexBank, TexId, Texture};
 
-use crate::palette::{FULL, LEVELS, NEUTRAL, Shading};
+use crate::palette::{BAYER, FULL, LEVELS, NEUTRAL, SHADE, Shading};
 
 /// Bends a mesh as it is drawn, in world space.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -171,7 +173,20 @@ pub struct Renderer {
     pub grid: LightGrid,
     /// Texture substitutions applied to meshes (animated water, lava).
     pub remap: Vec<(TexId, TexId)>,
+    /// Where the key light comes from (the sun outdoors); faces turned to it are brighter.
+    pub key: Vec3,
+    /// While set, meshes and sprites are drawn into `sunmap` as shadow casters instead of
+    /// onto the screen, and decals, points and halos are skipped.
+    pub shadow_pass: bool,
+    /// The sun's (or moon's) view of the casters, for `sun_shadows`.
+    pub sunmap: ShadowMap,
+    /// Round blob shadows under things; off while the sun casts real ones.
+    pub blobs: bool,
+    /// The player's settings: real shadows outdoors, and ambient occlusion.
+    pub want_shadows: bool,
+    pub want_ao: bool,
     scratch: Vec<CVert>,
+    cast: Vec<Vec3>,
 }
 
 impl Renderer {
@@ -184,7 +199,14 @@ impl Renderer {
             cam,
             grid: LightGrid::default(),
             remap: Vec::new(),
+            key: light::KEY,
+            shadow_pass: false,
+            sunmap: ShadowMap::default(),
+            blobs: true,
+            want_shadows: true,
+            want_ao: true,
             scratch: Vec::new(),
+            cast: Vec::new(),
         }
     }
 
@@ -214,6 +236,10 @@ impl Renderer {
         if mesh.tris.is_empty() {
             return;
         }
+        if self.shadow_pass {
+            self.cast_mesh(bank, mesh, model, o);
+            return;
+        }
         let nm = Mat3::from_mat4(*model);
         let fixed = match o.light {
             Light::Grid => None,
@@ -228,7 +254,7 @@ impl Renderer {
             let wp = o.warp.apply(model.transform_point3(v.pos));
             let wn = (nm * v.n).normalize_or_zero();
             let (lv, wm) = fixed.unwrap_or_else(|| self.grid.sample(wp.x, wp.z));
-            let mut l = (lv * face_shade(wn) * v.ao).max(o.glow) * FULL;
+            let mut l = (lv * light::face_shade_from(wn, self.key) * v.ao).max(o.glow) * FULL;
             let mut a = flat;
             if glass {
                 // Thicker where the surface turns away (Fresnel), and a hot glint where it
@@ -236,7 +262,7 @@ impl Renderer {
                 let view = (self.cam.eye - wp).normalize_or_zero();
                 let facing = wn.dot(view).abs();
                 let rim = (1.0 - facing) * (1.0 - facing);
-                let half = (light::KEY + view).normalize_or_zero();
+                let half = (self.key + view).normalize_or_zero();
                 let spec = wn.dot(half).max(0.0).powi(32);
                 l += spec * 10.0 * lv.clamp(0.4, 1.2);
                 a = opacity(o.alpha + (1.0 - o.alpha) * rim * 0.9 + spec * 0.25);
@@ -280,8 +306,67 @@ impl Renderer {
         self.scratch = scratch;
     }
 
+    /// Draws a mesh into the shadow map as a caster.
+    fn cast_mesh(&mut self, bank: &TexBank, mesh: &Mesh, model: &Mat4, o: &DrawOpts) {
+        if !casts(o.mode) {
+            return;
+        }
+        let mut pts = std::mem::take(&mut self.cast);
+        pts.clear();
+        pts.extend(
+            mesh.verts
+                .iter()
+                .map(|v| o.warp.apply(model.transform_point3(v.pos))),
+        );
+        // Solid shapes put their far side in the map; open ones (leaves, blades) both sides.
+        let back_only = o.cull;
+        for t in &mesh.tris {
+            let [i0, i1, i2] = t.i.map(|i| i as usize);
+            let uv = [mesh.verts[i0].uv, mesh.verts[i1].uv, mesh.verts[i2].uv];
+            self.sunmap.triangle(
+                [pts[i0], pts[i1], pts[i2]],
+                uv,
+                bank.get(t.tex),
+                bank.solid(t.tex),
+                back_only,
+            );
+        }
+        self.cast = pts;
+    }
+
     /// Draws a camera-facing sprite standing on `base`.
     pub fn billboard(&mut self, tex: &Texture, r: UvRect, base: Vec3, size: Vec2, o: &DrawOpts) {
+        if self.shadow_pass {
+            // Glowing sprites (flames, sparkles) cast nothing; cut-outs cast their shape,
+            // turned to face the light like a paper doll.
+            if !casts(o.mode) || o.mode == Mode::Unlit {
+                return;
+            }
+            let lz = self.sunmap.lz;
+            let side = Vec3::new(-lz.z, 0.0, lz.x).normalize_or(Vec3::X) * (size.x * 0.5);
+            let up = Vec3::Y * size.y;
+            let w = o.warp;
+            let bl = w.apply(base - side);
+            let br = w.apply(base + side);
+            let tr = w.apply(base + side + up);
+            let tl = w.apply(base - side + up);
+            let (u0, v0, u1, v1) = (r.u0, r.v0, r.u1, r.v1);
+            self.sunmap.triangle(
+                [bl, br, tr],
+                [Vec2::new(u0, v1), Vec2::new(u1, v1), Vec2::new(u1, v0)],
+                tex,
+                false,
+                false,
+            );
+            self.sunmap.triangle(
+                [bl, tr, tl],
+                [Vec2::new(u0, v1), Vec2::new(u1, v0), Vec2::new(u0, v0)],
+                tex,
+                false,
+                false,
+            );
+            return;
+        }
         let right = self.cam.right * (size.x * 0.5);
         let up = self.cam.up * size.y;
         let (lv, wm) = self.light_at(base, o.light);
@@ -315,6 +400,9 @@ impl Renderer {
 
     /// Draws a flat textured quad lying on the ground (decals, shadows, rugs).
     pub fn decal(&mut self, tex: &Texture, r: UvRect, center: Vec3, half: Vec2, o: &DrawOpts) {
+        if self.shadow_pass {
+            return;
+        }
         let (lv, wm) = self.light_at(center, o.light);
         let l = ((lv).max(o.glow) * FULL).clamp(0.0, LEVELS as f32 - 0.01);
         let a = opacity(o.alpha);
@@ -345,10 +433,13 @@ impl Renderer {
         draw_tri(&mut self.fb, &self.sh, &[a, c, d], &mat);
     }
 
-    /// A round blob shadow under an object.
+    /// A round blob shadow under an object (where the sun isn't casting real ones).
     pub fn shadow(&mut self, disk: &Texture, pos: Vec3, radius: f32) {
+        if !self.blobs || self.shadow_pass {
+            return;
+        }
         let o = DrawOpts {
-            mode: Mode::Darken(0),
+            mode: Mode::Darken(3),
             zwrite: false,
             light: Light::Fixed(1.0, NEUTRAL),
             ..Default::default()
@@ -365,6 +456,9 @@ impl Renderer {
 
     /// A small screen-aligned square at a world position (particles, sparks).
     pub fn point(&mut self, p: Vec3, size: i32, color: u8) {
+        if self.shadow_pass {
+            return;
+        }
         if let Some(s) = self.cam.project(p) {
             raster::draw_point(&mut self.fb, s.x, s.y, s.z, size, color);
         }
@@ -372,6 +466,9 @@ impl Renderer {
 
     /// A soft glow of added light, `radius` world units across, centred on `p`.
     pub fn halo(&mut self, p: Vec3, radius: f32, color: u8, strength: f32) {
+        if self.shadow_pass {
+            return;
+        }
         let Some(s) = self.cam.project(p) else { return };
         let Some(e) = self.cam.project(p + self.cam.right * radius) else {
             return;
@@ -379,4 +476,66 @@ impl Renderer {
         let px = (e.x - s.x).abs().max(1.0);
         raster::draw_halo(&mut self.fb, &self.sh, s.x, s.y, s.z, px, color, strength);
     }
+
+    /// Points the sun (or moon) along `dir` (the way its light travels) and gets the shadow
+    /// map ready for casters over the tile rectangle `rect`.
+    pub fn begin_shadows(&mut self, dir: Vec3, rect: (i32, i32, i32, i32)) {
+        let (x0, z0, x1, z1) = rect;
+        self.sunmap.setup(
+            dir,
+            (x0 as f32, z0 as f32, x1 as f32 + 1.0, z1 as f32 + 1.0),
+            3.0,
+            24.0,
+        );
+        self.shadow_pass = true;
+    }
+
+    /// Darkens every pixel on screen the sun can't see, one step down its colour ramp,
+    /// dithered by `strength` (dawn, dusk and moonlight cast fainter shadows).
+    pub fn sun_shadows(&mut self, strength: f32) {
+        self.shadow_pass = false;
+        if strength <= 0.0 || self.sunmap.depth.is_empty() {
+            return;
+        }
+        let cam = &self.cam;
+        let map = &self.sunmap;
+        let fb = &mut self.fb;
+        let (w, h) = (fb.w, fb.h);
+        let ty = (cam.fov_y * 0.5).tan();
+        let tx = ty * w as f32 / h as f32;
+        let (depth, glow) = (&fb.depth, &fb.glow);
+        frame::par_rows(&mut fb.color, w, |py, row| {
+            let ny = 1.0 - (py as f32 + 0.5) / h as f32 * 2.0;
+            let ray = cam.fwd + cam.up * (ny * ty);
+            for px in 0..w {
+                let i = py * w + px;
+                let d = depth[i];
+                let c = row[px];
+                if d <= 0.0 || c >= 32 || glow[i] {
+                    continue;
+                }
+                if strength < 1.0 && strength <= BAYER[((py & 3) << 2) | (px & 3)] {
+                    continue;
+                }
+                let nx = (px as f32 + 0.5) / w as f32 * 2.0 - 1.0;
+                let p = cam.eye + (ray + cam.right * (nx * tx)) / d;
+                if map.shadowed(p, 0.06) {
+                    row[px] = SHADE[c as usize];
+                }
+            }
+        });
+    }
+
+    /// Ambient occlusion over everything drawn so far (see `Frame::ambient_occlusion`).
+    pub fn ambient_occlusion(&mut self, strength: f32) {
+        self.fb.ambient_occlusion(&SHADE, strength);
+    }
+}
+
+/// Whether a draw mode leaves a shadow: glass, glows and screen tricks don't.
+fn casts(mode: Mode) -> bool {
+    !matches!(
+        mode,
+        Mode::Glass | Mode::Glow | Mode::Hidden(_) | Mode::Darken(_)
+    )
 }

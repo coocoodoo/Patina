@@ -320,6 +320,14 @@ struct SettingsFile {
     sfx: f32,
     fullscreen: bool,
     shake: bool,
+    #[serde(default = "yes")]
+    shadows: bool,
+    #[serde(default = "yes")]
+    ao: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 pub fn load_settings() -> super::Settings {
@@ -331,6 +339,8 @@ pub fn load_settings() -> super::Settings {
                 s.sfx = f.sfx;
                 s.fullscreen = f.fullscreen;
                 s.shake = f.shake;
+                s.shadows = f.shadows;
+                s.ao = f.ao;
             }
         }
     }
@@ -345,6 +355,8 @@ pub fn save_settings(s: &super::Settings) {
         sfx: s.sfx,
         fullscreen: s.fullscreen,
         shake: s.shake,
+        shadows: s.shadows,
+        ao: s.ao,
     };
     if let Ok(j) = serde_json::to_string_pretty(&f) {
         let _ = fs::write(d.join("settings.json"), j);

@@ -407,6 +407,11 @@ impl Play {
     // Environment
     // --------------------------------------------------------------------------------------
 
+    /// Tonight's moon.
+    pub fn moon(&self) -> super::sky::MoonPhase {
+        super::sky::MoonPhase::of_day(self.clock.day)
+    }
+
     pub fn env(&self) -> Env {
         match self.area {
             Area::Home => {
@@ -559,8 +564,9 @@ impl Play {
         self.shots.clear();
         self.bolts.clear();
         let biome = biome_for(depth);
+        let moon = self.moon();
         for (i, s) in level.spawns.iter().enumerate() {
-            self.foes.push(Enemy::new(
+            let mut f = Enemy::new(
                 s.foe,
                 s.x,
                 s.z,
@@ -568,7 +574,9 @@ impl Play {
                 biome,
                 s.boss,
                 hash2(depth as i32, i as i32, self.seed as u32),
-            ));
+            );
+            f.feel_the_moon(moon);
+            self.foes.push(f);
         }
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
@@ -585,6 +593,11 @@ impl Play {
             title: format!("Floor {depth}"),
             sub: if rematch {
                 "The guardian has returned!".to_string()
+            } else if moon.full() {
+                format!(
+                    "{} - full moon: the Hollow is wild!",
+                    BIOME_STYLES[biome].name
+                )
             } else {
                 BIOME_STYLES[biome].name.to_string()
             },
@@ -2717,7 +2730,11 @@ impl Play {
             }
         }
         if !spawns.is_empty() && self.foes.len() < 40 {
-            self.foes.extend(spawns);
+            let moon = self.moon();
+            for mut f in spawns {
+                f.feel_the_moon(moon);
+                self.foes.push(f);
+            }
         }
         // Contact damage.
         let mut hurt: Option<(i32, Vec2, Option<usize>)> = None;

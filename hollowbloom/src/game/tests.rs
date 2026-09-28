@@ -2096,3 +2096,36 @@ fn water_folk_drop_rods_now_and_then() {
     }
     assert!(rods > 10, "{rods} rods from 400 jellies");
 }
+
+#[test]
+fn the_full_moon_riles_up_the_hollow() {
+    use super::dungeon::Foe;
+    use super::foes::Enemy;
+    use super::sky::MoonPhase;
+    let mut calm = Enemy::new(Foe::Skeleton, 5.5, 5.5, 12, 1, false, 7);
+    let mut wild = Enemy::new(Foe::Skeleton, 5.5, 5.5, 12, 1, false, 7);
+    calm.feel_the_moon(MoonPhase::New);
+    wild.feel_the_moon(MoonPhase::Full);
+    assert!(wild.moonlit && !calm.moonlit);
+    assert!(wild.max_hp > calm.max_hp && wild.dmg > calm.dmg);
+    assert!(wild.speed > calm.speed && wild.fury > calm.fury);
+    // Down in the Hollow on a full-moon day, every creature is moonlit.
+    let mut s = Sim::new();
+    s.play.clock.day = 5;
+    s.play.start_fade(Trans::Descend {
+        depth: 4,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert!(!s.play.foes.is_empty());
+    assert!(s.play.foes.iter().all(|f| f.moonlit));
+    // ...and on a quiet night none are.
+    let mut s = Sim::new();
+    s.play.clock.day = 2;
+    s.play.start_fade(Trans::Descend {
+        depth: 4,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert!(s.play.foes.iter().all(|f| !f.moonlit));
+}

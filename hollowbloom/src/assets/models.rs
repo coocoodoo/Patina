@@ -83,6 +83,10 @@ pub struct HumanTex {
 #[derive(Clone)]
 pub struct Humanoid {
     pub parts: [Mesh; 6],
+    /// The head with its hair tucked under a hat (nothing poking through the crown), and
+    /// with no loose hair at all, for hoods.
+    pub head_tucked: Mesh,
+    pub head_hooded: Mesh,
     pub tex: HumanTex,
     pub hip: f32,
     pub shoulder: f32,
@@ -291,7 +295,11 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
         UvRect::px(15, 0, 8, 7),
     ]);
     parts[HEAD].cube(v(-0.26, 0.0, -0.23), v(0.26, 0.46, 0.23), &head_uv, head, 0);
-    hair_extras(bank, &mut parts[HEAD], l);
+    let mut head_tucked = parts[HEAD].clone();
+    let mut head_hooded = parts[HEAD].clone();
+    hair_extras(bank, &mut parts[HEAD], l, HairFit::Loose);
+    hair_extras(bank, &mut head_tucked, l, HairFit::Tucked);
+    hair_extras(bank, &mut head_hooded, l, HairFit::Hooded);
     let body_uv = BoxUv([
         UvRect::px(12, 0, 4, 5),
         UvRect::px(12, 0, 4, 5),
@@ -311,6 +319,8 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
     }
     Humanoid {
         parts,
+        head_tucked,
+        head_hooded,
         tex: HumanTex {
             head,
             body,
@@ -325,8 +335,19 @@ pub fn humanoid(bank: &mut TexBank, l: &Look) -> Humanoid {
     }
 }
 
+/// How loose hair sits: all of it, tucked under a hat's brim, or hidden by a hood.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HairFit {
+    Loose,
+    Tucked,
+    Hooded,
+}
+
+/// Where a hat's brim sits on the head: tucked hair stops just below it.
+const HAT_LINE: f32 = 0.33;
+
 /// Hair beyond the head box itself, and beards.
-fn hair_extras(bank: &mut TexBank, m: &mut Mesh, l: &Look) {
+fn hair_extras(bank: &mut TexBank, m: &mut Mesh, l: &Look, fit: HairFit) {
     let s = l.scale;
     let v = |x: f32, y: f32, z: f32| Vec3::new(x, y, z) * s;
     let [hl, hm, hd] = l.hair;
@@ -334,7 +355,24 @@ fn hair_extras(bank: &mut TexBank, m: &mut Mesh, l: &Look) {
     let dark = bank.add(tiles::solid(hd));
     let light = bank.add(tiles::solid(hl));
     let w4 = Texture::new(4, 4, 0);
-    match l.style {
+    // Under a hat, anything that would reach the crown is trimmed at the brim.
+    let skin_box = |m: &mut Mesh, a: Vec3, b: Vec3, t: TexId, w: &Texture| {
+        if fit == HairFit::Tucked {
+            let top = HAT_LINE * s;
+            if a.y >= top {
+                return;
+            }
+            skin_box(m, a, Vec3::new(b.x, b.y.min(top), b.z), t, w);
+        } else {
+            skin_box(m, a, b, t, w);
+        }
+    };
+    let style = if fit == HairFit::Hooded {
+        Hair::Bald
+    } else {
+        l.style
+    };
+    match style {
         Hair::Long => {
             skin_box(m, v(-0.27, -0.22, -0.27), v(0.27, 0.42, -0.18), mid, &w4);
             skin_box(m, v(-0.29, -0.1, -0.2), v(-0.25, 0.4, 0.02), mid, &w4);
@@ -366,6 +404,7 @@ fn hair_extras(bank: &mut TexBank, m: &mut Mesh, l: &Look) {
             skin_box(m, v(-0.29, 0.06, -0.2), v(-0.25, 0.47, 0.14), mid, &w4);
             skin_box(m, v(0.25, 0.06, -0.2), v(0.29, 0.47, 0.14), mid, &w4);
         }
+        Hair::Spiky if fit == HairFit::Tucked => {}
         Hair::Spiky => {
             for (x, z, t) in [
                 (-0.14f32, 0.02f32, -0.5f32),

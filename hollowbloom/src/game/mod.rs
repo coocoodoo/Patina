@@ -22,6 +22,7 @@ pub mod quests;
 pub mod save;
 pub mod scene;
 pub mod shops;
+pub mod sky;
 pub mod spellery;
 pub mod spells;
 pub mod talk;
@@ -59,6 +60,10 @@ pub struct Settings {
     pub sfx: f32,
     pub fullscreen: bool,
     pub shake: bool,
+    /// Sun and moon shadows outdoors.
+    pub shadows: bool,
+    /// Ambient occlusion in corners and under things.
+    pub ao: bool,
     pub dirty: bool,
 }
 
@@ -69,6 +74,8 @@ impl Default for Settings {
             sfx: 0.8,
             fullscreen: false,
             shake: true,
+            shadows: true,
+            ao: true,
             dirty: false,
         }
     }
@@ -238,6 +245,8 @@ impl Game {
     }
 
     pub fn draw(&mut self, r: &mut Renderer, input: &Input) {
+        r.want_shadows = self.settings.shadows;
+        r.want_ao = self.settings.ao;
         let a = &self.assets;
         match &mut self.state {
             State::Title(t) => {
@@ -255,26 +264,46 @@ impl Game {
                     push: glam::Vec2::new(29.5, 11.5),
                     spin: 0.0,
                 };
-                draw::draw_world(r, a, &mut t.farm, &env, &[]);
                 // The hero, idling by the house.
                 let p = Vec3::new(29.5, 0.0, 11.5);
-                r.shadow(a.tex(a.disk), p, 0.3);
                 let pose = draw::Pose {
                     bob: (t.t * 2.0).sin().abs() * 0.02,
                     ..Default::default()
                 };
                 let kit = player::Player::new(glam::Vec2::ZERO);
                 let dressed = scene::dress(a, &kit.equip, kit.held_stack());
-                draw::draw_humanoid(
-                    r,
-                    a,
-                    &a.hero,
-                    p,
-                    0.3,
-                    &pose,
-                    &DrawOpts::at(p).with_tag(1),
-                    &dressed.outfit(Some(&a.sprout)),
-                );
+                let hero = |r: &mut Renderer| {
+                    draw::draw_humanoid(
+                        r,
+                        a,
+                        &a.hero,
+                        p,
+                        0.3,
+                        &pose,
+                        &DrawOpts::at(p).with_tag(1),
+                        &dressed.outfit(Some(&a.sprout)),
+                    );
+                };
+                // Early sun from the east throws long shadows across the lawn.
+                let sun = sky::sky_light(450.0, sky::MoonPhase::New, false);
+                r.key = sun.key();
+                r.blobs = false;
+                let vis = r.cam.visible_tiles(3.0);
+                r.begin_shadows(sun.dir, vis);
+                draw::cast_objects(r, a, &t.farm, &env, (vis.0, vis.1, vis.2 + 10, vis.3 + 3));
+                hero(r);
+                r.shadow_pass = false;
+                draw::draw_world(r, a, &mut t.farm, &env, &[]);
+                hero(r);
+                if r.want_ao {
+                    r.ambient_occlusion(draw::AO_STRENGTH);
+                }
+                draw::draw_grass(r, a, &t.farm, &env);
+                if r.want_shadows {
+                    r.sun_shadows(sun.shadow);
+                } else {
+                    r.shadow_pass = false;
+                }
                 r.fb.outline(INK);
                 let mut c = Canvas {
                     fb: &mut r.fb,

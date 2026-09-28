@@ -28,6 +28,7 @@ OPTIONS:
     --wardrobe FILE render the hero in every piece of gear to one PNG
     --magic-shots DIR  render jelly slimes, sparks, grass, potions and spells
     --home-shots DIR   render fishing, the farmhouse, cooking and the furniture shop
+    --light-shots DIR  render sun and moon shadows and ambient occlusion
     --bench         measure rendering speed
     -h, --help      show this help
 
@@ -71,6 +72,10 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--magic-shots") {
         headless::magic_shots(args.get(i + 1).map(String::as_str).unwrap_or("magic"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--light-shots") {
+        headless::light_shots(args.get(i + 1).map(String::as_str).unwrap_or("light"));
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--home-shots") {

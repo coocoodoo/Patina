@@ -11,18 +11,22 @@ use super::home::{self, WINDOWS};
 use super::items::{Kind, Placeable, Stack};
 use super::play::Play;
 use super::player::ActKind;
+use super::sky::sky_light;
 use super::town::Decor;
 use super::travel::area_world_mut;
 use super::world::{Area, Wall};
 use crate::assets::Assets;
 use crate::palette::*;
+use crate::render::light::KEY;
 use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, TexId, UvRect};
+
 use crate::util::hash2;
 
 /// Meshes and texture swaps for what someone is wearing and holding.
 pub struct Dressed<'a> {
     pub held: Option<&'a Mesh>,
     pub hat: Option<&'a Mesh>,
+    pub hood: bool,
     pub boot: Option<&'a Mesh>,
     pub shield: Option<&'a Mesh>,
     pub remap: Vec<(TexId, TexId)>,
@@ -37,6 +41,7 @@ impl<'a> Dressed<'a> {
             sprout: None,
             boot: self.boot,
             shield: self.shield,
+            hood: self.hood,
             remap,
         }
     }
@@ -48,6 +53,7 @@ impl<'a> Dressed<'a> {
             sprout,
             boot: self.boot,
             shield: self.shield,
+            hood: self.hood,
             remap: &self.remap,
         }
     }
@@ -91,6 +97,14 @@ pub fn dress<'a>(a: &'a Assets, equip: &[Option<Stack>; 5], held: Option<&Stack>
             .filter(|s| s.item.class().is_some_and(|c| !c.is_armor()))
             .and_then(|s| a.held_mesh(s.item.def().icon)),
         hat: icon(Slot::Head).and_then(|i| a.hat_mesh(i)),
+        hood: equip[Slot::Head as usize].is_some_and(|s| {
+            matches!(
+                s.item,
+                super::items::Item::CatHood
+                    | super::items::Item::FrogHood
+                    | super::items::Item::BunnyHood
+            )
+        }),
         boot: icon(Slot::Feet).and_then(|i| a.boot_mesh(i)),
         shield: icon(Slot::Shield).and_then(|i| a.shield_mesh(i)),
         remap,
@@ -102,6 +116,16 @@ impl Play {
         r.cam = self.cam.clone();
         r.cam.update(r.width(), r.height());
         let env = self.env();
+        // Outdoors the sun (or the moon) casts shadows and swings the key light round.
+        let sky = matches!(self.area, Area::Farm | Area::Town)
+            .then(|| sky_light(self.clock.min, self.moon(), self.rain));
+        r.key = sky.map_or(KEY, |s| s.key());
+        let shadows = if r.want_shadows {
+            sky.map_or(0.0, |s| s.shadow)
+        } else {
+            0.0
+        };
+        r.blobs = shadows < 0.35;
         let mut lights = Vec::new();
         let ppos = self.player.world_pos();
         match self.area {
@@ -208,6 +232,28 @@ impl Play {
                 }
             }
         }
+        if let Some(s) = sky.filter(|_| shadows > 0.0) {
+            // Everything that stands up casts: drawn from the light's side into its map.
+            let vis = r.cam.visible_tiles(3.0);
+            // Anything up to ~3 tall standing up-sun of the view can reach into it.
+            let off = Vec2::new(s.dir.x, s.dir.z) * (3.0 / (-s.dir.y).max(0.2));
+            let (ox, oz) = (off.x.clamp(-12.0, 12.0), off.y.clamp(-12.0, 12.0));
+            let ext = (
+                vis.0 - ox.max(0.0).ceil() as i32,
+                vis.1 - oz.max(0.0).ceil() as i32,
+                vis.2 + (-ox).max(0.0).ceil() as i32,
+                vis.3 + (-oz).max(0.0).ceil() as i32,
+            );
+            r.begin_shadows(s.dir, vis);
+            draw::cast_objects(r, a, self.world(), &env, ext);
+            self.draw_bus(r, a, self.sky_night());
+            self.draw_drops(r, a);
+            self.draw_cat(r, a);
+            self.draw_folk(r, a);
+            self.draw_player_body(r, a);
+            self.draw_fishing(r, a);
+            r.shadow_pass = false;
+        }
         let world = area_world_mut(
             self.area,
             &mut self.farm,
@@ -222,6 +268,26 @@ impl Play {
             self.draw_home(r, a);
         }
         self.draw_bus(r, a, self.sky_night());
+        self.draw_drops(r, a);
+        for f in self.foes.iter().filter(|f| !f.translucent()) {
+            f.draw(r, a);
+        }
+        self.draw_cat(r, a);
+        self.draw_folk(r, a);
+        self.draw_player_body(r, a);
+
+        // Light and shade over everything solid: ambient occlusion in every crease and
+        // corner, then the grass, then the sun's shadows over the lot.
+        if r.want_ao {
+            r.ambient_occlusion(draw::AO_STRENGTH);
+        }
+        draw::draw_grass(r, a, self.world(), &env);
+        if shadows > 0.0 {
+            r.sun_shadows(shadows);
+        }
+        for f in &self.foes {
+            f.draw_moonglow(r);
+        }
 
         // Target cursor.
         if let Some((tx, tz)) = self.target {
@@ -278,11 +344,6 @@ impl Play {
             }
         }
 
-        self.draw_drops(r, a);
-
-        for f in self.foes.iter().filter(|f| !f.translucent()) {
-            f.draw(r, a);
-        }
         for s in &self.shots {
             let c = shot_colors(s.color);
             r.halo(s.world_pos(), 0.28, c[1], 0.7);
@@ -305,29 +366,7 @@ impl Play {
             }
         }
 
-        // The cat.
-        if self.area == Area::Farm {
-            let c = &self.cat;
-            let base = Vec3::new(c.pos.x, 0.0, c.pos.y);
-            r.shadow(a.tex(a.disk), base, 0.22);
-            let hop = if c.pet > 0.0 {
-                (self.time * 10.0).sin().abs() * 0.05
-            } else {
-                0.0
-            };
-            let m = Mat4::from_translation(base + Vec3::Y * hop) * Mat4::from_rotation_y(c.yaw);
-            let o = DrawOpts::at(base).with_tag(1);
-            r.mesh(&a.bank, &a.critters.cat, &m, &o);
-            let wag = (self.time * 5.0).sin() * 0.5;
-            let tail = m
-                * Mat4::from_translation(Vec3::new(0.0, 0.2, -0.2))
-                * Mat4::from_rotation_x(0.8)
-                * Mat4::from_rotation_y(wag);
-            r.mesh(&a.bank, &a.critters.cat_tail, &tail, &o);
-        }
-
-        self.draw_folk(r, a);
-        self.draw_player(r, a);
+        self.draw_player_extras(r, a);
         self.draw_fishing(r, a);
         self.draw_cooking(r);
         // Jelly and ghosts go last, far to near, so whatever is behind them shows through.
@@ -361,7 +400,31 @@ impl Play {
                 r.point(p + Vec3::Y * 0.12, 1, BLUE);
             }
         }
-        r.fb.outline(INK);
+        r.fb.outline_with(INK, super::foes::MOONLIT_TAG, RED);
+    }
+
+    /// The cat, snoozing or being petted.
+    fn draw_cat(&self, r: &mut Renderer, a: &Assets) {
+        if self.area != Area::Farm {
+            return;
+        }
+        let c = &self.cat;
+        let base = Vec3::new(c.pos.x, 0.0, c.pos.y);
+        r.shadow(a.tex(a.disk), base, 0.22);
+        let hop = if c.pet > 0.0 {
+            (self.time * 10.0).sin().abs() * 0.05
+        } else {
+            0.0
+        };
+        let m = Mat4::from_translation(base + Vec3::Y * hop) * Mat4::from_rotation_y(c.yaw);
+        let o = DrawOpts::at(base).with_tag(1);
+        r.mesh(&a.bank, &a.critters.cat, &m, &o);
+        let wag = (self.time * 5.0).sin() * 0.5;
+        let tail = m
+            * Mat4::from_translation(Vec3::new(0.0, 0.2, -0.2))
+            * Mat4::from_rotation_x(0.8)
+            * Mat4::from_rotation_y(wag);
+        r.mesh(&a.bank, &a.critters.cat_tail, &tail, &o);
     }
 
     /// The townsfolk, dressed up, with a bubble over anyone who wants you.
@@ -615,7 +678,8 @@ impl Play {
         }
     }
 
-    fn draw_player(&self, r: &mut Renderer, a: &Assets) {
+    /// Where the hero is drawn, how they stand, and how they're drawn.
+    fn player_look(&self) -> (Vec3, Pose, DrawOpts, bool) {
         let p = &self.player;
         let mut pos = p.world_pos();
         let mut pose = Pose {
@@ -637,9 +701,6 @@ impl Play {
             // Stirring the pot.
             pose.swing = Some(((self.time * 1.6).fract() * 0.5, Swing::Use));
         }
-        let dressed = dress(a, &p.equip, p.held_stack());
-        let fit = dressed.outfit(Some(&a.sprout));
-        r.shadow(a.tex(a.disk), p.world_pos(), 0.3);
         let blink = p.hurt > 0.0 && (self.time * 20.0).sin() > 0.3;
         let mut o = DrawOpts {
             light: Light::At(p.world_pos()),
@@ -649,9 +710,29 @@ impl Play {
         if p.flash > 0.0 {
             o.mode = Mode::Solid(WHITE);
         }
+        (pos, pose, o, blink)
+    }
+
+    /// The hero themselves (and their shadow).
+    fn draw_player_body(&self, r: &mut Renderer, a: &Assets) {
+        let p = &self.player;
+        let (pos, pose, o, blink) = self.player_look();
+        let dressed = dress(a, &p.equip, p.held_stack());
+        let fit = dressed.outfit(Some(&a.sprout));
+        r.shadow(a.tex(a.disk), p.world_pos(), 0.3);
         if !blink {
             draw_humanoid(r, a, &a.hero, pos, p.yaw, &pose, &o, &fit);
-            // A soft silhouette where walls hide the hero.
+        }
+    }
+
+    /// A see-through silhouette where walls hide the hero, and the flash of whatever
+    /// they're doing: sword arcs, gathering starlight.
+    fn draw_player_extras(&self, r: &mut Renderer, a: &Assets) {
+        let p = &self.player;
+        let (pos, pose, o, blink) = self.player_look();
+        if !blink {
+            let dressed = dress(a, &p.equip, p.held_stack());
+            let fit = dressed.outfit(Some(&a.sprout));
             let ghost = DrawOpts {
                 mode: Mode::Hidden(LAVENDER),
                 zwrite: false,

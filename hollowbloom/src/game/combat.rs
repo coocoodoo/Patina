@@ -224,8 +224,13 @@ impl Play {
                 2.5,
             );
             let depth = self.depth().max(1);
-            let fortune = self.fortune();
-            let loot = loot::foe_loot(
+            let mut fortune = self.fortune();
+            if f.moonlit {
+                // Full-moon creatures carry better things, and more of them.
+                fortune.luck += 0.35;
+                fortune.greed *= 1.6;
+            }
+            let mut loot = loot::foe_loot(
                 f.foe,
                 f.boss,
                 biome_for(depth),
@@ -233,6 +238,16 @@ impl Play {
                 fortune,
                 &mut self.rng,
             );
+            if f.moonlit && self.rng.chance(0.5) {
+                loot.extend(loot::foe_loot(
+                    f.foe,
+                    false,
+                    biome_for(depth),
+                    depth,
+                    fortune,
+                    &mut self.rng,
+                ));
+            }
             let mut rare = false;
             for s in loot {
                 rare |= s.rarity().is_some_and(|r| r >= super::gear::Rarity::Rare);

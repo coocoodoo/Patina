@@ -160,8 +160,10 @@ fn line_of_sight(
 /// Direction towards the fixed key light: from the upper left, a little towards the camera.
 pub const KEY: Vec3 = Vec3::new(-0.4205, 0.841, 0.3404);
 
-/// Shading from the key light. Top faces get 1.0.
-pub fn face_shade(n: Vec3) -> f32 {
-    let d = n.dot(KEY).max(0.0) / 0.841;
+/// Shading from a key light coming from `key` (a unit vector towards it). Top faces get
+/// about 1.0 however high it stands, so the sun can move without the world dimming.
+#[inline]
+pub fn face_shade_from(n: Vec3, key: Vec3) -> f32 {
+    let d = n.dot(key).max(0.0) / key.y.max(0.35);
     0.6 + 0.4 * d.min(1.2)
 }

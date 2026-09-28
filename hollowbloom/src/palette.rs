@@ -61,6 +61,44 @@ pub const NEUTRAL: f32 = 4.0;
 /// opacity dithers between neighbouring steps, from fully clear to fully solid.
 pub const BLENDS: usize = 8;
 
+/// Each colour's next step down its own ramp, the way a pixel artist shades: cool and a
+/// little bluer for pale colours, deeper for saturated ones. Sun shadows and ambient
+/// occlusion darken through this, one step (or two) at a time.
+pub const SHADE: [u8; 32] = [
+    SKY,       // white
+    CLAY,      // orange
+    CRIMSON,   // red
+    INK,       // plum
+    MAROON,    // crimson
+    CRIMSON,   // pink
+    ROSEWOOD,  // salmon
+    SALMON,    // peach
+    KHAKI,     // sand
+    ROSEWOOD,  // khaki
+    SHADOW,    // rosewood
+    INK,       // shadow
+    INK,       // ink
+    SLATE,     // deep teal
+    DEEP_TEAL, // teal
+    TEAL,      // green
+    GREEN,     // lime
+    SAND,      // cream
+    CLAY,      // gold
+    RUST,      // clay
+    MAROON,    // rust
+    INK,       // maroon
+    INK,       // grape
+    GRAPE,     // purple
+    PURPLE,    // lavender
+    LAVENDER,  // blush
+    BLUE,      // sky
+    INDIGO,    // blue
+    SLATE,     // indigo
+    INK,       // slate
+    TEAL,      // aqua
+    AQUA,      // mint
+];
+
 /// 4x4 ordered-dither thresholds in [0, 1).
 pub const BAYER: [f32; 16] = [
     0.0 / 16.0,
@@ -269,6 +307,21 @@ mod tests {
         let s = Shading::new();
         assert!(s.map.iter().all(|&i| i < 32));
         assert!(s.darken.iter().flatten().all(|&i| i < 32));
+    }
+
+    #[test]
+    fn shading_steps_always_go_darker() {
+        let s = Shading::new();
+        let lum = |i: u8| s.lab[i as usize][0];
+        for i in 0..32u8 {
+            let d = SHADE[i as usize];
+            assert!(d < 32);
+            if i == INK {
+                assert_eq!(d, INK);
+            } else {
+                assert!(lum(d) < lum(i), "shading {i} to {d} is not darker");
+            }
+        }
     }
 
     #[test]

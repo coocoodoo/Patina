@@ -5,7 +5,7 @@ use glam::Vec4;
 
 use super::frame::Frame;
 use super::texture::Texture;
-use crate::palette::{BAYER, BLENDS, CLEAR, LEVELS, Shading, WARMTHS};
+use crate::palette::{BAYER, BLENDS, CLEAR, LEVELS, SHADE, Shading, WARMTHS};
 
 /// A vertex in clip space with its attributes.
 #[derive(Clone, Copy, Debug, Default)]
@@ -206,7 +206,7 @@ fn raster(fb: &mut Frame, sh: &Shading, v0: &CVert, v1: &CVert, v2: &CVert, m: &
         Mode::Lit => raster_mode::<LIT>(fb, sh, v0, v1, v2, m, 0),
         Mode::Unlit => raster_mode::<UNLIT>(fb, sh, v0, v1, v2, m, 0),
         Mode::Solid(c) => raster_mode::<SOLID>(fb, sh, v0, v1, v2, m, c),
-        Mode::Darken(k) => raster_mode::<DARKEN>(fb, sh, v0, v1, v2, m, k.min(2)),
+        Mode::Darken(k) => raster_mode::<DARKEN>(fb, sh, v0, v1, v2, m, k.min(3)),
         Mode::Hidden(c) => raster_mode::<HIDDEN>(fb, sh, v0, v1, v2, m, c),
         Mode::Glass => raster_mode::<GLASS>(fb, sh, v0, v1, v2, m, 0),
         Mode::Glow => raster_mode::<GLOW>(fb, sh, v0, v1, v2, m, 0),
@@ -304,7 +304,12 @@ fn raster_mode<const MODE: u8>(
     let hmask = tex.h - 1;
     let wshift = tex.wshift;
     let map = &sh.map[..];
-    let darken = &sh.darken[param.min(2) as usize];
+    // Darken 0-2 dims through the light maps; 3 is one step down each colour's ramp.
+    let darken = if param == 3 {
+        &SHADE
+    } else {
+        &sh.darken[param.min(2) as usize]
+    };
     let table = if MODE == GLOW {
         &sh.glow[..]
     } else {
@@ -361,6 +366,9 @@ fn raster_mode<const MODE: u8>(
                                     let c = map[(wi * LEVELS + li) * 32 + texel as usize];
                                     if MODE == LIT {
                                         fb.color[idx] = c;
+                                        if zwrite {
+                                            fb.glow[idx] = false;
+                                        }
                                     } else if let Some(c) = blend(table, a, th, c, fb.color[idx]) {
                                         fb.color[idx] = c;
                                     } else {
@@ -374,7 +382,11 @@ fn raster_mode<const MODE: u8>(
                                         None => drawn = false,
                                     }
                                 }
-                                UNLIT => fb.color[idx] = texel,
+                                UNLIT => {
+                                    fb.color[idx] = texel;
+                                    // Glowing things stay bright under shadows and AO.
+                                    fb.glow[idx] = true;
+                                }
                                 SOLID | HIDDEN => fb.color[idx] = param,
                                 _ => {
                                     let cur = fb.color[idx];

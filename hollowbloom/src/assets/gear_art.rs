@@ -10,7 +10,7 @@ use glam::{Mat4, Vec3};
 use super::models::{HERO, Look, body_tex, lathe, limb_tex, skin_box};
 use super::sprites::{AXE, CAN, HOE, NO, PICKAXE, SWORD, art};
 use crate::palette::*;
-use crate::render::{Mesh, TexBank, TexId, Texture};
+use crate::render::{Mesh, TexBank, TexId, Texture, UvRect};
 
 // ------------------------------------------------------------------------------------------
 // Icons
@@ -2125,6 +2125,72 @@ fn held_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
 // Hats: origin at the top of the head, +z is the face
 // ------------------------------------------------------------------------------------------
 
+/// A crown that hugs the head: like `lathe`, but every ring is a squircle just big enough
+/// (at size 1) to hide the corners of the head's box, so the head never pokes through a
+/// hat. `prof` is (size, height) pairs from the bottom up; a size of 0 closes it to a point.
+fn hug(m: &mut Mesh, base: Vec3, prof: &[(f32, f32)], tex: TexId, cap_bottom: bool) {
+    // The head's box is 0.52 x 0.46 across; this squircle clears its corners.
+    const A: f32 = 0.31;
+    const B: f32 = 0.28;
+    const SEG: usize = 16;
+    let pt = |s: f32, y: f32, j: usize| {
+        let a = j as f32 / SEG as f32 * PI * 2.0;
+        let (c, sn) = (a.cos(), a.sin());
+        base + v(
+            s * A * c.signum() * c.abs().sqrt(),
+            y,
+            -s * B * sn.signum() * sn.abs().sqrt(),
+        )
+    };
+    let top = prof.last().map_or(0.0, |p| p.1);
+    let tv = |y: f32| (top - y) * 16.0;
+    for i in 0..prof.len().saturating_sub(1) {
+        let ((s0, y0), (s1, y1)) = (prof[i], prof[i + 1]);
+        for j in 0..SEG {
+            let u0 = j as f32 * 2.0;
+            let u1 = u0 + 2.0;
+            let p = [
+                pt(s0, y0, j),
+                pt(s0, y0, j + 1),
+                pt(s1, y1, j + 1),
+                pt(s1, y1, j),
+            ];
+            if s1 <= 1e-4 {
+                m.tri(
+                    [p[0], p[1], p[2]],
+                    [
+                        glam::Vec2::new(u0, tv(y0)),
+                        glam::Vec2::new(u1, tv(y0)),
+                        glam::Vec2::new((u0 + u1) * 0.5, tv(y1)),
+                    ],
+                    tex,
+                );
+            } else {
+                m.quad(p, UvRect::new(u0, tv(y1), u1, tv(y0)), tex);
+            }
+        }
+    }
+    if cap_bottom {
+        let (s0, y0) = prof[0];
+        let c = base + Vec3::Y * y0;
+        for j in 0..SEG {
+            let (p0, p1) = (pt(s0, y0, j), pt(s0, y0, j + 1));
+            let uv = glam::Vec2::new(2.0, 2.0);
+            m.tri([c, p1, p0], [uv, uv, uv], tex);
+        }
+    }
+}
+
+/// A point on the squircle `hug` builds, `a` radians round from the front, at size `s`.
+fn hug_point(a: f32, s: f32, y: f32) -> Vec3 {
+    let (sn, c) = (a.sin(), a.cos());
+    v(
+        s * 0.31 * sn.signum() * sn.abs().sqrt(),
+        y,
+        s * 0.28 * c.signum() * c.abs().sqrt(),
+    )
+}
+
 fn hood(bank: &mut TexBank, m: &mut Mesh, c: [u8; 3]) {
     let t = metal(bank, c);
     bx(m, v(-0.29, -0.02, -0.26), v(0.29, 0.05, 0.25), t);
@@ -2145,27 +2211,23 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
             lathe(
                 &mut m,
                 v(0.0, -0.12, 0.0),
-                &[(0.38, 0.0), (0.38, 0.025)],
-                10,
+                &[(0.39, 0.0), (0.39, 0.025)],
+                12,
                 0.0,
                 straw,
                 true,
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.1, 0.0),
-                &[(0.27, 0.0), (0.25, 0.14), (0.0, 0.17)],
-                8,
-                0.0,
+                &[(1.0, 0.0), (0.98, 0.12), (0.62, 0.17), (0.0, 0.19)],
                 straw,
                 false,
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.09, 0.0),
-                &[(0.275, 0.0), (0.27, 0.05)],
-                8,
-                0.0,
+                &[(1.03, 0.0), (1.02, 0.05)],
                 ribbon,
                 false,
             );
@@ -2174,9 +2236,9 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
             let leaf = solid(bank, GREEN);
             let cols = [PINK, WHITE, SKY, GOLD];
             let heart = solid(bank, GOLD);
-            for k in 0..10 {
-                let a = k as f32 / 10.0 * PI * 2.0;
-                let p = v(a.sin() * 0.29, -0.06, a.cos() * 0.26);
+            for k in 0..12 {
+                let a = k as f32 / 12.0 * PI * 2.0;
+                let p = hug_point(a, 1.02, -0.06);
                 if k % 2 == 0 {
                     let t = solid(bank, cols[(k / 2) % 4]);
                     bx(&mut m, p - Vec3::splat(0.045), p + Vec3::splat(0.045), t);
@@ -2252,65 +2314,55 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
         L::MushroomCap(c) => {
             let cap = spotty(bank, c[1], c[0]);
             let rim = solid(bank, c[2]);
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.12, 0.0),
-                &[(0.34, 0.0), (0.32, 0.08), (0.22, 0.18), (0.0, 0.23)],
-                9,
-                0.0,
+                &[(1.12, 0.0), (1.06, 0.12), (0.72, 0.2), (0.0, 0.25)],
                 cap,
                 false,
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.13, 0.0),
-                &[(0.34, 0.0), (0.34, 0.02)],
-                9,
-                0.0,
+                &[(1.13, 0.0), (1.13, 0.02)],
                 rim,
                 true,
             );
         }
         L::LeafCap => {
             let (g, stem) = (metal(bank, [LIME, GREEN, TEAL]), solid(bank, GREEN));
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.12, 0.0),
-                &[(0.3, 0.0), (0.26, 0.1), (0.0, 0.16)],
-                8,
-                0.0,
+                &[(1.02, 0.0), (1.0, 0.13), (0.55, 0.17), (0.0, 0.19)],
                 g,
                 true,
             );
-            bx(&mut m, v(-0.015, 0.02, -0.015), v(0.015, 0.12, 0.015), stem);
+            bx(&mut m, v(-0.015, 0.05, -0.015), v(0.015, 0.14, 0.015), stem);
             let mut leaf = Mesh::new();
             bx(&mut leaf, v(0.0, -0.01, -0.04), v(0.14, 0.01, 0.04), g);
             m.append(
                 &leaf,
-                Mat4::from_translation(v(0.0, 0.1, 0.0)) * Mat4::from_rotation_z(0.4),
+                Mat4::from_translation(v(0.0, 0.12, 0.0)) * Mat4::from_rotation_z(0.4),
             );
         }
         L::Helm(c, band, horns) => {
             let (t, b) = (metal(bank, c), solid(bank, band));
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.22, 0.0),
-                &[(0.31, 0.0), (0.31, 0.2), (0.22, 0.3), (0.0, 0.34)],
-                8,
-                0.4,
+                &[(1.04, 0.0), (1.04, 0.22), (0.72, 0.32), (0.0, 0.36)],
                 t,
                 false,
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.1, 0.0),
-                &[(0.32, 0.0), (0.32, 0.05)],
-                8,
-                0.4,
+                &[(1.07, 0.0), (1.07, 0.05)],
                 b,
                 false,
             );
-            bx(&mut m, v(-0.03, -0.3, 0.27), v(0.03, -0.06, 0.32), t);
+            bx(&mut m, v(-0.03, -0.3, 0.28), v(0.03, -0.06, 0.33), t);
             if horns {
                 let ice = metal(bank, [WHITE, WHITE, SKY]);
                 for s in [-1.0f32, 1.0] {
@@ -2319,7 +2371,7 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                     bx(&mut h, v(-0.02, 0.1, -0.02), v(0.02, 0.18, 0.02), ice);
                     m.append(
                         &h,
-                        Mat4::from_translation(v(s * 0.25, 0.0, 0.0))
+                        Mat4::from_translation(v(s * 0.29, 0.0, 0.0))
                             * Mat4::from_rotation_z(s * -0.7),
                     );
                 }
@@ -2331,17 +2383,15 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                 solid(bank, CLAY),
                 solid(bank, CREAM),
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.14, 0.0),
-                &[(0.31, 0.0), (0.29, 0.14), (0.18, 0.24), (0.0, 0.27)],
-                8,
-                0.4,
+                &[(1.03, 0.0), (1.0, 0.15), (0.6, 0.25), (0.0, 0.28)],
                 y,
                 false,
             );
-            bx(&mut m, v(-0.26, -0.15, 0.2), v(0.26, -0.12, 0.38), brim);
-            bx(&mut m, v(-0.06, -0.06, 0.26), v(0.06, 0.04, 0.33), lamp);
+            bx(&mut m, v(-0.26, -0.15, 0.22), v(0.26, -0.12, 0.4), brim);
+            bx(&mut m, v(-0.06, -0.06, 0.27), v(0.06, 0.04, 0.34), lamp);
         }
         L::Wizard(c, band) => {
             let (t, b) = (metal(bank, c), solid(bank, band));
@@ -2354,57 +2404,55 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                 t,
                 true,
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.08, 0.0),
-                &[(0.26, 0.0), (0.19, 0.2), (0.1, 0.42), (0.0, 0.58)],
-                8,
-                0.0,
+                &[
+                    (1.0, 0.0),
+                    (0.98, 0.09),
+                    (0.55, 0.25),
+                    (0.3, 0.44),
+                    (0.0, 0.6),
+                ],
                 t,
                 false,
             );
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.07, 0.0),
-                &[(0.265, 0.0), (0.245, 0.06)],
-                8,
-                0.0,
+                &[(1.03, 0.0), (1.02, 0.06)],
                 b,
                 false,
             );
             let star = solid(bank, CREAM);
-            bx(&mut m, v(-0.03, 0.1, 0.19), v(0.03, 0.16, 0.22), star);
+            bx(&mut m, v(-0.03, 0.08, 0.26), v(0.03, 0.14, 0.29), star);
         }
         L::Circlet(c, gem) => {
             let (t, g) = (metal(bank, c), solid(bank, gem));
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.2, 0.0),
-                &[(0.285, 0.0), (0.285, 0.05)],
-                10,
-                0.0,
+                &[(1.02, 0.0), (1.02, 0.05)],
                 t,
                 false,
             );
-            bx(&mut m, v(-0.04, -0.21, 0.27), v(0.04, -0.13, 0.31), g);
+            bx(&mut m, v(-0.04, -0.21, 0.28), v(0.04, -0.13, 0.32), g);
         }
         L::Crown(c, gem) => {
             let (t, g) = (metal(bank, c), solid(bank, gem));
-            lathe(
+            hug(
                 &mut m,
                 v(0.0, -0.12, 0.0),
-                &[(0.28, 0.0), (0.28, 0.09)],
-                10,
-                0.0,
+                &[(1.02, 0.0), (1.02, 0.09)],
                 t,
                 false,
             );
             for k in 0..6 {
                 let a = k as f32 / 6.0 * PI * 2.0;
-                let p = v(a.sin() * 0.27, 0.02, a.cos() * 0.27);
+                let p = hug_point(a, 1.0, 0.02);
                 bx(&mut m, p - v(0.03, 0.05, 0.03), p + v(0.03, 0.05, 0.03), t);
             }
-            bx(&mut m, v(-0.035, -0.1, 0.27), v(0.035, -0.03, 0.3), g);
+            bx(&mut m, v(-0.035, -0.1, 0.28), v(0.035, -0.03, 0.31), g);
         }
         _ => return None,
     }

@@ -82,10 +82,13 @@ pub type TexId = u16;
 #[derive(Default)]
 pub struct TexBank {
     list: Vec<Texture>,
+    /// Whether each texture is solid all over (no clear texels to cut out).
+    solid: Vec<bool>,
 }
 
 impl TexBank {
     pub fn add(&mut self, t: Texture) -> TexId {
+        self.solid.push(t.data.iter().all(|&c| c != CLEAR));
         self.list.push(t);
         (self.list.len() - 1) as TexId
     }
@@ -93,5 +96,11 @@ impl TexBank {
     #[inline]
     pub fn get(&self, id: TexId) -> &Texture {
         &self.list[id as usize]
+    }
+
+    /// True when a texture has no see-through texels.
+    #[inline]
+    pub fn solid(&self, id: TexId) -> bool {
+        self.solid[id as usize]
     }
 }

@@ -766,7 +766,7 @@ impl Play {
                 mut sel,
                 settings: in_settings,
             } => {
-                let items = if in_settings { 5 } else { 4 };
+                let items = if in_settings { 7 } else { 4 };
                 if input.pressed_repeat(Action::Down) {
                     sel = (sel + 1) % items;
                     io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
@@ -815,12 +815,18 @@ impl Play {
                     if picked == Some(3) || left && sel == 3 || right && sel == 3 {
                         settings.shake = !settings.shake;
                     }
+                    if picked == Some(4) || left && sel == 4 || right && sel == 4 {
+                        settings.shadows = !settings.shadows;
+                    }
+                    if picked == Some(5) || left && sel == 5 || right && sel == 5 {
+                        settings.ao = !settings.ao;
+                    }
                     io.audio.set_volume(settings.music, settings.sfx);
                     if picked.is_some() || left || right {
                         io.audio.play(Sfx::UiSelect);
                         settings.dirty = true;
                     }
-                    if picked == Some(4) || input.pressed(Action::Cancel) || rclick {
+                    if picked == Some(6) || input.pressed(Action::Cancel) || rclick {
                         Menu::Pause {
                             sel: 1,
                             settings: false,
@@ -1392,6 +1398,12 @@ impl Play {
                     .into(),
                     INDIGO,
                 ));
+                // What tonight's moon means below.
+                let moon = super::sky::MoonPhase::of_day(s.day);
+                news.push((
+                    format!("{}: {}", moon.name(), moon.omen()),
+                    if moon.full() { CRIMSON } else { PURPLE },
+                ));
                 // The box grows to fit its widest line (and wraps anything wider than the
                 // screen allows).
                 let label = "Shipped goods sold for ";
@@ -1508,6 +1520,14 @@ impl Play {
                         format!(
                             "Screen shake: {}",
                             if settings.shake { "on" } else { "off" }
+                        ),
+                        format!(
+                            "Sun shadows: {}",
+                            if settings.shadows { "on" } else { "off" }
+                        ),
+                        format!(
+                            "Ambient occlusion: {}",
+                            if settings.ao { "on" } else { "off" }
                         ),
                         "Back".to_string(),
                     ]

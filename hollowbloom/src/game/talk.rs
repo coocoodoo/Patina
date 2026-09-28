@@ -1135,6 +1135,14 @@ impl Play {
                     &format!("Home: charisma {ch} ({})", super::home::charm_title(ch)),
                     PLUM,
                 );
+                y += 11;
+                let moon = self.moon();
+                c.text(
+                    l.px + 10,
+                    y + 2,
+                    &format!("Tonight: {}", moon.name()),
+                    if moon.full() { CRIMSON } else { INDIGO },
+                );
                 y += 14;
                 c.text(l.px + 10, y, "Bramblewick", RUST);
                 y += 11;

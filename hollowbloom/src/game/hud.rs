@@ -145,19 +145,18 @@ impl Play {
             &format!("Day {} {}", self.clock.day, self.clock.weekday()),
             INK,
         );
-        let icon = match self.area {
-            Area::Hollow { .. } => "◆",
-            _ if self.rain => "●",
-            _ if self.clock.min > 1170.0 => "★",
-            _ => "●",
-        };
-        let icon_col = match self.area {
-            Area::Hollow { .. } => LAVENDER,
-            _ if self.rain => SKY,
-            _ if self.clock.min > 1170.0 => CREAM,
-            _ => GOLD,
-        };
-        c.text(px + pw - 12, 6, icon, icon_col);
+        // Tonight's moon in the evening and down in the Hollow (where it stirs the
+        // creatures), the sun or the rain by day.
+        if matches!(self.area, Area::Hollow { .. }) || self.clock.min > 1110.0 {
+            draw_moon(c, px + pw - 15, 5, self.moon(), self.area != Area::Farm);
+        } else {
+            let (icon, col) = if self.rain {
+                ("●", SKY)
+            } else {
+                ("●", GOLD)
+            };
+            c.text(px + pw - 12, 6, icon, col);
+        }
         c.text(px + 6, 16, &self.clock.label(), RUST);
         let mw = money_width(c, self.money);
         draw_money(c, a, px + pw - 6 - mw, 26, self.money, INK);
@@ -628,6 +627,38 @@ impl Play {
             c.px(x0 + half + 1, y0 + half, WHITE);
             c.px(x0 + half, y0 + half + 1, WHITE);
             c.px(x0 + half + 1, y0 + half + 1, WHITE);
+        }
+    }
+}
+
+/// Tonight's moon as a little disc, lit on the side it's lit. A full moon down in the
+/// Hollow gets a red rim: the creatures there are wild tonight.
+pub fn draw_moon(c: &mut Canvas, x: i32, y: i32, phase: super::sky::MoonPhase, below: bool) {
+    const R: f32 = 4.0;
+    let f = phase.light();
+    for dy in -4i32..=4 {
+        for dx in -4i32..=4 {
+            let (fx, fy) = (dx as f32, dy as f32);
+            let d2 = fx * fx + fy * fy;
+            if d2 > (R + 0.4) * (R + 0.4) {
+                continue;
+            }
+            let edge = d2 > (R - 0.6) * (R - 0.6);
+            let half = (R * R - fy * fy).max(0.0).sqrt();
+            let term = half * (1.0 - 2.0 * f);
+            let lit = if phase.waxing() {
+                fx > term
+            } else {
+                fx < -term
+            };
+            let col = if edge {
+                if phase.full() && below { RED } else { INK }
+            } else if lit {
+                if (dx + dy * 2) % 5 == 0 { SAND } else { CREAM }
+            } else {
+                SLATE
+            };
+            c.px(x + 4 + dx, y + 4 + dy, col);
         }
     }
 }

@@ -13,6 +13,9 @@ use crate::palette::*;
 use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, TexId, UvRect, Warp};
 use crate::util::hash2;
 
+/// How strongly ambient occlusion darkens creases and contact points.
+pub const AO_STRENGTH: f32 = 1.5;
+
 /// Lighting and mood for a frame.
 #[derive(Clone, Copy, Debug)]
 pub struct Env {
@@ -155,7 +158,23 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     for chunk in w.visible_chunks(rect) {
         r.mesh(&a.bank, chunk, &Mat4::IDENTITY, &opts);
     }
-    // Grass rippling in the breeze and parting round the hero's feet.
+    let (x0, z0, x1, z1) = rect;
+    for z in z0.max(0)..=z1.min(w.h - 1) {
+        for x in x0.max(0)..=x1.min(w.w - 1) {
+            if let Some(o) = w.obj(x, z) {
+                draw_object(r, a, w, x, z, o, env);
+            }
+        }
+    }
+}
+
+fn small_rot(x: i32, z: i32) -> Mat4 {
+    Mat4::from_rotation_y((hash2(x, z, 3) % 628) as f32 / 100.0)
+}
+
+/// Grass rippling in the breeze and parting round the hero's feet. Drawn after ambient
+/// occlusion, so a lawn full of blades doesn't turn to speckle.
+pub fn draw_grass(r: &mut Renderer, a: &Assets, w: &World, env: &Env) {
     let grass = DrawOpts {
         warp: Warp::Wind {
             t: env.time,
@@ -170,6 +189,17 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     for tufts in w.visible_grass(near) {
         r.mesh(&a.bank, tufts, &Mat4::IDENTITY, &grass);
     }
+}
+
+/// Draws every object in a tile rectangle into the shadow map (the renderer must be in its
+/// shadow pass): trees, buildings, fences, crops, furniture and all.
+pub fn cast_objects(
+    r: &mut Renderer,
+    a: &Assets,
+    w: &World,
+    env: &Env,
+    rect: (i32, i32, i32, i32),
+) {
     let (x0, z0, x1, z1) = rect;
     for z in z0.max(0)..=z1.min(w.h - 1) {
         for x in x0.max(0)..=x1.min(w.w - 1) {
@@ -178,10 +208,6 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
             }
         }
     }
-}
-
-fn small_rot(x: i32, z: i32) -> Mat4 {
-    Mat4::from_rotation_y((hash2(x, z, 3) % 628) as f32 / 100.0)
 }
 
 pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &Obj, env: &Env) {
@@ -1033,6 +1059,8 @@ pub struct Outfit<'a> {
     pub boot: Option<&'a Mesh>,
     /// Strapped to the left arm.
     pub shield: Option<&'a Mesh>,
+    /// The hat is a hood, hiding all loose hair (other hats tuck it under the brim).
+    pub hood: bool,
     /// Texture swaps for clothes (body, arms, legs).
     pub remap: &'a [(TexId, TexId)],
 }
@@ -1148,8 +1176,17 @@ fn draw_body(
         * Mat4::from_translation(Vec3::new(0.0, h.neck + bob, 0.0))
         * Mat4::from_rotation_x(-0.22)
         * Mat4::from_rotation_z(sw * 0.05);
-    r.mesh(&a.bank, &h.parts[HEAD], &head, o);
-    let crown = head * Mat4::from_translation(Vec3::new(0.0, 0.46, 0.0));
+    let head_mesh = match fit.hat {
+        Some(_) if fit.hood => &h.head_hooded,
+        Some(_) => &h.head_tucked,
+        None => &h.parts[HEAD],
+    };
+    r.mesh(&a.bank, head_mesh, &head, o);
+    // Hats are made for a head of scale 1: bigger and smaller folk get theirs to size.
+    let hs = h.neck / 0.43;
+    let crown = head
+        * Mat4::from_translation(Vec3::new(0.0, 0.46 * hs, 0.0))
+        * Mat4::from_scale(Vec3::splat(hs));
     if let Some(hat) = fit.hat {
         r.mesh(&a.bank, hat, &crown, o);
     }
