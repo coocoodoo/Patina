@@ -15,3 +15,7 @@ Thumbs.db
 
 # Embedded cores are produced by `go run ./tools/build`
 /internal/native/lib/*/
+
+# Hollowbloom release packages and screenshot tours
+/dist/
+/shots/

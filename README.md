@@ -311,6 +311,7 @@ internal/native/      purego bindings + embedded core loader
 *.go                  the public Go API
 examples/             hello, showcase
 tools/build/          builds the core and embeds it
+hollowbloom/          a cozy action RPG built on the same Rust stack (see below)
 ```
 
 ## Useful environment variables
@@ -327,6 +328,20 @@ tools/build/          builds the core and embeds it
 * Dialogs, tabs, tables, submenus.
 * Shaping and font fallback (emoji, CJK, RTL) via cosmic-text.
 * GPU presentation (wgpu) for very large windows.
+
+## Also in this repository: Hollowbloom
+
+[`hollowbloom/`](hollowbloom/README.md) is a cozy top-down action RPG written in Rust on the
+same winit + softbuffer stack as the core: farm on the surface, delve an endless procedurally
+generated dungeon below it. It is drawn in low-poly 3D with pixel-art textures by a software
+renderer that only ever outputs the 32 colours of the Resurrect 32 palette, and it builds for
+Windows and Linux from a single machine.
+
+```bash
+cargo run -p hollowbloom --release
+```
+
+![Hollowbloom](hollowbloom/docs/farm-morning.png)
 
 ## License
 

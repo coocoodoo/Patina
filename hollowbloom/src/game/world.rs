@@ -1,0 +1,673 @@
+//! The tile world shared by the farm and every Hollow floor: floors, walls, objects,
+//! collision and the cached chunk meshes.
+
+use glam::{Vec2, Vec3};
+use serde::{Deserialize, Serialize};
+
+use super::items::{Crop, Stack};
+use crate::assets::{Assets, BIOMES};
+use crate::render::{Mesh, TexId, UvRect};
+use crate::util::hash2;
+
+pub const CHUNK: i32 = 16;
+pub const WALL_H: f32 = 1.0;
+pub const WATER_Y: f32 = -0.22;
+pub const WATERED: u8 = 1;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+pub enum Floor {
+    #[default]
+    Void,
+    Grass,
+    Path,
+    Soil,
+    Tilled,
+    Sand,
+    Water,
+    Planks,
+    Cobble,
+    Cave,
+    Lava,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
+pub enum Wall {
+    #[default]
+    None,
+    Rock,
+    /// Ore vein, by ore index (see `assets::ORE_COLORS`).
+    Ore(u8),
+    Bedrock,
+    Cliff,
+    Brick,
+    Timber,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Obj {
+    Tree {
+        var: u8,
+        hp: i16,
+    },
+    Pine {
+        var: u8,
+        hp: i16,
+    },
+    Stump {
+        hp: i16,
+    },
+    Log {
+        hp: i16,
+    },
+    Rock {
+        var: u8,
+        hp: i16,
+    },
+    Boulder {
+        hp: i16,
+    },
+    Weed {
+        var: u8,
+    },
+    Flower {
+        var: u8,
+    },
+    Crystal {
+        var: u8,
+        hp: i16,
+    },
+    Stalagmite {
+        var: u8,
+    },
+    Mushroom {
+        var: u8,
+    },
+    Bones,
+    Pot {
+        hp: i16,
+    },
+    Crate {
+        hp: i16,
+    },
+    LootChest {
+        opened: bool,
+    },
+    StairsDown,
+    Waystone,
+    Campfire,
+    Torch,
+    House,
+    /// A tile covered by a multi-tile structure anchored elsewhere.
+    Part {
+        ax: i16,
+        az: i16,
+    },
+    Bin,
+    Hollow,
+    Stall,
+    Sign {
+        text: u8,
+    },
+    Chest {
+        items: Vec<Option<Stack>>,
+    },
+    Lamp,
+    Fence,
+    Sprinkler {
+        tier: u8,
+    },
+    Workbench,
+    FlowerPot {
+        var: u8,
+    },
+    Bench,
+    Crop {
+        crop: Crop,
+        days: u8,
+        harvested: bool,
+    },
+}
+
+impl Obj {
+    pub fn solid(&self) -> bool {
+        !matches!(
+            self,
+            Obj::Weed { .. }
+                | Obj::Flower { .. }
+                | Obj::Mushroom { .. }
+                | Obj::Bones
+                | Obj::Crop { .. }
+                | Obj::Torch
+                | Obj::StairsDown
+        )
+    }
+
+    /// Light emitted: (height, radius, power, warmth).
+    pub fn light(&self) -> Option<(f32, f32, f32, f32)> {
+        match self {
+            Obj::Torch => Some((0.8, 5.5, 0.72, 7.0)),
+            Obj::Campfire => Some((0.4, 6.5, 0.9, 7.5)),
+            Obj::Lamp => Some((1.0, 5.0, 0.85, 3.2)),
+            Obj::Crystal { .. } => Some((0.5, 4.0, 0.6, 1.5)),
+            Obj::Mushroom { .. } => Some((0.3, 3.0, 0.45, 2.5)),
+            Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Area {
+    Farm,
+    Hollow { depth: u32 },
+}
+
+pub struct World {
+    pub w: i32,
+    pub h: i32,
+    pub floor: Vec<Floor>,
+    pub wall: Vec<Wall>,
+    pub flags: Vec<u8>,
+    pub objs: Vec<Option<Obj>>,
+    pub area: Area,
+    pub biome: usize,
+    /// Accumulated damage on walls being mined, by tile index.
+    pub wall_dmg: std::collections::HashMap<usize, i16>,
+    chunks: Vec<Mesh>,
+    dirty: Vec<bool>,
+    cw: i32,
+    ch: i32,
+}
+
+impl World {
+    pub fn new(w: i32, h: i32, area: Area, biome: usize) -> World {
+        let n = (w * h) as usize;
+        let cw = (w + CHUNK - 1) / CHUNK;
+        let ch = (h + CHUNK - 1) / CHUNK;
+        World {
+            w,
+            h,
+            floor: vec![Floor::Void; n],
+            wall: vec![Wall::None; n],
+            flags: vec![0; n],
+            objs: vec![None; n],
+            area,
+            biome: biome.min(BIOMES - 1),
+            wall_dmg: Default::default(),
+            chunks: vec![Mesh::new(); (cw * ch) as usize],
+            dirty: vec![true; (cw * ch) as usize],
+            cw,
+            ch,
+        }
+    }
+
+    #[inline]
+    pub fn inside(&self, x: i32, z: i32) -> bool {
+        x >= 0 && z >= 0 && x < self.w && z < self.h
+    }
+
+    #[inline]
+    pub fn idx(&self, x: i32, z: i32) -> usize {
+        (z * self.w + x) as usize
+    }
+
+    pub fn floor(&self, x: i32, z: i32) -> Floor {
+        if self.inside(x, z) {
+            self.floor[self.idx(x, z)]
+        } else {
+            Floor::Void
+        }
+    }
+
+    pub fn wall(&self, x: i32, z: i32) -> Wall {
+        if self.inside(x, z) {
+            self.wall[self.idx(x, z)]
+        } else {
+            Wall::Bedrock
+        }
+    }
+
+    pub fn obj(&self, x: i32, z: i32) -> Option<&Obj> {
+        if self.inside(x, z) {
+            self.objs[self.idx(x, z)].as_ref()
+        } else {
+            None
+        }
+    }
+
+    pub fn obj_mut(&mut self, x: i32, z: i32) -> Option<&mut Obj> {
+        if self.inside(x, z) {
+            let i = self.idx(x, z);
+            self.objs[i].as_mut()
+        } else {
+            None
+        }
+    }
+
+    pub fn set_floor(&mut self, x: i32, z: i32, f: Floor) {
+        if self.inside(x, z) {
+            let i = self.idx(x, z);
+            self.floor[i] = f;
+            self.touch(x, z);
+        }
+    }
+
+    pub fn set_wall(&mut self, x: i32, z: i32, w: Wall) {
+        if self.inside(x, z) {
+            let i = self.idx(x, z);
+            self.wall[i] = w;
+            self.wall_dmg.remove(&i);
+            self.touch(x, z);
+        }
+    }
+
+    pub fn set_obj(&mut self, x: i32, z: i32, o: Option<Obj>) {
+        if self.inside(x, z) {
+            let i = self.idx(x, z);
+            let stairs =
+                matches!(self.objs[i], Some(Obj::StairsDown)) || matches!(o, Some(Obj::StairsDown));
+            self.objs[i] = o;
+            if stairs {
+                self.touch(x, z);
+            }
+        }
+    }
+
+    pub fn flag(&self, x: i32, z: i32, f: u8) -> bool {
+        self.inside(x, z) && self.flags[self.idx(x, z)] & f != 0
+    }
+
+    pub fn set_flag(&mut self, x: i32, z: i32, f: u8, on: bool) {
+        if self.inside(x, z) {
+            let i = self.idx(x, z);
+            let before = self.flags[i];
+            if on {
+                self.flags[i] |= f;
+            } else {
+                self.flags[i] &= !f;
+            }
+            if before != self.flags[i] {
+                self.touch(x, z);
+            }
+        }
+    }
+
+    /// Marks the chunk holding a tile (and neighbours across edges) for re-meshing.
+    pub fn touch(&mut self, x: i32, z: i32) {
+        for (dx, dz) in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (tx, tz) = (x + dx, z + dz);
+            if self.inside(tx, tz) {
+                let c = (tz / CHUNK * self.cw + tx / CHUNK) as usize;
+                self.dirty[c] = true;
+            }
+        }
+    }
+
+    pub fn touch_all(&mut self) {
+        self.dirty.fill(true);
+    }
+
+    /// True if movement is blocked at this tile.
+    pub fn blocked(&self, x: i32, z: i32) -> bool {
+        if !self.inside(x, z) {
+            return true;
+        }
+        let i = self.idx(x, z);
+        if self.wall[i] != Wall::None {
+            return true;
+        }
+        if matches!(self.floor[i], Floor::Water | Floor::Lava | Floor::Void) {
+            return true;
+        }
+        self.objs[i].as_ref().is_some_and(|o| o.solid())
+    }
+
+    /// True if the tile stops light.
+    pub fn opaque(&self, x: i32, z: i32) -> bool {
+        !self.inside(x, z) || self.wall[self.idx(x, z)] != Wall::None
+    }
+
+    /// Pushes a circle out of blocked tiles. Returns the corrected position.
+    pub fn collide(&self, pos: Vec2, r: f32) -> Vec2 {
+        let mut p = pos;
+        let x0 = (p.x - r).floor() as i32 - 1;
+        let x1 = (p.x + r).floor() as i32 + 1;
+        let z0 = (p.y - r).floor() as i32 - 1;
+        let z1 = (p.y + r).floor() as i32 + 1;
+        for _ in 0..2 {
+            for z in z0..=z1 {
+                for x in x0..=x1 {
+                    if !self.blocked(x, z) {
+                        continue;
+                    }
+                    let (bx0, bx1) = (x as f32, x as f32 + 1.0);
+                    let (bz0, bz1) = (z as f32, z as f32 + 1.0);
+                    let cx = p.x.clamp(bx0, bx1);
+                    let cz = p.y.clamp(bz0, bz1);
+                    let d = Vec2::new(p.x - cx, p.y - cz);
+                    let dist2 = d.length_squared();
+                    if dist2 < r * r {
+                        if dist2 > 1e-8 {
+                            let dist = dist2.sqrt();
+                            p += d / dist * (r - dist);
+                        } else {
+                            // Centre inside the box: push out along the shallowest axis.
+                            let pen = [p.x - bx0, bx1 - p.x, p.y - bz0, bz1 - p.y];
+                            let (k, _) = pen
+                                .iter()
+                                .enumerate()
+                                .min_by(|a, b| a.1.total_cmp(b.1))
+                                .unwrap();
+                            match k {
+                                0 => p.x = bx0 - r,
+                                1 => p.x = bx1 + r,
+                                2 => p.y = bz0 - r,
+                                _ => p.y = bz1 + r,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        p
+    }
+
+    /// Walks a circle through the world with sliding.
+    pub fn move_circle(&self, pos: Vec2, delta: Vec2, r: f32) -> Vec2 {
+        let steps = ((delta.length() / 0.2).ceil() as i32).max(1);
+        let mut p = pos;
+        let d = delta / steps as f32;
+        for _ in 0..steps {
+            p = self.collide(p + d, r);
+        }
+        p
+    }
+
+    /// Straight line check between two points (for enemy sight and projectiles).
+    pub fn clear_line(&self, a: Vec2, b: Vec2) -> bool {
+        let d = b - a;
+        let steps = ((d.length() / 0.25).ceil() as i32).max(1);
+        for s in 1..steps {
+            let p = a + d * (s as f32 / steps as f32);
+            let (x, z) = (p.x.floor() as i32, p.y.floor() as i32);
+            if self.opaque(x, z) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// The anchor of a multi-tile structure (or the tile itself).
+    pub fn anchor(&self, x: i32, z: i32) -> (i32, i32) {
+        match self.obj(x, z) {
+            Some(Obj::Part { ax, az }) => (*ax as i32, *az as i32),
+            _ => (x, z),
+        }
+    }
+
+    // --------------------------------------------------------------------------------------
+    // Meshing
+    // --------------------------------------------------------------------------------------
+
+    /// Re-meshes dirty chunks that intersect the rectangle.
+    pub fn update_meshes(&mut self, a: &Assets, rect: (i32, i32, i32, i32)) {
+        let (x0, z0, x1, z1) = rect;
+        let cx0 = (x0.max(0) / CHUNK).min(self.cw - 1);
+        let cx1 = (x1.max(0) / CHUNK).min(self.cw - 1);
+        let cz0 = (z0.max(0) / CHUNK).min(self.ch - 1);
+        let cz1 = (z1.max(0) / CHUNK).min(self.ch - 1);
+        for cz in cz0..=cz1 {
+            for cx in cx0..=cx1 {
+                let c = (cz * self.cw + cx) as usize;
+                if self.dirty[c] {
+                    self.chunks[c] = self.build_chunk(a, cx, cz);
+                    self.dirty[c] = false;
+                }
+            }
+        }
+    }
+
+    /// Chunk meshes that intersect the rectangle.
+    pub fn visible_chunks(&self, rect: (i32, i32, i32, i32)) -> Vec<&Mesh> {
+        let (x0, z0, x1, z1) = rect;
+        let mut out = Vec::new();
+        if x1 < 0 || z1 < 0 || x0 >= self.w || z0 >= self.h {
+            return out;
+        }
+        let cx0 = (x0.max(0) / CHUNK).min(self.cw - 1);
+        let cx1 = (x1.max(0) / CHUNK).min(self.cw - 1);
+        let cz0 = (z0.max(0) / CHUNK).min(self.ch - 1);
+        let cz1 = (z1.max(0) / CHUNK).min(self.ch - 1);
+        for cz in cz0..=cz1 {
+            for cx in cx0..=cx1 {
+                out.push(&self.chunks[(cz * self.cw + cx) as usize]);
+            }
+        }
+        out
+    }
+
+    fn floor_tex(&self, a: &Assets, x: i32, z: i32, f: Floor) -> TexId {
+        let h = hash2(x, z, 7);
+        match f {
+            Floor::Grass => {
+                if h % 11 == 0 {
+                    a.grass_flowers[(h as usize / 11) % 2]
+                } else {
+                    a.grass[(h % 4) as usize]
+                }
+            }
+            Floor::Path => a.path[(h % 2) as usize],
+            Floor::Soil => a.soil,
+            Floor::Tilled => {
+                if self.flag(x, z, WATERED) {
+                    a.tilled_wet
+                } else {
+                    a.tilled
+                }
+            }
+            Floor::Sand => a.sand,
+            Floor::Water => a.water[0],
+            Floor::Planks => a.wood_floor,
+            Floor::Cobble => a.stone_floor,
+            Floor::Cave => {
+                let b = &a.biomes[self.biome];
+                b.floor[if h % 5 == 0 { 1 } else { (h % 2) as usize * 2 }]
+            }
+            Floor::Lava => a.lava[0],
+            Floor::Void => a.bedrock,
+        }
+    }
+
+    fn wall_tex(&self, a: &Assets, w: Wall) -> (TexId, TexId) {
+        let b = &a.biomes[self.biome];
+        match w {
+            Wall::Rock => (b.side, b.top),
+            Wall::Ore(o) => (
+                b.ore_side[o as usize % b.ore_side.len()],
+                b.ore_top[o as usize % b.ore_top.len()],
+            ),
+            Wall::Bedrock => (b.side, a.bedrock),
+            Wall::Cliff => (a.cliff_side, a.grass[1]),
+            Wall::Brick => (a.stone_wall_side, a.stone_wall_top),
+            Wall::Timber => (a.wood_wall_side, a.wood_wall_top),
+            Wall::None => (b.side, b.top),
+        }
+    }
+
+    fn floor_y(f: Floor) -> f32 {
+        match f {
+            Floor::Water => WATER_Y,
+            Floor::Lava => -0.12,
+            _ => 0.0,
+        }
+    }
+
+    fn build_chunk(&self, a: &Assets, cx: i32, cz: i32) -> Mesh {
+        let mut m = Mesh::new();
+        let full = UvRect::new(0.0, 0.0, 16.0, 16.0);
+        let solid = |x: i32, z: i32| self.wall(x, z) != Wall::None;
+        for z in cz * CHUNK..((cz + 1) * CHUNK).min(self.h) {
+            for x in cx * CHUNK..((cx + 1) * CHUNK).min(self.w) {
+                let i = self.idx(x, z);
+                let (fx, fz) = (x as f32, z as f32);
+                let wall = self.wall[i];
+                if wall != Wall::None {
+                    let (side, top) = self.wall_tex(a, wall);
+                    let hgt = WALL_H;
+                    let top_ao = match wall {
+                        Wall::Cliff | Wall::Brick | Wall::Timber => [1.0; 4],
+                        _ => [0.62; 4],
+                    };
+                    m.quad_ao(
+                        [
+                            Vec3::new(fx, hgt, fz + 1.0),
+                            Vec3::new(fx + 1.0, hgt, fz + 1.0),
+                            Vec3::new(fx + 1.0, hgt, fz),
+                            Vec3::new(fx, hgt, fz),
+                        ],
+                        full,
+                        top,
+                        top_ao,
+                    );
+                    // South face (towards the camera).
+                    if !solid(x, z + 1) {
+                        let base = Self::floor_y(self.floor(x, z + 1)).min(0.0);
+                        m.quad(
+                            [
+                                Vec3::new(fx, base, fz + 1.0),
+                                Vec3::new(fx + 1.0, base, fz + 1.0),
+                                Vec3::new(fx + 1.0, hgt, fz + 1.0),
+                                Vec3::new(fx, hgt, fz + 1.0),
+                            ],
+                            UvRect::new(0.0, 0.0, 16.0, 16.0 * (hgt - base)),
+                            side,
+                        );
+                    }
+                    if !solid(x + 1, z) {
+                        m.quad(
+                            [
+                                Vec3::new(fx + 1.0, 0.0, fz + 1.0),
+                                Vec3::new(fx + 1.0, 0.0, fz),
+                                Vec3::new(fx + 1.0, hgt, fz),
+                                Vec3::new(fx + 1.0, hgt, fz + 1.0),
+                            ],
+                            full,
+                            side,
+                        );
+                    }
+                    if !solid(x - 1, z) {
+                        m.quad(
+                            [
+                                Vec3::new(fx, 0.0, fz),
+                                Vec3::new(fx, 0.0, fz + 1.0),
+                                Vec3::new(fx, hgt, fz + 1.0),
+                                Vec3::new(fx, hgt, fz),
+                            ],
+                            full,
+                            side,
+                        );
+                    }
+                    continue;
+                }
+                let f = self.floor[i];
+                if f == Floor::Void {
+                    continue;
+                }
+                if matches!(self.objs[i], Some(Obj::StairsDown)) {
+                    continue;
+                }
+                let y = Self::floor_y(f);
+                // Ambient occlusion at each corner from surrounding walls.
+                let ao = |ox: i32, oz: i32| {
+                    let mut n = 0;
+                    for (dx, dz) in [(-1, -1), (0, -1), (-1, 0), (0, 0)] {
+                        if solid(x + ox + dx, z + oz + dz) {
+                            n += 1;
+                        }
+                    }
+                    [1.0, 0.82, 0.7, 0.62, 0.6][n]
+                };
+                let corners = [ao(0, 1), ao(1, 1), ao(1, 0), ao(0, 0)];
+                let tex = self.floor_tex(a, x, z, f);
+                m.quad_ao(
+                    [
+                        Vec3::new(fx, y, fz + 1.0),
+                        Vec3::new(fx + 1.0, y, fz + 1.0),
+                        Vec3::new(fx + 1.0, y, fz),
+                        Vec3::new(fx, y, fz),
+                    ],
+                    full,
+                    tex,
+                    corners,
+                );
+                // Banks where recessed floors (water, lava) meet higher ground.
+                if y < 0.0 {
+                    let bank = if f == Floor::Water {
+                        a.soil
+                    } else {
+                        a.biomes[self.biome].side
+                    };
+                    let higher = |tx: i32, tz: i32| {
+                        let nf = self.floor(tx, tz);
+                        !solid(tx, tz) && Self::floor_y(nf) > y && nf != Floor::Void
+                    };
+                    if higher(x, z - 1) {
+                        m.quad(
+                            [
+                                Vec3::new(fx, y, fz),
+                                Vec3::new(fx + 1.0, y, fz),
+                                Vec3::new(fx + 1.0, 0.0, fz),
+                                Vec3::new(fx, 0.0, fz),
+                            ],
+                            UvRect::new(0.0, 12.0, 16.0, 16.0),
+                            bank,
+                        );
+                    }
+                    if higher(x - 1, z) {
+                        m.quad(
+                            [
+                                Vec3::new(fx, y, fz + 1.0),
+                                Vec3::new(fx, y, fz),
+                                Vec3::new(fx, 0.0, fz),
+                                Vec3::new(fx, 0.0, fz + 1.0),
+                            ],
+                            UvRect::new(0.0, 12.0, 16.0, 16.0),
+                            bank,
+                        );
+                    }
+                    if higher(x + 1, z) {
+                        m.quad(
+                            [
+                                Vec3::new(fx + 1.0, y, fz),
+                                Vec3::new(fx + 1.0, y, fz + 1.0),
+                                Vec3::new(fx + 1.0, 0.0, fz + 1.0),
+                                Vec3::new(fx + 1.0, 0.0, fz),
+                            ],
+                            UvRect::new(0.0, 12.0, 16.0, 16.0),
+                            bank,
+                        );
+                    }
+                }
+            }
+        }
+        m
+    }
+
+    /// Finds the nearest open floor tile to a position (spawning, landing).
+    pub fn nearest_open(&self, x: i32, z: i32) -> (i32, i32) {
+        for r in 0i32..20 {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if dx.abs() != r && dz.abs() != r {
+                        continue;
+                    }
+                    let (tx, tz) = (x + dx, z + dz);
+                    if self.inside(tx, tz) && !self.blocked(tx, tz) {
+                        return (tx, tz);
+                    }
+                }
+            }
+        }
+        (x, z)
+    }
+}
