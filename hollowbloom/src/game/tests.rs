@@ -915,3 +915,141 @@ fn every_item_has_art() {
     }
     let _ = (Group::Weapon, Rarity::Common, SOCKETS);
 }
+
+/// A long, rough play-through: fight with every kind of weapon on floors all the way down,
+/// crack open the chests, scoop up the loot, then sell and enchant with the proceeds.
+#[test]
+fn soak_many_floors() {
+    let mut s = Sim::new();
+    let weapons = [
+        Item::Sword2,
+        Item::CrystalWand,
+        Item::EmberStaff,
+        Item::MoonSickle,
+        Item::Pick3,
+    ];
+    let mut rng = crate::util::Rng::new(99);
+    for (k, depth) in [1u32, 7, 10, 13, 22, 30, 37, 50, 60]
+        .into_iter()
+        .enumerate()
+    {
+        s.play.fade = None;
+        s.play.start_fade(Trans::Descend {
+            depth,
+            via_waystone: false,
+        });
+        s.frames(60);
+        assert_eq!(s.play.area, Area::Hollow { depth });
+        s.play.player.inv.slots[0] = Some(super::loot::roll_gear(
+            weapons[k % weapons.len()],
+            depth as u16 + 5,
+            0.5,
+            &mut rng,
+        ));
+        s.select(0);
+        for round in 0..400 {
+            s.play.player.hurt = 100.0;
+            s.play.player.hp = s.play.player.max_hp();
+            s.play.player.mana = s.play.player.max_mana() as f32;
+            s.play.player.energy = s.play.player.max_energy() as f32;
+            let Some(f) = s.play.foes.first() else { break };
+            // Stand next to the first foe, facing it, and swing or cast.
+            let to = f.pos;
+            let w = &s.play.level.as_ref().unwrap().world;
+            let (tx, tz) = w.nearest_open(to.x as i32, to.y as i32 + 1);
+            s.play.player.pos = Vec2::new(tx as f32 + 0.5, tz as f32 + 0.5);
+            let d = to - s.play.player.pos;
+            s.play.player.facing = if d.length() > 0.01 {
+                d.normalize()
+            } else {
+                Vec2::Y
+            };
+            if round % 50 == 49 {
+                // Stubborn foes (behind walls, flying off) are cleared by hand.
+                s.play.foes[0].hp = 0;
+                let mut io = Io {
+                    dt: 1.0 / 60.0,
+                    input: &s.input,
+                    audio: &s.audio,
+                    view: (480, 270),
+                    quit: false,
+                    toggle_fullscreen: false,
+                };
+                s.play.reap(&mut io);
+            }
+            s.tap(KeyCode::KeyJ, 12);
+        }
+        // Open every chest and pick up everything.
+        let w = &s.play.level.as_ref().unwrap().world;
+        let mut chests = Vec::new();
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if matches!(w.obj(x, z), Some(Obj::LootChest { opened: false })) {
+                    chests.push((x, z));
+                }
+            }
+        }
+        for (x, z) in chests {
+            let (px, pz) = s.play.world().nearest_open(x, z + 1);
+            s.stand(px, pz, Vec2::new(0.0, -1.0));
+            s.frames(1);
+            s.tap(KeyCode::KeyE, 30);
+        }
+        for _ in 0..40 {
+            let Some(d) = s.play.drops.first() else { break };
+            s.play.player.pos = Vec2::new(d.pos.x, d.pos.z);
+            s.frames(20);
+            if s.play.drops.len() > 30 {
+                s.play.drops.truncate(30);
+            }
+        }
+    }
+    // Home: sell a stack of anything sellable and enchant with whatever scroll turned up.
+    s.play.start_fade(Trans::Home);
+    s.frames(60);
+    assert_eq!(s.play.area, Area::Farm);
+    s.play.menu = super::menus::Menu::shop();
+    s.frames(2);
+    let scroll = s
+        .play
+        .player
+        .inv
+        .slots
+        .iter()
+        .position(|st| st.is_some_and(|st| st.item.scroll_group().is_some()));
+    let gear = s.play.player.inv.slots.iter().position(|st| {
+        st.is_some_and(|st| {
+            scroll.is_some_and(|i| {
+                st.item.class().map(|c| c.group())
+                    == s.play.player.inv.slots[i].and_then(|x| x.item.scroll_group())
+            })
+        })
+    });
+    s.play.menu = Menu::None;
+    s.play.money += 100_000;
+    if let (Some(g), Some(sc)) = (gear, scroll) {
+        s.play.menu = Menu::Enchant {
+            gear: Some(Pick::Bag(g)),
+            scroll: Some(sc),
+            socket: 1,
+            cursor: 48,
+            msg: None,
+            glow: 0.0,
+        };
+        s.tap(KeyCode::Enter, 2);
+    }
+    // Ship everything and sleep on it.
+    for i in 0..40 {
+        if let Some(st) = s.play.player.inv.slots[i] {
+            if super::menus::can_sell(&st) && i > 9 {
+                s.play.shipping.push(st);
+                s.play.player.inv.slots[i] = None;
+            }
+        }
+    }
+    let money = s.play.money;
+    s.play.start_fade(Trans::Sleep { passed_out: false });
+    s.frames(60);
+    assert!(s.play.money >= money);
+    assert!(s.play.stats.kills > 20, "kills: {}", s.play.stats.kills);
+}
