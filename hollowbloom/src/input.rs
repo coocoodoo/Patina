@@ -280,7 +280,9 @@ impl Input {
     }
 
     pub fn mouse_move(&mut self, p: Vec2) {
-        if (p - self.mouse).length_squared() > 0.25 {
+        // Where the pointer is when it comes into the window isn't a move to aim with: a
+        // Deck's pointer sits parked in the middle of the screen.
+        if self.mouse_inside && (p - self.mouse).length_squared() > 0.25 {
             self.mouse_moved = true;
             self.mouse_aim = true;
         }
@@ -341,7 +343,9 @@ impl Input {
         self.pad_down = down;
         let moved = s.left.length() > STICK_ON || s.right.length() > STICK_ON;
         if self.pad_pressed != 0 || moved {
+            // The controller takes over: aim with it, not wherever the pointer was left.
             self.pad_active = true;
+            self.mouse_aim = false;
             self.idle = 0.0;
         }
         if live(s.right, AIM_DEAD) != Vec2::ZERO {
@@ -536,5 +540,19 @@ mod tests {
         assert!(i.down(Action::Spell1) && !i.pressed(Action::Spell1));
         i.pad_event(pad(&[], Vec2::ZERO, 0.1), 1.0 / 60.0);
         assert!(!i.down(Action::Spell1));
+    }
+
+    #[test]
+    fn a_parked_pointer_never_steers_the_controller() {
+        let mut i = Input::default();
+        // The window opens under the pointer: that's no move to aim with.
+        i.mouse_move(Vec2::new(213.0, 133.0));
+        assert!(i.mouse_inside && !i.mouse_aim && !i.mouse_moved);
+        // Moving it is.
+        i.mouse_move(Vec2::new(220.0, 140.0));
+        assert!(i.mouse_aim);
+        // Then a button on the controller takes aiming back.
+        i.pad_event(pad(&[P::X], Vec2::ZERO, 0.0), 1.0 / 60.0);
+        assert!(i.pad_active && !i.mouse_aim);
     }
 }

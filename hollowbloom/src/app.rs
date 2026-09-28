@@ -2,6 +2,7 @@
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use softbuffer::{Context, Surface};
@@ -21,6 +22,38 @@ use crate::pad::Pads;
 use crate::render::Renderer;
 
 const FRAME: Duration = Duration::from_micros(16_667);
+
+/// Set when the system asks the game to close: Steam's "Exit game" on a Deck, a logout, or
+/// Ctrl+C in a terminal. The game saves and quits as if closed from its own menu.
+static CLOSE_ASKED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+fn catch_close_signals() {
+    use std::ffi::c_int;
+    unsafe extern "C" {
+        fn signal(signum: c_int, handler: extern "C" fn(c_int)) -> usize;
+    }
+    extern "C" fn asked(_: c_int) {
+        CLOSE_ASKED.store(true, Ordering::SeqCst);
+    }
+    // SIGHUP, SIGINT and SIGTERM.
+    for sig in [1, 2, 15] {
+        // SAFETY: the handler only stores to an atomic, which is safe in a signal handler.
+        unsafe {
+            signal(sig, asked);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn catch_close_signals() {}
+
+/// In the Steam Deck's Game Mode (or any gamescope session), which shows one window filling
+/// the screen: the game fills it too.
+fn in_gamescope() -> bool {
+    std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some()
+        || std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.eq_ignore_ascii_case("gamescope"))
+}
 
 /// Integer pixel scale for a window size: the internal image is ~225-270 pixels tall.
 pub fn pixel_scale(w: u32, h: u32) -> usize {
@@ -52,14 +85,17 @@ pub struct App {
 
 impl App {
     pub fn new(game: Game, audio: Audio) -> App {
-        let fullscreen = game.settings.fullscreen;
+        let fullscreen = game.settings.fullscreen || in_gamescope();
         audio.set_volume(game.settings.music, game.settings.sfx);
+        // On a Deck its buttons are shown from the start, before any are pressed.
+        let mut input = Input::default();
+        input.pad_active = crate::game::steam_deck();
         App {
             context: None,
             surf: None,
             game,
             renderer: Renderer::new(427, 240),
-            input: Input::default(),
+            input,
             pads: Pads::new(),
             audio,
             scale: 3,
@@ -207,6 +243,16 @@ impl ApplicationHandler for App {
             .with_min_inner_size(LogicalSize::new(400.0, 225.0))
             .with_window_icon(icon());
         if self.fullscreen {
+            if in_gamescope() {
+                // The size of the screen from the start, in case the fullscreen request
+                // goes unheeded.
+                if let Some(m) = el
+                    .primary_monitor()
+                    .or_else(|| el.available_monitors().next())
+                {
+                    attrs = attrs.with_inner_size(m.size());
+                }
+            }
             attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
         }
         let window = match el.create_window(attrs) {
@@ -315,6 +361,11 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        if CLOSE_ASKED.swap(false, Ordering::SeqCst) {
+            self.game.shutdown();
+            el.exit();
+            return;
+        }
         let now = Instant::now();
         if now >= self.next {
             if let Some(s) = &self.surf {
@@ -328,6 +379,7 @@ impl ApplicationHandler for App {
 
 pub fn run(game: Game, audio: Audio) -> Result<(), String> {
     crate::audio::precise_timers();
+    catch_close_signals();
     let el = EventLoop::new().map_err(|e| format!("could not start the event loop: {e}"))?;
     el.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(game, audio);

@@ -70,12 +70,18 @@ pub struct Settings {
     pub dirty: bool,
 }
 
+/// Running on a Steam Deck (Steam tells the games it starts there).
+pub fn steam_deck() -> bool {
+    std::env::var("SteamDeck").is_ok_and(|v| v == "1")
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             music: 0.7,
             sfx: 0.8,
-            fullscreen: false,
+            // A Deck's small screen is best filled edge to edge.
+            fullscreen: steam_deck(),
             shake: true,
             shadows: true,
             ao: true,
@@ -472,7 +478,8 @@ fn draw_portrait(r: &mut Renderer, a: &Assets, who: folk::Villager, time: f32) {
 }
 
 fn draw_cursor(c: &mut Canvas, a: &Assets, input: &Input) {
-    if !input.mouse_inside || input.idle > 4.0 && !input.mouse_aim {
+    // Hidden while playing on a controller, and once the mouse has sat still a while.
+    if !input.mouse_inside || !input.mouse_aim && (input.pad_active || input.idle > 4.0) {
         return;
     }
     let p: Vec2 = input.mouse;

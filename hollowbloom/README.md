@@ -133,9 +133,23 @@ install: it is a single executable.
 Hollowbloom reads the Steam Deck's controls itself, and any Xbox-style controller too, with
 nothing extra to install. On the Deck, add the Linux build (or the Windows `.exe`, run with
 Proton) to Steam as a **non-Steam game** and play it from **Game Mode**: Steam Input hands its
-controls to the game. The screen's 1280x800 is filled edge to edge. As soon as you touch the
-controller every on-screen hint switches to its buttons (**A**, **X**, **L2**...), and the
-pause menu's **Controls** page shows the whole layout on a drawing of the Deck.
+controls to the game. It opens fullscreen and fills the screen's 1280x800 edge to edge. Every
+on-screen hint shows the Deck's buttons (**A**, **X**, **L2**...), and the pause menu's
+**Controls** page shows the whole layout on a drawing of the Deck.
+
+Putting the Linux build (a single file) on a Deck:
+
+1. In Desktop Mode, copy the `hollowbloom` file into your home folder, right-click it, and
+   under **Properties > Permissions** tick **Is executable**.
+2. Right-click it again and choose **Add to Steam** (or in Steam, **Games > Add a Non-Steam
+   Game to My Library**).
+3. Back in Game Mode it's in your library under **Non-Steam**. Saves go in
+   `~/.local/share/hollowbloom`.
+
+**Steam Controllers** (the 2015 one and the 2026 one) work the same way, through Steam Input.
+With Steam closed, the game reads Linux's own driver for the Deck's controls and Steam
+Controllers instead: on the Deck and the 2026 controller, hold **Menu** for half a second to
+switch them from mouse mode to gamepad mode.
 
 | | Steam Deck |
 | --- | --- |

@@ -1,7 +1,8 @@
-//! Game controllers: the Steam Deck's own controls and any Xbox-style pad, read straight from
-//! the system with no extra libraries. On Linux that's the kernel's event devices (which is
-//! how SteamOS hands the Deck's controls to a game, through Steam Input's virtual pad); on
-//! Windows (and under Proton) it's XInput.
+//! Game controllers: the Steam Deck's own controls, Steam Controllers and any Xbox-style pad,
+//! read straight from the system with no extra libraries. On Linux that's the kernel's event
+//! devices (which is how SteamOS hands the Deck's controls to a game, through Steam Input's
+//! virtual pad, or the kernel's own driver when Steam isn't running); on Windows (and under
+//! Proton) it's XInput, which Steam Input also speaks.
 
 use glam::Vec2;
 
@@ -110,6 +111,10 @@ mod sys {
     const EV_KEY: u16 = 1;
     const EV_ABS: u16 = 3;
     const BTN_SOUTH: usize = 0x130;
+    const ABS_HAT0X: u16 = 0x10;
+    const ABS_HAT0Y: u16 = 0x11;
+    const ABS_HAT2X: u16 = 0x14;
+    const ABS_HAT2Y: u16 = 0x15;
 
     unsafe extern "C" {
         fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
@@ -242,6 +247,12 @@ mod sys {
             ((v as f32 - lo) / (hi - lo).max(1.0)).clamp(0.0, 1.0)
         }
 
+        /// Is this hat axis a D-pad (-1..1), rather than a trackpad's position?
+        fn is_dpad(&self, axis: u16) -> bool {
+            let (lo, hi) = self.range[axis as usize & 63];
+            lo >= -1.0 && hi <= 1.0
+        }
+
         fn apply(&mut self, t: u16, code: u16, value: i32) {
             let s = &mut self.state;
             match t {
@@ -259,12 +270,16 @@ mod sys {
                     1 => self.state.left.y = self.stick(code, value),
                     3 => self.state.right.x = self.stick(code, value),
                     4 => self.state.right.y = self.stick(code, value),
-                    // Triggers: Z/RZ on Xbox pads, brake/gas on some, the second hat on
-                    // the Deck's own driver.
-                    2 | 10 | 0x13 => self.state.lt = self.trigger(code, value),
-                    5 | 9 | 0x12 => self.state.rt = self.trigger(code, value),
-                    0x10 | 0x11 => {
-                        if code == 0x10 {
+                    // Triggers: Z/RZ on Xbox pads, brake/gas on some, and the third hat on
+                    // Valve's own driver (the Deck's controls, or a Steam Controller, when
+                    // Steam isn't running).
+                    2 | 10 | ABS_HAT2Y => self.state.lt = self.trigger(code, value),
+                    5 | 9 | ABS_HAT2X => self.state.rt = self.trigger(code, value),
+                    // The first hat is a D-pad, reading -1, 0 or 1. Valve's driver puts the
+                    // trackpads on the first two hats instead (and sends its D-pad as
+                    // buttons), so those count for nothing.
+                    ABS_HAT0X | ABS_HAT0Y if self.is_dpad(code) => {
+                        if code == ABS_HAT0X {
                             self.hat.0 = value.signum();
                         } else {
                             self.hat.1 = value.signum();
@@ -406,6 +421,8 @@ mod sys {
                 hat: (0, 0),
             };
             d.range[2] = (0.0, 255.0);
+            d.range[0x10] = (-1.0, 1.0);
+            d.range[0x11] = (-1.0, 1.0);
             d.apply(EV_KEY, 0x130, 1);
             d.apply(EV_ABS, 0, 32767);
             d.apply(EV_ABS, 2, 255);
@@ -415,6 +432,37 @@ mod sys {
             d.apply(EV_KEY, 0x130, 0);
             d.apply(EV_ABS, 0x11, 0);
             assert!(!d.state.held(P::A) && !d.state.held(P::Up));
+        }
+
+        #[test]
+        fn valves_own_driver_keeps_trackpads_off_the_dpad_and_triggers() {
+            // How the kernel's driver lays out the Deck's controls (and the Steam
+            // Controller's) when Steam isn't running.
+            let file = File::open("/dev/null").unwrap();
+            let mut d = Dev {
+                path: PathBuf::from("/dev/null"),
+                file,
+                state: PadState::default(),
+                range: [(-32767.0, 32767.0); 64],
+                hat: (0, 0),
+            };
+            d.range[0x14] = (0.0, 32767.0);
+            d.range[0x15] = (0.0, 32767.0);
+            // A thumb resting on each trackpad presses nothing.
+            d.apply(EV_ABS, 0x10, 12000);
+            d.apply(EV_ABS, 0x11, -9000);
+            d.apply(EV_ABS, 0x12, 20000);
+            d.apply(EV_ABS, 0x13, 15000);
+            assert_eq!(d.state.buttons, 0);
+            assert!(d.state.lt == 0.0 && d.state.rt == 0.0);
+            // The triggers, squeezed all the way and halfway.
+            d.apply(EV_ABS, 0x15, 32767);
+            d.apply(EV_ABS, 0x14, 16384);
+            assert!(d.state.lt > 0.99);
+            assert!((d.state.rt - 0.5).abs() < 0.01);
+            // Its D-pad comes as buttons.
+            d.apply(EV_KEY, 0x221, 1);
+            assert!(d.state.held(P::Down));
         }
     }
 }
