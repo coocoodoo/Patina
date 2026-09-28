@@ -1,6 +1,9 @@
 //! The game: title screen, playing state, settings and saving.
 
+pub mod bombs;
 pub mod combat;
+pub mod controls;
+pub mod discover;
 pub mod draw;
 pub mod dungeon;
 pub mod enchant;
@@ -310,7 +313,7 @@ impl Game {
                     font: &a.font,
                     darken: &r.sh.darken,
                 };
-                draw_title(&mut c, t);
+                draw_title(&mut c, t, input.pad_active);
                 draw_cursor(&mut c, a, input);
             }
             State::Play(p) => {
@@ -363,7 +366,7 @@ fn title_item_rect(w: i32, h: i32, i: usize) -> (i32, i32, i32) {
     ((w - bw) / 2, h / 2 + 10 + i as i32 * 14, bw)
 }
 
-fn draw_title(c: &mut Canvas, t: &Title) {
+fn draw_title(c: &mut Canvas, t: &Title, pad: bool) {
     let (w, h) = (c.w(), c.h());
     let title = "Hollowbloom";
     let scale = if w >= 400 { 4 } else { 3 };
@@ -402,7 +405,11 @@ fn draw_title(c: &mut Canvas, t: &Title) {
             INK,
         );
     }
-    let help = "WASD move  -  J / click use  -  E / right click talk, interact  -  Space roll  -  Tab bag  -  C craft  -  L quests";
+    let help = if pad {
+        "L stick walk  -  X use  -  A talk, interact  -  B roll  -  Y bag  -  View craft  -  R3 quests  -  Menu: all controls"
+    } else {
+        "WASD move  -  J / click use  -  E / right click talk, interact  -  Space roll  -  Tab bag  -  C craft  -  L quests"
+    };
     let lines = c.font.wrap(help, w - 20);
     for (i, l) in lines.iter().enumerate() {
         let lw = c.text_width(l);

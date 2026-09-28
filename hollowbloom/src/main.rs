@@ -10,6 +10,7 @@ mod audio;
 mod game;
 mod headless;
 mod input;
+mod pad;
 mod palette;
 mod render;
 mod shot;
@@ -30,6 +31,7 @@ OPTIONS:
     --home-shots DIR   render fishing, the farmhouse, cooking and the furniture shop
     --light-shots DIR  render sun and moon shadows and ambient occlusion
     --monster-shots DIR  render every monster family in every biome's look
+    --feature-shots DIR  render recipe cards, bombs, secret rooms and store hours
     --bench         measure rendering speed
     -h, --help      show this help
 
@@ -42,6 +44,14 @@ CONTROLS:
     Tab / I              bag             C               crafting (and brewing)
     L                    quest journal   E near someone  talk, give gifts, take quests
     M                    minimap         Esc             pause    F11 fullscreen   F12 screenshot
+
+STEAM DECK / CONTROLLER:
+    left stick, D-pad    walk            right stick     aim
+    A                    interact, OK    X               use tool (hold), fish
+    B                    roll, back      Y               bag
+    L1 / R1              hotbar, tabs    L2 / R2         cast your two spells
+    View                 crafting        Menu            pause (Controls shows the layout)
+    L3 / R3              map / quests    B (at home)     turn furniture
 ";
 
 fn main() {
@@ -73,6 +83,10 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--magic-shots") {
         headless::magic_shots(args.get(i + 1).map(String::as_str).unwrap_or("magic"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--feature-shots") {
+        headless::feature_shots(args.get(i + 1).map(String::as_str).unwrap_or("features"));
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--monster-shots") {

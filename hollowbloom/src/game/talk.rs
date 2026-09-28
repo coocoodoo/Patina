@@ -221,7 +221,11 @@ impl Play {
             // Hazel starts every delver off with a spell.
             if who == Villager::Hazel && self.spells.learn(super::spells::Spell::Firebolt) {
                 io.audio.play(Sfx::SpellUp);
-                self.toast_colored("Learned Firebolt! Press Q to cast it.", None, 0, GOLD);
+                let t = format!(
+                    "Learned Firebolt! Press {} to cast it.",
+                    self.key(Action::Spell1)
+                );
+                self.toast_colored(t, None, 0, GOLD);
             }
         } else if let Some(qi) = self.quest_to_finish(who) {
             text = self.quests[qi]
@@ -348,6 +352,12 @@ impl Play {
     ) -> Option<(String, Vec<(String, Say)>)> {
         match say {
             Say::Shop => {
+                if !town::trading(self.clock.min) {
+                    return Some((
+                        "Sorry, the counter's shut! We trade from 9am to 5pm.".to_string(),
+                        self.talk_choices(who),
+                    ));
+                }
                 if let Some(p) = who.def().keeps {
                     self.menu = Menu::shop_at(p);
                 }
@@ -868,7 +878,8 @@ impl Play {
             c.text(x + 24, y + 5, line, ink);
         }
         if ch.t > 0.6 && (self.time * 2.0).fract() < 0.7 {
-            c.text_center(l.px + l.pw / 2, l.py + dy + l.ph - 12, "Press E", SHADOW);
+            let t = format!("Press {}", self.key(Action::Confirm));
+            c.text_center(l.px + l.pw / 2, l.py + dy + l.ph - 12, &t, SHADOW);
         }
         // Sparkles around the box.
         for k in 0..10 {
@@ -1269,7 +1280,13 @@ impl Play {
         let pw = 124;
         let ph = 12 + rows.len() as i32 * 10;
         c.panel(3, y0, pw, ph, Style::Dark);
-        c.text_shadow(7, y0 + 2, "★ Quests  (L)", GOLD, INK);
+        c.text_shadow(
+            7,
+            y0 + 2,
+            &format!("★ Quests  {}", self.prompt(Action::Quests)),
+            GOLD,
+            INK,
+        );
         for (i, (t, s, ready)) in rows.iter().enumerate() {
             let y = y0 + 12 + i as i32 * 10;
             let sw = c.text_width(s);

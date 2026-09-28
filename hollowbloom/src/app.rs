@@ -17,6 +17,7 @@ use winit::window::{Fullscreen, Icon, Window, WindowId};
 use crate::audio::Audio;
 use crate::game::{Game, Io};
 use crate::input::{Button, Input};
+use crate::pad::Pads;
 use crate::render::Renderer;
 
 const FRAME: Duration = Duration::from_micros(16_667);
@@ -39,6 +40,8 @@ pub struct App {
     game: Game,
     renderer: Renderer,
     input: Input,
+    /// Game controllers: the Steam Deck's controls, or any Xbox-style pad.
+    pads: Pads,
     audio: Audio,
     scale: usize,
     last: Instant,
@@ -57,6 +60,7 @@ impl App {
             game,
             renderer: Renderer::new(427, 240),
             input: Input::default(),
+            pads: Pads::new(),
             audio,
             scale: 3,
             last: Instant::now(),
@@ -91,6 +95,8 @@ impl App {
         let now = Instant::now();
         let dt = (now - self.last).as_secs_f32().min(0.1);
         self.last = now;
+        let pad = self.pads.poll(dt);
+        self.input.pad_event(pad, dt);
         let mut io = Io {
             dt,
             input: &self.input,

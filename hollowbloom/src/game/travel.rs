@@ -179,6 +179,7 @@ impl Play {
 
     /// Steps off the bus at the other end.
     pub fn ride_bus(&mut self, to_town: bool) {
+        self.forget_vault();
         self.level = None;
         self.room = None;
         self.foes.clear();

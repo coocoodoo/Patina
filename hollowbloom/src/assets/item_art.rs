@@ -336,6 +336,23 @@ const HORN: &[&str] = &[
     "...KKKK.........",
 ];
 
+const BOMB: &[&str] = &[
+    "...........yY...",
+    "..........Y.o...",
+    ".........K..r...",
+    "........KuK.....",
+    ".......KKKKK....",
+    ".....KKkkkkKK...",
+    "....KkkDDkkkkK..",
+    "...KkkDwDkkkkkK.",
+    "...KkkDDkkkkkkK.",
+    "...KkkkkkkkkkkK.",
+    "...KkkkkkkkkkkK.",
+    "....KkkkkkkkkK..",
+    ".....KKkkkkKK...",
+    ".......KKKK.....",
+];
+
 const GRAVE_DUST: &[&str] = &[
     "................",
     "................",
@@ -1172,6 +1189,7 @@ pub fn build(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
         art(HEART_GEM, [CLEAR, SAND, KHAKI, ROSEWOOD]),
     );
     add("grave_dust", art(GRAVE_DUST, NO));
+    add("bomb", art(BOMB, NO));
     add("goblin_tooth", art(TOOTH, NO));
     add("chitin", art(CHITIN, [LIME, GREEN, TEAL, CLEAR]));
 
@@ -1376,6 +1394,7 @@ pub fn all_templates() -> Vec<(&'static str, &'static [&'static str], usize)> {
         ("dust", DUST, 16),
         ("horn", HORN, 16),
         ("grave_dust", GRAVE_DUST, 16),
+        ("bomb", BOMB, 16),
         ("tooth", TOOTH, 16),
         ("chitin", CHITIN, 16),
         ("round_fruit", ROUND_FRUIT, 16),

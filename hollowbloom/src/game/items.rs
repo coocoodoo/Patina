@@ -86,6 +86,8 @@ pub enum Kind {
     Wallpaper(u8),
     /// Lays a new floor in the house (see `home::FLOORS`).
     Flooring(u8),
+    /// Thrown, fizzes, and goes off: monsters, pots and cracked floors beware.
+    Bomb,
 }
 
 pub struct ItemDef {
@@ -175,6 +177,7 @@ items! {
     ImpHorn = "imp_horn", "Imp Horn", "imp_horn", 99, 22, Material, "Warm, pointy and a little smug.";
     Ectoplasm = "ectoplasm", "Ectoplasm", "ectoplasm", 99, 24, Material, "Cold, wobbly and faintly giggling.";
     GolemHeart = "golem_heart", "Golem Heart", "golem_heart", 99, 40, Material, "A pebble that still beats.";
+    Bomb = "bomb", "Bomb", "bomb", 20, 30, Kind::Bomb, "Throw it and stand back! It blasts monsters, pots and crates, and opens up cracked floors in the Hollow.";
     GraveDust = "grave_dust", "Grave Dust", "grave_dust", 99, 16, Material, "Shaken out of a zombie's pockets. Mostly zombie.";
     GoblinTooth = "goblin_tooth", "Goblin Tooth", "goblin_tooth", 99, 20, Material, "A goblin lost this. It will want it back.";
     Chitin = "chitin", "Bug Chitin", "chitin", 99, 12, Material, "A tough, glossy plate off a Hollow bug.";
@@ -1177,6 +1180,14 @@ impl Inventory {
         room >= stack.n as u32
     }
 
+    /// Every different thing in the bag, sorted.
+    pub fn distinct(&self) -> Vec<Item> {
+        let mut v: Vec<Item> = self.slots.iter().flatten().map(|s| s.item).collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
     pub fn count(&self, item: Item) -> u32 {
         self.slots
             .iter()
@@ -1449,6 +1460,31 @@ impl Recipe {
     pub fn can_craft(&self, inv: &Inventory) -> bool {
         self.needs.iter().all(|(i, n)| inv.count(*i) >= *n as u32) && inv.can_fit(self.out, self.n)
     }
+
+    /// Known from the start: made from nothing but wood, stone and fibre.
+    pub fn common(&self) -> bool {
+        self.needs.iter().all(|(i, _)| COMMON.contains(i))
+    }
+
+    /// With one of each of its ingredients in hand (however many it really takes), you
+    /// can work out how it's made. `bag` is sorted.
+    pub fn hinted_by(&self, bag: &[Item]) -> bool {
+        self.needs.iter().all(|(i, _)| bag.binary_search(i).is_ok())
+    }
+}
+
+/// What everyone knows how to work: recipes made only of these are known from the start;
+/// the rest are learned by finding their ingredients.
+pub const COMMON: [Item; 3] = [Item::Wood, Item::Stone, Item::Fiber];
+
+/// The recipes a new farmer knows: the common ones, and any the starting kit gives away.
+pub fn starter_recipes(inv: &Inventory) -> std::collections::BTreeSet<Item> {
+    let bag = inv.distinct();
+    RECIPES
+        .iter()
+        .filter(|r| r.common() || r.hinted_by(&bag))
+        .map(|r| r.out)
+        .collect()
 }
 
 #[cfg(test)]

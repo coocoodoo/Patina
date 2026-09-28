@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use super::folk::Friends;
-use super::items::Stack;
+use super::items::{Item, Stack};
 use super::play::{Play, Stats};
 use super::player::{Player, PlayerSave};
 use super::quests::{Journal, Quest};
 use super::world::{Floor, Obj, Wall, World};
 
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 #[derive(Serialize, Deserialize)]
 pub struct FarmSave {
@@ -68,6 +68,13 @@ pub struct SaveData {
     pub warmed: u32,
     #[serde(default)]
     pub stargazed: u32,
+    /// Recipes learned (version 5). Saves from before recipes had to be found know them
+    /// all.
+    #[serde(default)]
+    pub recipes: Option<Vec<Item>>,
+    /// Bombs the smith still has to sell on the saved day.
+    #[serde(default)]
+    pub bombs: Option<u8>,
 }
 
 const FLOORS: [(Floor, char); 15] = [
@@ -231,6 +238,8 @@ pub fn write(p: &Play) -> Result<(), String> {
         house: p.house.save(),
         warmed: p.warmed,
         stargazed: p.stargazed,
+        recipes: Some(p.known.iter().copied().collect()),
+        bombs: Some(p.bomb_stock),
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let path = path().ok_or("no data directory")?;
@@ -293,6 +302,12 @@ pub fn read() -> Result<Play, String> {
     let (dx, dz) = super::farm::MARKS.door;
     let pos = glam::Vec2::new(dx as f32 + 0.5, dz as f32 + 0.6);
     p.player = Player::load(d.player, pos);
+    p.known = match d.recipes {
+        Some(list) => list.into_iter().collect(),
+        None => super::items::RECIPES.iter().map(|r| r.out).collect(),
+    };
+    p.bag_seen = p.player.inv.distinct();
+    p.bomb_stock = d.bombs.unwrap_or(super::bombs::BOMBS_PER_DAY);
     p.shipping = d.shipping;
     p.rain = d.rain;
     p.stats = d.stats;

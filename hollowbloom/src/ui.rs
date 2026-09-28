@@ -231,6 +231,18 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    /// A sprite drawn `scale` times over in chunky pixels, for showing something off.
+    pub fn sprite_scaled(&mut self, t: &Texture, x: i32, y: i32, scale: i32) {
+        for sy in 0..t.h as i32 {
+            for sx in 0..t.w as i32 {
+                let c = t.get(sx, sy);
+                if c != CLEAR {
+                    self.rect(x + sx * scale, y + sy * scale, scale, scale, c);
+                }
+            }
+        }
+    }
+
     /// Sprite with every opaque pixel mapped through `f` (greyed out, silhouettes).
     pub fn sprite_map(&mut self, t: &Texture, x: i32, y: i32, f: impl Fn(u8) -> u8) {
         for sy in 0..t.h as i32 {

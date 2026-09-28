@@ -12,6 +12,7 @@ use super::player::HOTBAR;
 use super::tips::{draw_money, money_width};
 use super::world::{Area, Floor, Obj, Wall};
 use crate::assets::Assets;
+use crate::input::Action;
 use crate::palette::*;
 use crate::render::Camera;
 use crate::ui::{Canvas, Style};
@@ -167,7 +168,12 @@ impl Play {
         draw_money(c, a, px + pw - 6 - mw, 26, self.money, INK);
         if let Area::Hollow { depth } = self.area {
             c.panel(px, 40, pw, 14, Style::Dark);
-            c.text_shadow(px + 6, 43, &format!("Floor {depth}"), CREAM, INK);
+            let label = if self.in_vault() {
+                "Secret room".to_string()
+            } else {
+                format!("Floor {depth}")
+            };
+            c.text_shadow(px + 6, 43, &label, CREAM, INK);
             if self.show_map {
                 self.draw_minimap(c, px, 56, pw);
             }
@@ -297,7 +303,9 @@ impl Play {
                         c.tiny(x + 17, hy + 12, &k.level.to_string(), CREAM, INK);
                     }
                 }
-                c.tiny(x + 4, hy + 1, ["Q", "R"][k], CREAM, INK);
+                let key = self.key([Action::Spell1, Action::Spell2][k]);
+                let right = x + 4 * key.len() as i32;
+                c.tiny(right, hy + 1, key, CREAM, INK);
             }
         }
 
@@ -310,18 +318,24 @@ impl Play {
                 c.text_outline((w - tw) / 2, hy - 14, &name, col, INK);
             }
         } else if let Some(hint) = &self.hint {
-            let t = format!("[E] {hint}");
+            let t = format!("[{}] {hint}", self.key(Action::Interact));
             let tw = c.text_width(&t);
             c.text_outline((w - tw) / 2, hy - 14, &t, WHITE, INK);
         }
         if self.area == Area::Home && self.sel_name_t >= 1.6 && self.cooking.is_none() {
             // What your hands can do about the house.
             let held = p.held().map(|i| i.def().kind);
+            let place = self.key(Action::Interact);
             let t = match held {
-                Some(Kind::Place(Placeable::Furniture(_))) => Some("[E] Place   [T] Turn"),
-                Some(Kind::Place(_)) => Some("[E] Place"),
-                Some(Kind::Wallpaper(_) | Kind::Flooring(_)) => Some("[E] Redecorate"),
-                _ if self.target_ok => Some("[J] Pick up"),
+                Some(Kind::Place(Placeable::Furniture(_))) => Some(format!(
+                    "[{place}] Place   [{}] Turn",
+                    self.key(Action::Turn)
+                )),
+                Some(Kind::Place(_)) => Some(format!("[{place}] Place")),
+                Some(Kind::Wallpaper(_) | Kind::Flooring(_)) => {
+                    Some(format!("[{place}] Redecorate"))
+                }
+                _ if self.target_ok => Some(format!("[{}] Pick up", self.key(Action::Use))),
                 _ => None,
             };
             if let Some(t) = t {
@@ -330,8 +344,8 @@ impl Play {
                 } else {
                     hy - 14
                 };
-                let tw = c.text_width(t);
-                c.text_outline((w - tw) / 2, y, t, CREAM, INK);
+                let tw = c.text_width(&t);
+                c.text_outline((w - tw) / 2, y, &t, CREAM, INK);
             }
         }
 

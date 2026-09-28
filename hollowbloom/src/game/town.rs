@@ -54,6 +54,14 @@ pub const PLACES: [Place; 12] = [
     Place::Spellery,
 ];
 
+/// When the shops trade: nine in the morning to five in the afternoon, every day.
+pub const STORE_HOURS: (f32, f32) = (540.0, 1020.0);
+
+/// Is it trading hours?
+pub fn trading(min: f32) -> bool {
+    (STORE_HOURS.0..STORE_HOURS.1).contains(&min)
+}
+
 pub struct PlaceDef {
     pub name: &'static str,
     /// What the sign by the door says it is.
@@ -77,6 +85,12 @@ impl Place {
     pub fn is_open(self, min: f32) -> bool {
         let (a, b) = self.def().open;
         min >= a && min < b
+    }
+
+    /// A shop, keeping shop hours (the hall, the guild and the tavern keep their own; the
+    /// guild's and tavern's counters still only trade from nine to five).
+    pub fn is_store(self) -> bool {
+        self.def().open == STORE_HOURS
     }
 
     /// The building this place is in.
@@ -134,7 +148,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Scrolls and magic",
         paper: 3,
         floor: Floor::Carpet,
-        open: (540.0, 1260.0),
+        open: STORE_HOURS,
         goods: 3,
         layout: &[
             "##W##L###L##W##",
@@ -154,7 +168,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Armour and shields",
         paper: 0,
         floor: Floor::Planks,
-        open: (480.0, 1200.0),
+        open: STORE_HOURS,
         goods: 0,
         layout: &[
             "##W###L#L###W##",
@@ -174,7 +188,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Swords, wands and staffs",
         paper: 1,
         floor: Floor::Cobble,
-        open: (480.0, 1200.0),
+        open: STORE_HOURS,
         goods: 1,
         layout: &[
             "##W##L###L##W##",
@@ -194,7 +208,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Tools and sprinklers",
         paper: 4,
         floor: Floor::Planks,
-        open: (480.0, 1200.0),
+        open: STORE_HOURS,
         goods: 4,
         layout: &[
             "##W##L###L##W##",
@@ -214,7 +228,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Gems and curios",
         paper: 6,
         floor: Floor::Carpet,
-        open: (540.0, 1200.0),
+        open: STORE_HOURS,
         goods: 5,
         layout: &[
             "##W##P#L#P##W##",
@@ -234,7 +248,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Furniture and decor",
         paper: 7,
         floor: Floor::Planks,
-        open: (480.0, 1200.0),
+        open: STORE_HOURS,
         goods: 7,
         // Digits are furniture on display (see `display_piece`).
         layout: &[
@@ -255,7 +269,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Seeds for every season",
         paper: 2,
         floor: Floor::Planks,
-        open: (420.0, 1140.0),
+        open: STORE_HOURS,
         goods: 2,
         layout: &[
             "##W##L###L##W##",
@@ -275,7 +289,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Bread, cakes and treats",
         paper: 5,
         floor: Floor::Tiles,
-        open: (390.0, 1140.0),
+        open: STORE_HOURS,
         goods: 8,
         layout: &[
             "##W##L###L##W##",
@@ -295,7 +309,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Tavern and kitchen",
         paper: 8,
         floor: Floor::Planks,
-        open: (660.0, 1500.0),
+        open: (540.0, 1500.0),
         goods: 9,
         layout: &[
             "##W#L##W##L#W##",
@@ -315,7 +329,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
         trade: "Spells and potions",
         paper: 6,
         floor: Floor::Carpet,
-        open: (600.0, 1320.0),
+        open: STORE_HOURS,
         goods: 10,
         layout: &[
             "##W##L###L##W##",

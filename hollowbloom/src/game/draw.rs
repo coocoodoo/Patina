@@ -350,6 +350,45 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             r.mesh(&a.bank, &p.pot, &(at * small_rot(x, z)), &lit)
         }
         Obj::Crate { .. } => r.mesh(&a.bank, &p.crate_, &(at * Mat4::from_rotation_y(0.1)), &lit),
+        Obj::Crack => {
+            let d = &a.delve;
+            let full = UvRect::new(0.0, 0.0, 16.0, 16.0);
+            r.decal(
+                a.tex(d.crack),
+                full,
+                base + Vec3::Y * 0.012,
+                Vec2::splat(0.5),
+                &lit,
+            );
+            // A draught from below stirs up a mote of dust now and then.
+            let k = (env.time * 0.7 + (x * 13 + z * 7) as f32 * 0.37).fract();
+            if k < 0.6 {
+                let sway = (env.time * 2.0 + x as f32).sin() * 0.08;
+                let q = base + Vec3::new(sway, 0.05 + k * 0.7, 0.05);
+                r.point(q, 1, if k < 0.3 { SAND } else { KHAKI });
+            }
+        }
+        Obj::Hole => {
+            let d = &a.delve;
+            let full = UvRect::new(0.0, 0.0, 16.0, 16.0);
+            r.decal(
+                a.tex(d.pit),
+                full,
+                base + Vec3::Y * 0.014,
+                Vec2::splat(0.56),
+                &lit,
+            );
+            let stake = at
+                * Mat4::from_translation(Vec3::new(0.34, 0.0, 0.3))
+                * Mat4::from_rotation_y(-2.29);
+            r.mesh(&a.bank, &d.stake, &stake, &lit);
+        }
+        Obj::Rope => {
+            r.mesh(&a.bank, &a.delve.rope, &at, &lit);
+            // The shaft of daylight it hangs in.
+            let pulse = (env.time * 1.3).sin() * 0.05;
+            r.halo(base + Vec3::Y * 0.05, 0.9, CREAM, 0.22 + pulse);
+        }
         Obj::LootChest { opened, gleam } => {
             let mesh = match (*opened, *gleam) {
                 (true, _) => &p.chest_open,

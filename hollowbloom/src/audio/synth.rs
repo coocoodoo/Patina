@@ -79,6 +79,8 @@ pub enum Sfx {
     Sizzle,
     /// A little tune on the piano.
     Piano,
+    /// A recipe worked out: a music-box twinkle climbing up.
+    Discover,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -139,6 +141,7 @@ pub const ALL: &[Sfx] = &[
     Sfx::Catch,
     Sfx::Sizzle,
     Sfx::Piano,
+    Sfx::Discover,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -731,6 +734,24 @@ pub fn make(s: Sfx) -> Vec<f32> {
                 (hiss + pop) * (t * 20.0).min(1.0) * (1.0 - t / 0.5)
             });
             lowpass(&mut b, 0.8);
+            b
+        }
+        Sfx::Discover => {
+            // Plink-plink-plink up a music box, and a bell to finish.
+            let tune = [79, 84, 88, 91, 96];
+            let mut b = Vec::new();
+            for (i, n) in tune.into_iter().enumerate() {
+                let f = note(n);
+                let len = if i == tune.len() - 1 { 0.8 } else { 0.07 };
+                let (mut a, mut c) = (0.0, 0.0);
+                b.extend(render(len, |t, _| {
+                    a += f / RATE;
+                    c += f * 3.01 / RATE;
+                    (sine(a) * 0.35 + sine(c) * 0.12 * (-t * 9.0).exp())
+                        * (-t * 4.5).exp()
+                        * (t * 300.0).min(1.0)
+                }));
+            }
             b
         }
         Sfx::Piano => {

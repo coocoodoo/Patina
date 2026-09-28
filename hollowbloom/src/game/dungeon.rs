@@ -49,7 +49,12 @@ pub struct Level {
     pub spawns: Vec<Spawn>,
     /// Where a tenth floor's guardian waits: the most open ground of its arena.
     pub lair: (f32, f32),
+    /// A cracked patch of floor with a secret room beneath, on some floors.
+    pub crack: Option<(i32, i32)>,
 }
+
+/// How often an ordinary floor hides a secret room under a cracked tile.
+pub const CRACK_CHANCE: f32 = 0.5;
 
 pub fn biome_for(depth: u32) -> usize {
     (((depth.max(1) - 1) / 10) as usize) % BIOMES
@@ -650,6 +655,30 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
         }
     }
 
+    // Now and then, a cracked patch of floor out in the open, over a secret room.
+    let mut crack = None;
+    if !is_waystone_floor(depth) && r.chance(CRACK_CHANCE) {
+        for _ in 0..200 {
+            let i = r.below(n);
+            if i == start_room || i == far.1 {
+                continue;
+            }
+            let room = rooms[i];
+            let x = room.x + r.range(1, room.w - 1);
+            let z = room.z + r.range(1, room.h - 1);
+            if world.wall(x, z) == Wall::None
+                && world.obj(x, z).is_none()
+                && world.floor(x, z) == Floor::Cave
+                && !touches_wall(&world, x, z)
+                && !keep_clear(x, z)
+            {
+                world.set_obj(x, z, Some(Obj::Crack));
+                crack = Some((x, z));
+                break;
+            }
+        }
+    }
+
     // Enemies.
     let mut spawns = Vec::new();
     let foes = biome_foes(biome);
@@ -728,6 +757,118 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
         waystone,
         spawns,
         lair,
+        crack,
+    }
+}
+
+/// The secret room under a floor's cracked tile: one room, lit by the shaft of daylight the
+/// rope hangs in, with treasure along the back wall and its keepers standing guard.
+pub fn vault(seed: u64, depth: u32, crack: (i32, i32)) -> Level {
+    let biome = biome_for(depth);
+    let key = (crack.0 as u64) << 16 | crack.1 as u64;
+    let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x51ED_2701) ^ key ^ 0x5EC2E7);
+    // Plenty of rock round the room, so the view never runs off the edge of the world.
+    let (w, h) = (25, 23);
+    let mut world = World::new(w, h, Area::Hollow { depth }, biome);
+    for z in 0..h {
+        for x in 0..w {
+            world.set_floor(x, z, Floor::Cave);
+            let edge = x < 2 || z < 2 || x >= w - 2 || z >= h - 2;
+            world.set_wall(x, z, if edge { Wall::Bedrock } else { Wall::Rock });
+        }
+    }
+    let room = Room {
+        x: 6,
+        z: 6,
+        w: 13,
+        h: 9,
+    };
+    carve_room(&mut world, &room, biome != 5, &mut r);
+    // Make sure the middle is open whatever the carving did.
+    for z in room.z + 1..room.z + room.h - 1 {
+        for x in room.x + 2..room.x + room.w - 2 {
+            world.set_wall(x, z, Wall::None);
+        }
+    }
+    // The rope down, near the front; you land beside it.
+    let rope = (w / 2, room.z + room.h - 2);
+    world.set_obj(rope.0, rope.1, Some(Obj::Rope));
+    let start = (rope.0 + 1, rope.1);
+    // Treasure along the back wall, now and then a gleaming chest among it.
+    let chests = 2 + r.below(3);
+    let mut placed = 0;
+    let mut x = room.x + 2 + r.range(0, 2);
+    while placed < chests && x < room.x + room.w - 2 {
+        let z = room.z + 1;
+        if world.wall(x, z) == Wall::None && world.obj(x, z).is_none() {
+            world.set_obj(
+                x,
+                z,
+                Some(Obj::LootChest {
+                    opened: false,
+                    gleam: r.chance(0.25),
+                }),
+            );
+            placed += 1;
+        }
+        x += 2 + r.range(0, 2);
+    }
+    // Pots and crates in the corners, torches either side.
+    for (x, z) in [
+        (room.x + 2, room.z + room.h - 2),
+        (room.x + room.w - 3, room.z + room.h - 2),
+        (room.x + 2, room.z + 3),
+        (room.x + room.w - 3, room.z + 3),
+    ] {
+        if world.obj(x, z).is_none() && world.wall(x, z) == Wall::None {
+            let hp = 1;
+            let o = if r.chance(0.5) {
+                Obj::Pot { hp }
+            } else {
+                Obj::Crate { hp }
+            };
+            world.set_obj(x, z, Some(o));
+        }
+    }
+    for x in [room.x + 1, room.x + room.w - 2] {
+        let z = room.z + room.h / 2;
+        if world.wall(x, z) == Wall::None {
+            world.set_obj(x, z, Some(Obj::Torch));
+        }
+    }
+    // Its keepers: a handful of the biome's creatures, back from the rope.
+    let foes = biome_foes(biome);
+    let weights: Vec<f32> = foes.iter().map(|f| f.1).collect();
+    let n = (3 + depth as usize / 12).min(7);
+    let mut spawns = Vec::new();
+    for _ in 0..n * 10 {
+        if spawns.len() >= n {
+            break;
+        }
+        let x = room.x + 2 + r.range(0, room.w - 4);
+        let z = room.z + 2 + r.range(0, room.h - 5);
+        let near = (x - start.0).abs() + (z - start.1).abs() < 4;
+        if !world.blocked(x, z) && !near {
+            let mut foe = foes[r.weighted(&weights)].0;
+            if too_tough(foe, depth) {
+                foe = Foe::Sneak;
+            }
+            spawns.push(Spawn {
+                foe,
+                x: x as f32 + 0.5,
+                z: z as f32 + 0.5,
+                boss: false,
+            });
+        }
+    }
+    Level {
+        world,
+        start,
+        stairs: rope,
+        waystone: None,
+        spawns,
+        lair: (start.0 as f32 + 0.5, start.1 as f32 + 0.5),
+        crack: None,
     }
 }
 

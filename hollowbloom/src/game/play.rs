@@ -77,6 +77,10 @@ pub enum Trans {
     House {
         enter: bool,
     },
+    /// Down a blasted hole into a floor's secret room, or back up the rope.
+    Vault {
+        enter: bool,
+    },
 }
 
 pub struct Fade {
@@ -198,6 +202,20 @@ pub struct Play {
     pub show_map: bool,
     pub boss_seen: Option<String>,
     pub stats: Stats,
+    /// Recipes learned so far (by what they make), ones just learned and still to be shown,
+    /// and the different things in the bag when that was last checked.
+    pub known: std::collections::BTreeSet<Item>,
+    pub discoveries: std::collections::VecDeque<usize>,
+    pub bag_seen: Vec<Item>,
+    /// Playing on a controller (the Steam Deck's, or any pad): hints show its buttons.
+    pub pad: bool,
+    /// Lit bombs, and how many the smith has left to sell today.
+    pub bombs: Vec<super::bombs::Bomb>,
+    pub bomb_stock: u8,
+    /// The floor above while you're down in its secret room, and the secret room as you
+    /// left it while you're back up top.
+    pub below: Option<Box<super::bombs::Stash>>,
+    pub vault: Option<Box<super::bombs::Stash>>,
     pub quit_to_title: bool,
     pub last_summary: Option<super::menus::Summary>,
     pub saved_day: u32,
@@ -306,10 +324,20 @@ impl Play {
             show_map: true,
             boss_seen: None,
             stats: Stats::default(),
+            known: Default::default(),
+            discoveries: Default::default(),
+            bag_seen: Vec::new(),
+            pad: false,
+            bombs: Vec::new(),
+            bomb_stock: super::bombs::BOMBS_PER_DAY,
+            below: None,
+            vault: None,
             quit_to_title: false,
             last_summary: None,
             saved_day: 0,
         };
+        p.known = super::items::starter_recipes(&p.player.inv);
+        p.bag_seen = p.player.inv.distinct();
         p.cam_pos = p.player.world_pos();
         p.banner = Some(Banner {
             title: "Hollowbloom Farm".into(),
@@ -550,6 +578,7 @@ impl Play {
     // --------------------------------------------------------------------------------------
 
     fn enter_hollow(&mut self, depth: u32, via_waystone: bool) {
+        self.forget_vault();
         let mut level = dungeon::generate(self.seed, depth, via_waystone);
         // A guardian comes back to its floor while someone needs something it carries.
         let rematch = via_waystone && self.guardian_wanted(depth);
@@ -663,6 +692,7 @@ impl Play {
     }
 
     fn go_home(&mut self) {
+        self.forget_vault();
         self.level = None;
         self.room = None;
         self.bus = None;
@@ -692,6 +722,7 @@ impl Play {
         }
         self.money += earned;
         self.bought.clear();
+        self.bomb_stock = super::bombs::BOMBS_PER_DAY;
         self.stats.earned += earned;
         self.on_ship(earned);
         self.friends.new_day();
@@ -726,6 +757,7 @@ impl Play {
         p.facing = Vec2::new(0.0, 1.0);
         p.act = None;
         self.player.pos = self.bedside();
+        self.forget_vault();
         self.level = None;
         self.room = None;
         self.bus = None;
@@ -775,6 +807,7 @@ impl Play {
     pub fn update(&mut self, io: &mut Io, settings: &mut Settings) {
         let dt = io.dt;
         self.time += dt;
+        self.pad = io.input.pad_active;
         self.update_camera(io.view, dt);
 
         // Fades run even over menus.
@@ -796,6 +829,8 @@ impl Play {
                     Trans::Leave => self.leave_place(),
                     Trans::House { enter: true } => self.enter_house(),
                     Trans::House { enter: false } => self.leave_house(),
+                    Trans::Vault { enter: true } => self.enter_vault(),
+                    Trans::Vault { enter: false } => self.leave_vault(),
                 }
                 if !matches!(action, Trans::Enter(_) | Trans::Leave | Trans::House { .. }) {
                     io.audio.play(Sfx::Stairs);
@@ -828,6 +863,15 @@ impl Play {
         self.nag = (self.nag - dt).max(0.0);
 
         self.update_bus(io);
+        self.closing_time(io);
+        // A newly learned recipe stops everything to show itself off.
+        if matches!(self.menu, Menu::None) && self.fade.is_none() && self.cooking.is_none() {
+            self.discover_recipes();
+            if let Some(recipe) = self.discoveries.pop_front() {
+                self.menu = Menu::Recipe { recipe, t: 0.0 };
+                io.audio.play(Sfx::Discover);
+            }
+        }
         if !matches!(self.menu, Menu::None) {
             self.update_menu(io, settings);
             self.update_folk(dt, false);
@@ -926,6 +970,7 @@ impl Play {
         self.update_bolts(dt, io);
         self.update_spells(dt, io);
         self.update_drops(io);
+        self.update_bombs(dt, io);
         self.update_cat(dt);
         self.update_vitals(dt);
         self.fx.update(dt);
@@ -939,6 +984,70 @@ impl Play {
             self.toast("You fainted!", None, 0);
             self.start_fade(Trans::Faint);
         }
+    }
+
+    /// Five o'clock: the tills shut, and shopkeepers see you out of their shops.
+    fn closing_time(&mut self, io: &mut Io) {
+        if town::trading(self.clock.min) || self.fade.is_some() {
+            return;
+        }
+        if matches!(self.menu, Menu::Shop { .. }) {
+            self.close_menu(io);
+            self.toast("Closing time! Shops trade from 9am to 5pm.", None, 0);
+        }
+        if let Area::Inside(place) = self.area {
+            if place.is_store() {
+                if !matches!(self.menu, Menu::None) {
+                    self.close_menu(io);
+                }
+                self.toast(
+                    format!("{} is closing - see you at 9am!", place.def().name),
+                    None,
+                    0,
+                );
+                self.start_fade(Trans::Leave);
+            }
+        }
+    }
+
+    /// The key or button for an action, for on-screen hints: "E" on the keyboard, "A" on
+    /// the Steam Deck.
+    pub fn key(&self, a: Action) -> &'static str {
+        if self.pad {
+            crate::input::pad_name(a)
+        } else {
+            crate::input::key_name(a)
+        }
+    }
+
+    /// The same in brackets: "(E)", "(A)".
+    pub fn prompt(&self, a: Action) -> String {
+        format!("({})", self.key(a))
+    }
+
+    /// Holding a piece of furniture at home (B turns it rather than rolling).
+    fn holding_furniture(&self) -> bool {
+        self.area == Area::Home
+            && self
+                .player
+                .held()
+                .is_some_and(|i| matches!(i.def().kind, Kind::Place(Placeable::Furniture(_))))
+    }
+
+    /// Learns every recipe whose ingredients are all in the bag, one of each being enough,
+    /// and queues a card for each to show. Only looks again when what's in the bag changes.
+    pub fn discover_recipes(&mut self) {
+        let bag = self.player.inv.distinct();
+        if bag == self.bag_seen {
+            return;
+        }
+        for (k, r) in super::items::RECIPES.iter().enumerate() {
+            if !self.known.contains(&r.out) && r.hinted_by(&bag) {
+                self.known.insert(r.out);
+                self.discoveries.push_back(k);
+            }
+        }
+        self.bag_seen = bag;
     }
 
     /// Regeneration, mana, food buffs and magic flashes.
@@ -1037,8 +1146,11 @@ impl Play {
         if still {
             mv = Vec2::ZERO;
         }
-        // Dodge roll.
-        if input.pressed(Action::Dodge) && p.dodge_cd <= 0.0 && p.dodge <= 0.0 && !still {
+        // Dodge roll (at home, holding furniture, that button turns it instead).
+        let turning = self.holding_furniture();
+        let p = &mut self.player;
+        if input.pressed(Action::Dodge) && p.dodge_cd <= 0.0 && p.dodge <= 0.0 && !still && !turning
+        {
             self.fishing = None;
             let p = &mut self.player;
             let dir = if mv.length_squared() > 0.0 {
@@ -1103,6 +1215,10 @@ impl Play {
                 }
             }
         }
+        // Or with the right stick.
+        if let Some(d) = input.aim_axis() {
+            p.facing = d;
+        }
         let want = p.facing.x.atan2(p.facing.y);
         p.yaw += wrap_angle(want - p.yaw) * damp(18.0, dt);
 
@@ -1130,7 +1246,10 @@ impl Play {
             return;
         }
         // Turning the next piece of furniture before it goes down.
-        if self.area == Area::Home && input.key_pressed(KeyCode::KeyT) {
+        if self.area == Area::Home
+            && (input.key_pressed(KeyCode::KeyT)
+                || (self.holding_furniture() && input.pressed(Action::Turn)))
+        {
             self.house.turn = (self.house.turn + 1) % 4;
             io.audio.play_at(Sfx::UiMove, 0.6, 1.2);
         }
@@ -1354,6 +1473,9 @@ impl Play {
             Obj::Stall => "Shop",
             Obj::Chest { .. } => "Open chest",
             Obj::LootChest { opened: false, .. } => "Open",
+            Obj::Hole => "Climb down",
+            Obj::Rope => "Climb up",
+            Obj::Crack => "Look",
             Obj::Sign { .. } => "Read",
             Obj::StairsDown => "Descend",
             Obj::Waystone => "Touch the waystone",
@@ -1530,6 +1652,7 @@ impl Play {
             Kind::Scroll(_) => {
                 self.toast("Bind scrolls at an enchanting table.", None, 0);
             }
+            Kind::Bomb => self.throw_bomb(io),
             Kind::Fish => {
                 if self.nag <= 0.0 {
                     self.nag = 2.0;
@@ -1780,7 +1903,12 @@ impl Play {
             }
             Obj::Bin => self.menu = Menu::Ship { cursor: 0 },
             Obj::Stall => {
-                self.menu = Menu::shop();
+                if town::trading(self.clock.min) {
+                    self.menu = Menu::shop();
+                } else {
+                    io.audio.play(Sfx::Denied);
+                    self.toast("Burrowby's stall is closed. Open 9am to 5pm.", None, 0);
+                }
             }
             Obj::Hollow => {
                 let mut floors = vec![1];
@@ -1856,6 +1984,15 @@ impl Play {
                 );
                 self.open_loot(ax, az, gleam, io);
                 io.audio.play(Sfx::Chest);
+            }
+            Obj::Hole => self.climb_down(io),
+            Obj::Rope => self.climb_up(io),
+            Obj::Crack => {
+                self.toast(
+                    "The floor's cracked here... something's hollow underneath. A bomb would open it up!",
+                    None,
+                    0,
+                );
             }
             Obj::StairsDown => {
                 if self.foes.iter().any(|f| f.boss) {

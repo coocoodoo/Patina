@@ -56,6 +56,13 @@ impl Sim {
         self.play.player.sel = slot;
     }
 
+    /// Knows every recipe, for tests about making things rather than learning them.
+    fn learn_all(&mut self) {
+        self.play
+            .known
+            .extend(super::items::RECIPES.iter().map(|r| r.out));
+    }
+
     /// Puts the player on a tile, facing a direction, with nothing in the way.
     fn stand(&mut self, x: i32, z: i32, facing: Vec2) {
         let p = &mut self.play;
@@ -820,6 +827,7 @@ fn food_buffs_last_a_while() {
 #[test]
 fn crafted_gear_is_rolled() {
     let mut s = Sim::new();
+    s.learn_all();
     s.play.player.inv.add(Item::CopperOre, 10);
     s.play.player.inv.add(Item::Wood, 5);
     let list = super::menus::recipes_in(0);
@@ -874,6 +882,22 @@ fn gear_and_outfit_survive_saving() {
         Some(Item::TurtleShell)
     );
     assert_eq!(q.player.base_mana, 50);
+    // Recipes learned stay learned...
+    assert!(q.known.contains(&Item::Chest) && !q.known.contains(&Item::EmperorPlatter));
+    let mut p = q;
+    p.known.insert(Item::EmperorPlatter);
+    super::save::write(&p).expect("save");
+    let q = super::save::read().expect("load");
+    assert!(q.known.contains(&Item::EmperorPlatter));
+    assert!(!q.known.contains(&Item::FishTacos));
+    // ...and a farm saved before recipes had to be found knows every one of them.
+    let file = dir.join("save.json");
+    let mut json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    json.as_object_mut().unwrap().remove("recipes");
+    std::fs::write(&file, json.to_string()).unwrap();
+    let old = super::save::read().expect("load an old save");
+    assert_eq!(old.known.len(), super::items::RECIPES.len());
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1661,6 +1685,7 @@ fn wild_bushes_come_out_with_an_axe() {
 #[test]
 fn potions_brew_up_in_three_sizes() {
     let mut s = Sim::new();
+    s.learn_all();
     let inv = &mut s.play.player.inv;
     inv.slots[10..].fill(None);
     inv.add(Item::Vial, 8);
@@ -2337,4 +2362,346 @@ fn gleaming_chests_hold_finely_rolled_gear() {
         gleams > 0 && gleams * 5 < total,
         "{gleams} of {total} gleam"
     );
+}
+
+#[test]
+fn recipes_are_learned_by_finding_their_ingredients() {
+    use super::items::RECIPES;
+    let mut s = Sim::new();
+    s.play.menu = Menu::None;
+    s.frames(2);
+    // A new farmer knows how to work wood, stone and fibre, and nothing fancier.
+    assert!(s.play.known.contains(&Item::Chest) && s.play.known.contains(&Item::Fence));
+    assert!(!s.play.known.contains(&Item::HealingTonic));
+    assert!(matches!(s.play.menu, Menu::None));
+    // One carrot and one blob of gel is enough to work out the tonic (it takes two of each).
+    s.play.player.inv.add(Item::CaveCarrot, 1);
+    s.play.player.inv.add(Item::SlimeGel, 1);
+    s.frames(1);
+    let tonic = RECIPES
+        .iter()
+        .position(|r| r.out == Item::HealingTonic)
+        .unwrap();
+    assert!(matches!(s.play.menu, Menu::Recipe { recipe, .. } if recipe == tonic));
+    assert!(s.play.known.contains(&Item::HealingTonic));
+    // The card stops the clock until you press OK.
+    let min = s.play.clock.min;
+    s.frames(40);
+    assert_eq!(s.play.clock.min, min);
+    s.tap(KeyCode::Enter, 1);
+    // (The turnips you started with and that carrot make a stew, too.)
+    assert!(s.play.known.contains(&Item::VeggieStew));
+    while matches!(s.play.menu, Menu::Recipe { .. }) {
+        s.frames(30);
+        s.tap(KeyCode::Enter, 1);
+    }
+    assert!(matches!(s.play.menu, Menu::None));
+    s.frames(10);
+    assert!(s.play.clock.min > min);
+    // Finding two at once shows them one after another.
+    s.play.player.inv.add(Item::Spore, 1);
+    s.play.player.inv.add(Item::Blueberry, 1);
+    s.play.player.inv.add(Item::WispDust, 1);
+    s.frames(1);
+    assert!(matches!(s.play.menu, Menu::Recipe { .. }));
+    assert!(!s.play.discoveries.is_empty());
+    s.frames(30);
+    s.tap(KeyCode::Enter, 1);
+    assert!(matches!(s.play.menu, Menu::Recipe { .. }), "the next card");
+    while matches!(s.play.menu, Menu::Recipe { .. }) {
+        s.frames(30);
+        s.tap(KeyCode::Enter, 1);
+    }
+    assert!(s.play.known.contains(&Item::StaminaTonic) && s.play.known.contains(&Item::ManaTonic));
+    // What you haven't worked out, you can't make (even with everything it needs).
+    let sword = RECIPES.iter().position(|r| r.out == Item::Sword1).unwrap();
+    s.play.known.remove(&Item::Sword1);
+    s.play.player.inv.add(Item::CopperOre, 10);
+    s.play.player.inv.add(Item::Wood, 5);
+    s.play.menu = Menu::Inventory {
+        tab: Tab::Craft,
+        cursor: 0,
+        recipe: sword,
+        scroll: sword.saturating_sub(3),
+        cat: 0,
+    };
+    s.tap(KeyCode::Enter, 1);
+    assert_eq!(s.play.player.inv.count(Item::Sword1), 0);
+    assert_eq!(s.play.player.inv.count(Item::CopperOre), 10);
+}
+
+#[test]
+fn a_steam_deck_plays_the_game() {
+    use crate::pad::{PadButton, PadState};
+    let mut s = Sim::new();
+    s.play.menu = Menu::None;
+    s.frames(2);
+    let press = |s: &mut Sim, b: PadButton| {
+        let st = PadState {
+            connected: true,
+            buttons: b.bit(),
+            ..Default::default()
+        };
+        s.input.pad_event(st, 1.0 / 60.0);
+        s.frames(1);
+        s.input.pad_event(
+            PadState {
+                connected: true,
+                ..Default::default()
+            },
+            1.0 / 60.0,
+        );
+        s.frames(1);
+    };
+    // Y opens the bag, and the hints speak the Deck's language.
+    press(&mut s, PadButton::Y);
+    assert!(matches!(s.play.menu, Menu::Inventory { .. }));
+    assert!(s.play.pad);
+    assert_eq!(s.play.prompt(crate::input::Action::Confirm), "(A)");
+    // R1 flips to your stats, B closes it.
+    press(&mut s, PadButton::R1);
+    assert!(matches!(
+        s.play.menu,
+        Menu::Inventory {
+            tab: Tab::Stats,
+            ..
+        }
+    ));
+    press(&mut s, PadButton::B);
+    assert!(matches!(s.play.menu, Menu::None));
+    // Menu pauses; the controls page shows the Deck's layout.
+    press(&mut s, PadButton::Menu);
+    assert!(matches!(s.play.menu, Menu::Pause { .. }));
+    for _ in 0..2 {
+        press(&mut s, PadButton::Down);
+    }
+    press(&mut s, PadButton::A);
+    assert!(matches!(s.play.menu, Menu::Controls { deck: true }));
+    press(&mut s, PadButton::B);
+    assert!(matches!(s.play.menu, Menu::Pause { .. }));
+    press(&mut s, PadButton::B);
+    assert!(matches!(s.play.menu, Menu::None));
+    // The left stick walks, the right one turns you about.
+    let start = s.play.player.pos;
+    for _ in 0..30 {
+        s.input.pad_event(
+            PadState {
+                connected: true,
+                left: Vec2::new(1.0, 0.0),
+                ..Default::default()
+            },
+            1.0 / 60.0,
+        );
+        s.frames(1);
+    }
+    assert!(s.play.player.pos.x > start.x + 0.5, "walked right");
+    s.input.pad_event(
+        PadState {
+            connected: true,
+            right: Vec2::new(0.0, -1.0),
+            ..Default::default()
+        },
+        1.0 / 60.0,
+    );
+    s.frames(1);
+    assert!(s.play.player.facing.y < -0.9, "faces up the screen");
+    // A key press hands the hints back to the keyboard.
+    s.input.key_event(KeyCode::KeyW, true, false);
+    s.frames(1);
+    s.input.key_event(KeyCode::KeyW, false, false);
+    assert_eq!(s.play.prompt(crate::input::Action::Confirm), "(E)");
+}
+
+#[test]
+fn the_shops_keep_nine_to_five() {
+    use super::folk::{Spot, VILLAGER_DEFS};
+    use super::town::{PLACES, STORE_HOURS, trading};
+    assert!(!trading(539.0) && trading(540.0) && trading(1019.0) && !trading(1020.0));
+    for place in PLACES {
+        if place.is_store() {
+            assert_eq!(place.def().open, STORE_HOURS, "{place:?}");
+        }
+    }
+    // Every shopkeeper is behind the counter from nine to five.
+    for v in VILLAGER_DEFS.iter() {
+        let Some(p) = v.keeps.filter(|p| *p != Place::Hall) else {
+            continue;
+        };
+        for min in (540..1020).step_by(15) {
+            let at = v
+                .hours
+                .iter()
+                .find(|(a, b, _)| (*a..*b).contains(&(min as f32)))
+                .map(|h| h.2);
+            assert_eq!(at, Some(Spot::Inside(p)), "{} at {min}", v.name);
+        }
+    }
+    // ...and nobody's inside a shop while it's shut.
+    for v in VILLAGER_DEFS.iter() {
+        for &(a, b, spot) in v.hours {
+            if let Spot::Inside(p) = spot {
+                if p.is_store() {
+                    assert!(
+                        a >= STORE_HOURS.0 - 180.0 && b <= STORE_HOURS.1,
+                        "{} in {p:?}",
+                        v.name
+                    );
+                    if v.keeps != Some(p) {
+                        assert!(
+                            a >= STORE_HOURS.0,
+                            "{} visits {p:?} before it opens",
+                            v.name
+                        );
+                    }
+                }
+            }
+        }
+    }
+    let mut s = Sim::new();
+    s.play.menu = Menu::None;
+    // A shop door at half past eight stays shut; at nine it opens.
+    s.play.area = Area::Town;
+    let id = Place::Smithy.building();
+    s.play.clock.min = 510.0;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.knock(id, &mut io);
+    assert!(s.play.fade.is_none(), "closed before nine");
+    s.play.clock.min = 545.0;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.knock(id, &mut io);
+    s.frames(60);
+    assert_eq!(s.play.area, Area::Inside(Place::Smithy));
+    // At five the smith sees you out.
+    s.play.clock.min = 1018.0;
+    s.frames(60 * 2);
+    s.frames(90);
+    assert_eq!(s.play.area, Area::Town, "shown out at closing time");
+    // Burrowby's stall on the farm keeps the same hours.
+    s.play.area = Area::Farm;
+    s.play.room = None;
+    let (sx, sz) = super::farm::MARKS.stall;
+    for (min, open) in [(1080.0, false), (600.0, true)] {
+        s.play.menu = Menu::None;
+        s.play.clock.min = min;
+        s.stand(sx, sz + 1, Vec2::new(0.0, -1.0));
+        s.tap(KeyCode::KeyE, 2);
+        assert_eq!(
+            matches!(s.play.menu, Menu::Shop { at: None, .. }),
+            open,
+            "the stall at {min}"
+        );
+    }
+}
+
+#[test]
+fn a_bomb_opens_a_secret_room_and_the_rope_leads_back() {
+    use super::dungeon::generate;
+    let mut s = Sim::new();
+    s.play.menu = Menu::None;
+    // Find a floor with a crack in it.
+    let depth = (2..40)
+        .find(|&d| generate(s.play.seed, d, false).crack.is_some())
+        .expect("some floor hides a secret room");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    s.frames(60);
+    s.play.menu = Menu::None;
+    s.play.discoveries.clear();
+    s.play.foes.clear();
+    let (cx, cz) = s.play.level.as_ref().unwrap().crack.unwrap();
+    assert!(matches!(s.play.world().obj(cx, cz), Some(Obj::Crack)));
+    // Throw a bomb at it from two steps south.
+    s.play.player.inv.slots[0] = Some(Stack::new(Item::Bomb, 3));
+    s.select(0);
+    s.stand(cx, cz + 2, Vec2::new(0.0, -1.0));
+    let hp = s.play.player.hp;
+    s.tap(KeyCode::KeyJ, 1);
+    assert_eq!(s.play.bombs.len(), 1, "lit and thrown");
+    assert_eq!(s.play.player.inv.count(Item::Bomb), 2);
+    s.frames(150);
+    assert!(s.play.bombs.is_empty(), "gone off");
+    assert!(
+        matches!(s.play.world().obj(cx, cz), Some(Obj::Hole)),
+        "the floor gave way"
+    );
+    assert_eq!(s.play.player.hp, hp, "far enough away");
+    // Down the hole.
+    s.stand(cx, cz + 1, Vec2::new(0.0, -1.0));
+    s.tap(KeyCode::KeyE, 60);
+    assert!(s.play.in_vault(), "in the secret room");
+    let (w, keepers) = {
+        let lv = s.play.level.as_ref().unwrap();
+        (lv.world.w, s.play.foes.len())
+    };
+    assert!(w < 30 && keepers >= 3, "one small room, {keepers} keepers");
+    let chests = |p: &Play| {
+        let w = &p.level.as_ref().unwrap().world;
+        (0..w.h)
+            .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+            .filter(|&(x, z)| matches!(w.obj(x, z), Some(Obj::LootChest { opened: false, .. })))
+            .count()
+    };
+    assert!(chests(&s.play) >= 2);
+    // Clear it out and help yourself.
+    for f in s.play.foes.iter_mut() {
+        f.hp = 0;
+    }
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.reap(&mut io);
+    assert!(s.play.foes.is_empty());
+    // Back up the rope to where you came down.
+    // (You land beside the rope: it hangs just to your left.)
+    let start = s.play.level.as_ref().unwrap().start;
+    assert!(matches!(
+        s.play.world().obj(start.0 - 1, start.1),
+        Some(Obj::Rope)
+    ));
+    s.stand(start.0, start.1, Vec2::new(-1.0, 0.0));
+    s.tap(KeyCode::KeyE, 60);
+    assert!(!s.play.in_vault());
+    let back = s.play.player.tile();
+    assert!(
+        (back.0 - cx).abs() <= 1 && (back.1 - cz).abs() <= 1,
+        "by the hole"
+    );
+    assert!(matches!(s.play.world().obj(cx, cz), Some(Obj::Hole)));
+    // Going back down finds it as you left it.
+    s.stand(cx, cz + 1, Vec2::new(0.0, -1.0));
+    s.tap(KeyCode::KeyE, 60);
+    assert!(s.play.in_vault() && s.play.foes.is_empty());
+}
+
+#[test]
+fn the_smith_sells_five_bombs_a_day() {
+    let mut s = Sim::new();
+    s.play.menu = Menu::None;
+    s.play.money = 100_000;
+    s.play.clock.min = 600.0;
+    s.play.area = Area::Town;
+    s.play.enter_place(Place::Smithy);
+    s.play.menu = Menu::shop_at(Place::Smithy);
+    let rows = super::shops::rows(&s.play, Some(Place::Smithy), super::menus::ShopTab::Goods);
+    let i = rows
+        .iter()
+        .position(|r| r.0.item == Item::Bomb)
+        .expect("bombs on the shelf");
+    for _ in 0..7 {
+        s.play.menu = Menu::Shop {
+            at: Some(Place::Smithy),
+            tab: super::menus::ShopTab::Goods,
+            cursor: i,
+            scroll: i.saturating_sub(3),
+        };
+        s.tap(KeyCode::Enter, 1);
+    }
+    assert_eq!(s.play.player.inv.count(Item::Bomb), 5, "five and no more");
+    assert_eq!(s.play.bomb_stock, 0);
+    // Fresh stock in the morning.
+    s.play.menu = Menu::None;
+    s.play.start_fade(Trans::Sleep { passed_out: false });
+    s.frames(90);
+    assert_eq!(s.play.bomb_stock, super::bombs::BOMBS_PER_DAY);
 }

@@ -12,6 +12,11 @@ hundred things they would love a hand with. Learn **spells** from the town's spe
 **brew potions** in three sizes, and watch the grass ripple in the breeze. Cast a line for
 **41 kinds of fish**, cook them on the stove in your **farmhouse**, and fill it with furniture:
 a charming home gets you better prices, warmer friends and some very special quests.
+The **sun** throws real shadows that swing round through the day, the **moon** waxes and
+wanes (and a full moon drives the Hollow wild), every biome has its own **zombies, goblins,
+bugs, skeletons and ghosts**, and every tenth floor ends with a **giant** and a hoard of
+treasure chests. Recipes are **learned by finding their ingredients**, bombs open **secret
+rooms**, and it all plays on a **Steam Deck**.
 
 Everything you see is low-poly 3D with pixel-art textures, drawn by a small software renderer
 that **can only ever produce the 32 colours of the
@@ -71,6 +76,33 @@ the slimes, the soap-bubble of a Ward spell and the glow of a spark are palette 
 | ![The Sleepy Snail at night](docs/tavern.png) | ![Moonquill Scriptorium](docs/scriptorium.png) |
 | ![The Wishing Tree in bloom](docs/wishing-tree.png) | |
 
+**Light and shadow**
+
+| | |
+| --- | --- |
+| ![Morning: long shadows to the west](docs/sun-morning.png) | ![Evening: shadows swing east](docs/sun-evening.png) |
+| ![A full moon casts shadows too](docs/full-moon-night.png) | ![Bramblewick's buildings shading the plaza](docs/town-shadows.png) |
+| ![Ambient occlusion in the Hollow: every crease and corner](docs/ambient-occlusion.png) | ![Under a full moon the Hollow glows red](docs/moonlit-monsters.png) |
+
+**The creatures of the Hollow: a look for every biome**
+
+| | |
+| --- | --- |
+| ![Mossy Burrows](docs/monsters-mossy.png) | ![Crystal Grotto](docs/monsters-crystal.png) |
+| ![Fungal Hollow](docs/monsters-fungal.png) | ![Ember Depths](docs/monsters-ember.png) |
+| ![Frost Caverns](docs/monsters-frost.png) | ![Sunken Ruins](docs/monsters-ruins.png) |
+| ![King Slime, nearly three times life size](docs/guardian-giant.png) | ![Grub the Goblin King](docs/goblin-king.png) |
+| ![A guardian's hoard: chests and loot](docs/guardian-hoard.png) | ![A gleaming chest](docs/gleaming-chest.png) |
+
+**Recipes, bombs, secret rooms and the Steam Deck**
+
+| | |
+| --- | --- |
+| ![A new recipe](docs/new-recipe.png) | ![The crafting book, with recipes still to find](docs/recipe-book.png) |
+| ![Garrick's bombs, five a day](docs/bombs.png) | ![Boom](docs/bomb-blast.png) |
+| ![The cracked floor gave way](docs/secret-hole.png) | ![A secret room](docs/secret-room.png) |
+| ![The Steam Deck controls](docs/steam-deck-controls.png) | |
+
 ![A dozen outfits from the Hollow's wardrobe](docs/wardrobe.png)
 
 ## Playing
@@ -95,6 +127,28 @@ install: it is a single executable.
 | Pause, settings, save & quit | Esc | |
 | Fullscreen / screenshot | F11 or Alt+Enter / F12 | |
 
+### Steam Deck (and controllers)
+
+Hollowbloom reads the Steam Deck's controls itself, and any Xbox-style controller too, with
+nothing extra to install. On the Deck, add the Linux build (or the Windows `.exe`, run with
+Proton) to Steam as a **non-Steam game** and play it from **Game Mode**: Steam Input hands its
+controls to the game. The screen's 1280x800 is filled edge to edge. As soon as you touch the
+controller every on-screen hint switches to its buttons (**A**, **X**, **L2**...), and the
+pause menu's **Controls** page shows the whole layout on a drawing of the Deck.
+
+| | Steam Deck |
+| --- | --- |
+| Walk (gently for a stroll) / aim without walking | left stick, D-pad / right stick |
+| Talk, open, harvest, place, eat; OK in menus | A |
+| Use tool or weapon (hold to keep going; fishing too) | X |
+| Dodge roll; back in menus; turn furniture at home | B |
+| Bag / crafting book | Y / View |
+| Hotbar left / right; flip tabs in menus | L1 / R1 |
+| Cast your two spells | L2 / R2 |
+| Map / quest journal | click the left stick (L3) / right stick (R3) |
+| Pause (and the Controls page) | Menu |
+| In the bag and shops: split a stack, wear, sell just one | X |
+
 ### The farm (Stardew-style)
 
 * **Till** any open ground on your property with the hoe (lawn, bare soil, the paths, the
@@ -111,6 +165,16 @@ install: it is a single executable.
   waystone). The good ones give a **buff** for a few minutes: Garlic Bread for damage,
   Strawberry Shortcake for luck, Frost Mint Tea for mana, Lava Lemonade to set things on
   fire...
+* **Recipes are learned, not given.** You start knowing what can be made from wood, stone
+  and fibre; everything else you **work out by carrying one of each of its ingredients**
+  (however many it really takes). The moment you do, the game stops to show you the new
+  recipe: its picture, its name, what it's good for (healing, energy, buffs, stats) and what
+  it needs. The crafting book shows the ones still to find as **???**.
+* **The sun moves.** It rises in the east, crosses the south and sets in the west, and
+  everything that stands up (you, the house, trees, crops, fences, villagers, buildings)
+  casts a **shadow** that swings round and shortens towards noon. By night the **moon** takes
+  over, as bright as its phase. Rain softens it all. (Settings can turn the sun's shadows and
+  the ambient occlusion off, for slower machines.)
 * **Ship** anything in the bin by the house and the money arrives overnight, or trade with
   Burrowby the mole at his stall. His stock grows the deeper you have been.
 * Tools cost **energy**; food restores health and energy. Stay up past 2am and you will
@@ -125,6 +189,10 @@ install: it is a single executable.
   it blows harder in the rain, and the grass parts round your feet as you walk through it.
 * Glowcaps and Moonblooms glow at night; lamps, lit windows and fireflies keep the evenings
   cozy. There is a cat. You can pet the cat.
+* The **moon** goes round its eight phases every eight days (the clock shows tonight's, and
+  the morning summary says what it means below). A new moon lulls the Hollow's creatures; a
+  **full moon** riles them up: they **glow red**, notice you from further off, move and strike
+  faster, **take more beating and hit harder**, and **drop more and better loot**.
 
 ### Bramblewick (the town down the road)
 
@@ -134,9 +202,12 @@ install: it is a single executable.
   rounded, on the farm and in town.
 * **Twelve buildings you can walk into**, each a little diorama: the Town Hall, the Lantern
   Guild, and **ten specialist shops**, each with its own shelves, **specials rolled fresh
-  every morning**, and better prices for the things it deals in:
+  every morning**, and better prices for the things it deals in. **Shops keep shop hours:
+  9am to 5pm**, Burrowby's stall included (the guild and the tavern stay open later, but
+  their counters trade nine to five too), and at five the shopkeepers see you out:
   * **Petalplate Armory** (Hilde): helmets, chest armour, leg armour, boots and shields.
-  * **Sprig & Steel** (Garrick): swords, wands, staffs, and plain fishing rods and bait.
+  * **Sprig & Steel** (Garrick): swords, wands, staffs, plain fishing rods and bait, and
+    **bombs** (only five a day; he restocks every morning).
   * **Tinkerbolt Tools** (Nix): hoes, cans, sickles, axes, pickaxes and sprinklers.
   * **Moonquill Scriptorium** (Elder Quill): weapon, armour and tool scrolls, tonics, wish
     stars, and an enchanting table.
@@ -231,17 +302,42 @@ install: it is a single executable.
   where you land as the floor allows.
 * The biome changes every ten floors (Mossy Burrows, Crystal Grotto, Fungal Hollow, Ember
   Depths, Frost Caverns, Sunken Ruins) and then cycles, tougher each time. Each biome has its
-  own creatures (slimes, bats, shroomlings, crystal crabs, wisps, beetles, imps, skeletons,
-  golems, ghosts, and bog frogs, drift jellies and puffers round the ponds), its own ores and
-  its own **seeds**. Slimes are wobbly **see-through jelly**
-  with a nucleus and bubbles floating inside; ghosts are translucent too.
+  own creatures (slimes, bats, shroomlings, crystal crabs, wisps, beetles, imps, golems, and
+  bog frogs, drift jellies and puffers round the ponds), its own ores and its own **seeds**.
+  Slimes are wobbly **see-through jelly** with a nucleus and bubbles floating inside; ghosts
+  are translucent too.
+* Five families turn up everywhere, **dressed for each biome**: **zombies** (mossy,
+  crystal-studded, sprouting mushrooms, charred, frozen, and **mummies** in the ruins) that
+  shamble with their arms out and lunge; **fat goblin brutes** with clubs that slam the ground
+  and send out a shockwave; **skinny goblin sneaks** that circle, dart in to stab and throw
+  daggers; **bugs** (moss mites, glass mantises, flying spore moths, glowing fire ants, frost
+  ticks and scarabs) that skitter and pounce; and **skeletons** and **ghosts** with a look for
+  every biome, from mossy bones to a pharaoh's guard. They drop grave dust, goblin teeth
+  (goblins carry extra coin) and bug chitin, and townsfolk have quests for all of them.
+* **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
+  goes off, hurting everything close (you too, if you stand too near), bursting pots and
+  crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
+  leads down to a **secret room**: treasure chests along the back wall, pots and crates, and a
+  handful of the biome's creatures standing guard. Climb the rope back up to the floor you
+  came from; the room stays as you left it until you leave the floor.
+* Everything is shaded with **ambient occlusion**: creases, corners, the feet of walls and
+  furniture, and whatever lies on the floor sit in a soft darkness of their own colour, so
+  things stand out from floors of the same colour.
 * Steel on stone throws **sparks** that glow and light up the cave around them: mining rock
   and ore, blades glancing off walls, hitting crabs, beetles, skeletons and golems, and
   blocking with a shield.
 * **Every tenth floor** a guardian (King Slime, Crystal Matriarch, Old Capwood, Ember Lord,
-  Frost Colossus, the Bone Warden) blocks the stairs and a **waystone**. Defeat it, touch the
-  waystone, and you can go home. The Hollow's entrance on your farm then lets you start from
-  any waystone you have attuned.
+  Frost Colossus, the Bone Warden) waits in an arena, blocking the stairs and a **waystone**.
+  Guardians are **giants**, nearly three times life size, and strong with it. On your next
+  trip down through the biomes the goblin king, the glass queen, the rotting gardener,
+  Ashfang the Quick, the frost wraith and the mummy king take their places, calling their
+  kind for help. A fallen guardian leaves **a heap of loot** (gear, one piece always finely
+  made, scrolls, gems, relics, potions) and **four to eight treasure chests** burst up round
+  where it fell. Touch the waystone and you can go home; the Hollow's entrance on your farm
+  then lets you start from any waystone you have attuned.
+* **Chests twinkle**, and now and then one **gleams gold** (more often under a full moon, and
+  among a guardian's hoard): inside is gear rolled about as well as it can be, a lucky scroll,
+  gems, a relic and a pile of coin.
 * Fainting in the Hollow sends you home: you wake in your own bed the next morning, a tenth
   of your money lighter. A
   Homeward Feather gets you out early.
@@ -366,8 +462,12 @@ hollowbloom --shots DIR           # render a tour of the game to PNGs, no displa
 hollowbloom --town-shots DIR      # just the road to town, Bramblewick and every room
 hollowbloom --folk-shots DIR      # just villagers, talking, quests, boards and shops
 hollowbloom --magic-shots DIR     # jelly slimes, sparks, the breeze, potions, spells
+hollowbloom --home-shots DIR      # fishing, the farmhouse, cooking and the furniture shop
+hollowbloom --light-shots DIR     # the sun's shadows through the day, the moon, ambient occlusion
+hollowbloom --monster-shots DIR   # every monster family in every biome, the moon, the giants
+hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs and secret rooms
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
-hollowbloom --bench               # rendering speed (about 4 ms per frame at 480x270)
+hollowbloom --bench               # rendering speed (about 5 ms per frame at 480x270)
 hollowbloom --palette-chart FILE  # the light maps: every colour at every light level
 hollowbloom --mute                # no sound
 ```
@@ -393,6 +493,17 @@ hollowbloom --mute                # no sound
   catching a specular glint, so slimes look like gelatine and a Ward like a soap bubble.
   Translucent things are drawn last, far to near. Soft glows round sparks and bolts are
   dithered discs through the glow table.
+* **Sun and moon shadows**: everything that casts is drawn a second time, from the light's
+  side, into an orthographic depth map (solid shapes put their far side in it, so their lit
+  faces never shadow themselves; cut-out sprites cast their shape). Every pixel on screen is
+  then turned back into a world position from the depth buffer and checked against the map;
+  shadowed pixels step down their colour's own ramp, dithered by how strong the light is.
+* **Ambient occlusion**: a screen-space pass compares each pixel's depth with its neighbours'
+  at a few radii in four directions; creases and corners step down the ramp. Both passes run
+  across all CPU cores.
+* **Controllers** are read straight from the system: the kernel's event devices on Linux
+  (Steam Input's virtual pad on the Deck) and XInput on Windows, mapped onto the same actions
+  as the keyboard.
 * **Wind**: grass is meshed per 8x8-tile block and bent per vertex by a wind field (a steady
   breeze, gust fronts rolling downwind and a flutter), which also leans every plant and tree
   and pushes grass aside round the hero's feet.

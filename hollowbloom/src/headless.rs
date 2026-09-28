@@ -2646,3 +2646,201 @@ pub fn monster_shots(dir: &str) {
         }
     }
 }
+
+/// `--feature-shots DIR`: learning a recipe, and the crafting book with the ones still to
+/// find.
+pub fn feature_shots(dir: &str) {
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261007);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.min = 600.0;
+    }
+    tick(&mut game, &input, &audio, 2);
+    // Pick up a truffle with some grain and garlic about: a risotto!
+    {
+        let p = play(&mut game);
+        p.player.inv.add(Item::AncientGrain, 1);
+        p.player.inv.add(Item::Garlic, 1);
+        p.player.inv.add(Item::Truffle, 1);
+    }
+    tick(&mut game, &input, &audio, 24);
+    snap(&mut game, &mut r, &input, dir, "r01_new_recipe");
+    // And a piece of gear.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.discoveries.clear();
+        p.player.inv.add(Item::CopperOre, 3);
+        p.player.inv.add(Item::Wood, 3);
+    }
+    tick(&mut game, &input, &audio, 24);
+    snap(&mut game, &mut r, &input, dir, "r02_new_recipe_gear");
+    // The crafting book: what's known, and what's still to find.
+    {
+        let p = play(&mut game);
+        p.discoveries.clear();
+        let kitchen = 1 + crate::game::items::CATS
+            .iter()
+            .position(|c| *c == crate::game::items::Cat::Kitchen)
+            .unwrap();
+        p.menu = Menu::Inventory {
+            tab: Tab::Craft,
+            cursor: 0,
+            recipe: 3,
+            scroll: 0,
+            cat: kitchen,
+        };
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "r03_crafting_book");
+
+    // On a Steam Deck: the hints speak its language, and the pause menu shows its layout.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.spells.learn(Spell::Firebolt);
+        p.spells.learn(Spell::FrostNova);
+        let (bx, bz) = crate::game::farm::MARKS.bin;
+        p.player.pos = Vec2::new(bx as f32 + 0.5, bz as f32 + 1.6);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    }
+    tick(&mut game, &input, &audio, 3);
+    play(&mut game).pad = true;
+    snap(&mut game, &mut r, &input, dir, "d01_deck_hints");
+    for (deck, name) in [
+        (true, "d02_controls_deck"),
+        (false, "d03_controls_keyboard"),
+    ] {
+        let p = play(&mut game);
+        p.menu = Menu::Controls { deck };
+        p.pad = deck;
+        snap(&mut game, &mut r, &input, dir, name);
+    }
+    bomb_shots(&mut game, &mut r, &input, &audio, dir);
+}
+
+/// Garrick's bombs, a cracked floor, a bomb fizzing, the blast, the hole it leaves and the
+/// secret room below.
+fn bomb_shots(game: &mut Game, r: &mut Renderer, input: &Input, audio: &Audio, dir: &Path) {
+    use crate::game::menus::ShopTab;
+    use crate::game::town::Place;
+    {
+        let p = play(game);
+        p.menu = Menu::None;
+        p.pad = false;
+        p.clock.min = 620.0;
+        p.money = 5000;
+        p.area = crate::game::world::Area::Town;
+        p.enter_place(Place::Smithy);
+        p.banner = None;
+        p.bomb_stock = 3;
+        let rows = crate::game::shops::rows(p, Some(Place::Smithy), ShopTab::Goods);
+        let i = rows
+            .iter()
+            .position(|r| r.0.item == Item::Bomb)
+            .unwrap_or(0);
+        p.menu = Menu::Shop {
+            at: Some(Place::Smithy),
+            tab: ShopTab::Goods,
+            cursor: i,
+            scroll: i.saturating_sub(3),
+        };
+    }
+    tick(game, input, audio, 2);
+    snap(game, r, input, dir, "b01_bombs_for_sale");
+
+    let seed = play(game).seed;
+    let depth = (2..40)
+        .find(|&d| {
+            crate::game::dungeon::generate(seed, d, false)
+                .crack
+                .is_some()
+        })
+        .unwrap_or(3);
+    {
+        let p = play(game);
+        p.menu = Menu::None;
+        p.room = None;
+        p.area = crate::game::world::Area::Farm;
+    }
+    descend(game, input, audio, depth, false);
+    let (cx, cz) = {
+        let p = play(game);
+        p.menu = Menu::None;
+        p.discoveries.clear();
+        p.foes.clear();
+        let c = p.level.as_ref().unwrap().crack.unwrap();
+        p.player.pos = Vec2::new(c.0 as f32 + 0.5, c.1 as f32 + 2.4);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        c
+    };
+    tick(game, input, audio, 2);
+    play(game).cam.dist = 9.0;
+    snap(game, r, input, dir, "b02_cracked_floor");
+    {
+        let p = play(game);
+        p.bombs.push(crate::game::bombs::Bomb {
+            pos: glam::Vec3::new(cx as f32 + 1.3, 0.0, cz as f32 + 0.7),
+            vel: glam::Vec3::ZERO,
+            fuse: 1.1,
+            spin: 0.4,
+        });
+    }
+    snap(game, r, input, dir, "b03_bomb_fizzing");
+    {
+        let p = play(game);
+        p.bombs.clear();
+        let io_input = Input::default();
+        let mut io = mk_io(&io_input, audio);
+        p.explode(
+            glam::Vec3::new(cx as f32 + 1.0, 0.0, cz as f32 + 0.6),
+            &mut io,
+        );
+    }
+    tick(game, input, audio, 4);
+    {
+        let p = play(game);
+        p.toasts.clear();
+        p.cam.dist = 9.0;
+    }
+    snap(game, r, input, dir, "b04_blast");
+    tick(game, input, audio, 90);
+    {
+        let p = play(game);
+        p.toasts.clear();
+        p.player.hp = p.player.max_hp();
+        p.player.pos = Vec2::new(cx as f32 + 1.9, cz as f32 + 1.2);
+        p.player.facing = Vec2::new(-1.0, -0.5).normalize();
+        p.cam.dist = 9.0;
+    }
+    snap(game, r, input, dir, "b05_hole");
+    {
+        let p = play(game);
+        p.enter_vault();
+        p.banner = None;
+    }
+    tick(game, input, audio, 2);
+    {
+        let p = play(game);
+        hold_still(p);
+        let start = p.level.as_ref().unwrap().start;
+        p.player.pos = Vec2::new(start.0 as f32 + 0.5, start.1 as f32 + 0.5);
+    }
+    snap(game, r, input, dir, "b06_secret_room");
+}

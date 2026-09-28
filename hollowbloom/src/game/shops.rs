@@ -53,7 +53,7 @@ pub fn patter(at: Option<Place>, t: ShopTab) -> &'static str {
         (Some(Place::Armory), ShopTab::Specials) => "Hilde: \"Freshly hammered this morning!\"",
         (Some(Place::Armory), _) => "Hilde: \"Protection with personality!\"",
         (Some(Place::Smithy), ShopTab::Specials) => "Garrick: \"...Today's work. Good steel.\"",
-        (Some(Place::Smithy), _) => "Garrick: \"...Sharp. Fair. Rods too.\"",
+        (Some(Place::Smithy), _) => "Garrick: \"...Steel. Rods. Bombs.\"",
         (Some(Place::Tools), ShopTab::Specials) => "Nix: \"Prototypes! Barely exploded!\"",
         (Some(Place::Tools), _) => "Nix: \"Tools for every job and some for none!\"",
         (Some(Place::Scrolls), ShopTab::Specials) => "Quill: \"Freshly inked, still drying.\"",
@@ -161,6 +161,8 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
                 add(need, item, item.def().price * 3 + 20);
             }
             add(0, Item::Bait, 12);
+            // Bombs: only so many a day.
+            add(0, Item::Bomb, 60);
         }
         Place::Tools => {
             for (need, item) in [
@@ -481,7 +483,15 @@ pub fn rows(p: &Play, at: Option<Place>, tab: ShopTab) -> Vec<(Stack, u64, bool)
             .map(|(k, (s, price))| (s, p.buy_price(price), p.bought.contains(&k)))
             .collect(),
         (Some(_), ShopTab::Seeds) => plain(seeds(p)),
-        (Some(place), ShopTab::Goods) => plain(goods(p, place)),
+        (Some(place), ShopTab::Goods) => {
+            let mut rows = plain(goods(p, place));
+            for row in rows.iter_mut() {
+                if row.0.item == Item::Bomb {
+                    row.2 = p.bomb_stock == 0;
+                }
+            }
+            rows
+        }
         (Some(place), ShopTab::Specials) => specials(p, place)
             .into_iter()
             .enumerate()

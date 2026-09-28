@@ -23,4 +23,4 @@ png = "0.18"
 libloading = "0.8"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Media", "Win32_Media_Audio"] }
+windows-sys = { version = "0.61", features = ["Win32_Media", "Win32_Media_Audio", "Win32_UI_Input_XboxController"] }

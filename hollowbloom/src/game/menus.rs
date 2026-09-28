@@ -116,6 +116,15 @@ pub enum Menu {
     },
     /// Quest complete!
     Cheer,
+    /// Every control, on the Steam Deck (`deck`) or the keyboard.
+    Controls {
+        deck: bool,
+    },
+    /// A recipe just worked out: its picture, name and what it's good for, until OK.
+    Recipe {
+        recipe: usize,
+        t: f32,
+    },
     /// A fish tank in the house: the fish in it and your bag.
     Tank {
         x: i32,
@@ -444,7 +453,7 @@ pub fn can_sell(s: &Stack) -> bool {
 }
 
 /// The level a crafted piece of gear comes out at.
-fn crafted_level(p: &Play, item: Item) -> u16 {
+pub(super) fn crafted_level(p: &Play, item: Item) -> u16 {
     let b = item.base().map_or(1, |b| b.lvl);
     b.max((p.deepest as u16).min(b + 8))
 }
@@ -561,7 +570,7 @@ impl Play {
     /// Crafts a recipe: gear and scrolls come out freshly rolled. Dishes go on the stove
     /// instead (see `home::Cooking`).
     fn craft(&mut self, r: &Recipe, book: (usize, usize, usize), io: &mut Io) -> bool {
-        if !r.can_craft(&self.player.inv) {
+        if !self.known.contains(&r.out) || !r.can_craft(&self.player.inv) {
             io.audio.play(Sfx::Denied);
             return false;
         }
@@ -766,7 +775,7 @@ impl Play {
                 mut sel,
                 settings: in_settings,
             } => {
-                let items = if in_settings { 7 } else { 4 };
+                let items = if in_settings { 7 } else { 5 };
                 if input.pressed_repeat(Action::Down) {
                     sel = (sel + 1) % items;
                     io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
@@ -857,10 +866,14 @@ impl Play {
                             }
                         }
                         Some(2) => {
+                            io.audio.play(Sfx::UiSelect);
+                            Menu::Controls { deck: self.pad }
+                        }
+                        Some(3) => {
                             self.quit_to_title = true;
                             Menu::None
                         }
-                        Some(3) => {
+                        Some(4) => {
                             io.quit = true;
                             Menu::None
                         }
@@ -899,6 +912,19 @@ impl Play {
                     self.close_menu(io);
                     return;
                 }
+                // L1/R1 (or [ and ]) flip between the bag and your stats; the crafting book
+                // keeps them for its categories.
+                if tab != Tab::Craft {
+                    let flip = input.pressed(Action::NextSlot) || input.pressed(Action::PrevSlot);
+                    if flip {
+                        tab = if tab == Tab::Bag {
+                            Tab::Stats
+                        } else {
+                            Tab::Bag
+                        };
+                        io.audio.play(Sfx::UiMove);
+                    }
+                }
                 match tab {
                     Tab::Bag => {
                         let g = bag_grid(&l, 22);
@@ -927,6 +953,26 @@ impl Play {
                             }
                         } else if let Some(i) = worn.filter(|_| lclick || rclick) {
                             self.worn_click(i, rclick || shift, io);
+                        } else if input.pressed(Action::Alt) {
+                            // A controller's right click: take off, wear, or split a stack.
+                            if cursor >= 40 {
+                                self.worn_click(cursor - 40, true, io);
+                            } else {
+                                let armor = self.player.inv.slots[cursor]
+                                    .is_some_and(|s| s.item.class().is_some_and(|c| c.is_armor()));
+                                if armor && self.held.is_none() {
+                                    self.player.equip_from(cursor);
+                                    io.audio.play(Sfx::Equip);
+                                } else {
+                                    Self::grid_click(
+                                        &mut self.held,
+                                        &mut self.player.inv,
+                                        cursor,
+                                        true,
+                                    );
+                                    io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
+                                }
+                            }
                         } else if input.pressed(Action::Confirm) {
                             if cursor >= 40 {
                                 self.worn_click(cursor - 40, self.held.is_none(), io);
@@ -1094,6 +1140,8 @@ impl Play {
             Menu::Journal { tab, sel } => self.update_journal(io, tab, sel),
             Menu::Spells { tab, sel } => self.update_spellery(io, tab, sel),
             Menu::Cheer => self.update_cheer(io),
+            Menu::Recipe { recipe, t } => self.update_recipe_card(io, recipe, t),
+            Menu::Controls { deck } => self.update_controls(io, deck),
             Menu::Tank { x, z, cursor } => self.update_tank(io, x, z, cursor),
             Menu::Shop {
                 at,
@@ -1183,6 +1231,9 @@ impl Play {
                                 };
                                 self.player.inv.add_stack(stack);
                                 self.on_pickup(stack.item);
+                                if stack.item == Item::Bomb {
+                                    self.bomb_stock = self.bomb_stock.saturating_sub(1);
+                                }
                                 if tab == ShopTab::Specials {
                                     self.bought.push(shops::special_id(at, cursor));
                                     if stack.rarity() >= Some(Rarity::Rare) {
@@ -1210,6 +1261,9 @@ impl Play {
                     }
                     if input.pressed(Action::Confirm) {
                         target = Some((cursor, false));
+                    }
+                    if input.pressed(Action::Alt) {
+                        target = Some((cursor, true));
                     }
                     if let Some((i, one)) = target {
                         if let Some(s) = self.player.inv.slots[i] {
@@ -1447,7 +1501,7 @@ impl Play {
                 c.text_center(
                     l.px + l.pw / 2,
                     l.py + l.ph - 14,
-                    "Press E to begin the day",
+                    &format!("Press {} to begin the day", self.key(Action::Confirm)),
                     SHADOW,
                 );
             }
@@ -1535,6 +1589,7 @@ impl Play {
                     vec![
                         "Resume".into(),
                         "Settings".into(),
+                        "Controls".into(),
                         "Save & quit to title".into(),
                         "Quit game".into(),
                     ]
@@ -1588,7 +1643,12 @@ impl Play {
                 let l = panel_layout(w, h);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 c.text(l.px + 10, l.py + 7, "Chest", RUST);
-                c.text(l.px + 80, l.py + 7, "Shift-click moves a stack", KHAKI);
+                let tip = if self.pad {
+                    "A moves a stack"
+                } else {
+                    "Shift-click moves a stack"
+                };
+                c.text(l.px + 80, l.py + 7, tip, KHAKI);
                 let cg = chest_grid(&l);
                 if let Some(super::world::Obj::Chest { items }) = self.world().obj(*x, *z) {
                     let inv = Inventory {
@@ -1646,6 +1706,8 @@ impl Play {
             Menu::Journal { tab, sel } => self.draw_journal(c, a, *tab, *sel),
             Menu::Spells { tab, sel } => self.draw_spellery(c, a, *tab, *sel, mouse),
             Menu::Cheer => self.draw_cheer(c, a),
+            Menu::Recipe { recipe, t } => self.draw_recipe_card(c, a, *recipe, *t, mouse),
+            Menu::Controls { deck } => self.draw_controls(c, *deck),
             Menu::Tank { x, z, cursor } => self.draw_tank(c, a, *x, *z, *cursor, mouse),
             Menu::Ship { cursor } => {
                 let l = panel_layout(w, h);
@@ -1759,7 +1821,11 @@ impl Play {
         c.text(
             x,
             y,
-            "Right click: wear or split. Shift: quick wear.",
+            if self.pad {
+                "A: pick up or wear.  X: split or wear.  L1/R1: stats."
+            } else {
+                "Right click: wear or split. Shift: quick wear."
+            },
             KHAKI,
         );
         let hover_bag = g
@@ -1909,11 +1975,17 @@ impl Play {
             let i = scroll + row;
             let Some(r) = list.get(i) else { break };
             let y = l.py + 36 + row as i32 * 18;
-            let ok = r.can_craft(&self.player.inv);
+            let known = self.known.contains(&r.out);
+            let ok = known && r.can_craft(&self.player.inv);
             if i == recipe {
                 c.rect(l.px + 6, y, 120, 17, GOLD);
             }
             let icon = a.tex(a.icon(r.out.def().icon));
+            if !known {
+                c.sprite_map(icon, l.px + 8, y + 1, |_| SHADOW);
+                c.text(l.px + 27, y + 5, "???", SHADOW);
+                continue;
+            }
             if ok {
                 c.sprite(icon, l.px + 8, y + 1);
             } else {
@@ -1932,10 +2004,41 @@ impl Play {
             let ty = l.py + 36 + (track - th) * scroll as i32 / (n - rows as i32).max(1);
             c.rect(l.px + 127, ty, 2, th, RUST);
         }
+        // How many are known.
+        let known = RECIPES
+            .iter()
+            .filter(|r| self.known.contains(&r.out))
+            .count();
+        let count = format!("{known}/{} recipes known", RECIPES.len());
+        c.text(l.px + 6, l.py + 36 + rows as i32 * 18 + 3, &count, SHADOW);
         // Details.
         let Some(r) = list.get(recipe) else { return };
         let dx = l.px + 133;
         let dw = l.pw - 139;
+        if !self.known.contains(&r.out) {
+            c.panel(dx, l.py + 36, dw, 20, Style::Inset);
+            c.sprite_map(a.tex(a.icon(r.out.def().icon)), dx + 2, l.py + 38, |_| {
+                SHADOW
+            });
+            c.text(dx + 20, l.py + 42, "Undiscovered", SHADOW);
+            let mut y = l.py + 60;
+            c.text(dx, y, "Needs:", SHADOW);
+            y += 10;
+            for _ in r.needs {
+                c.panel(dx, y - 3, 16, 16, Style::Inset);
+                c.text(dx + 5, y + 1, "?", SHADOW);
+                y += 16;
+            }
+            let hint = "Carry one of each thing it needs and you'll work it out.";
+            for (k, t) in c.font.wrap(hint, dw).iter().take(3).enumerate() {
+                c.text(dx, y + k as i32 * 9, t, SHADOW);
+            }
+            let (bx, by, bw, bh) = craft_button(l);
+            c.rect(bx, by, bw, bh, KHAKI);
+            c.frame(bx, by, bw, bh, INK);
+            c.text_center(bx + bw / 2, by + 3, "Undiscovered", ROSEWOOD);
+            return;
+        }
         c.panel(dx, l.py + 36, dw, 20, Style::Inset);
         c.sprite(a.tex(a.icon(r.out.def().icon)), dx + 2, l.py + 38);
         let title = if r.n > 1 {
@@ -1982,14 +2085,19 @@ impl Play {
         c.frame(bx, by, bw, bh, INK);
         let label = match (kitchen, stove, has) {
             (true, false, _) => "Needs a stove",
-            (true, true, true) => "Cook (E)",
-            (_, _, true) => "Craft (E)",
+            (true, true, true) => "Cook",
+            (_, _, true) => "Craft",
             _ => "Missing items",
+        };
+        let label = if has && (!kitchen || stove) {
+            format!("{label} {}", self.prompt(Action::Confirm))
+        } else {
+            label.to_string()
         };
         c.text_center(
             bx + bw / 2,
             by + 3,
-            label,
+            &label,
             if ok { WHITE } else { ROSEWOOD },
         );
         // Hovering a gear recipe shows what the base item is like.
@@ -1997,7 +2105,7 @@ impl Play {
             let y = l.py + 36 + row as i32 * 18;
             if inside(mouse, l.px + 6, y, 120, 17) {
                 if let Some(r) = list.get(scroll + row) {
-                    if r.out.base().is_some() {
+                    if r.out.base().is_some() && self.known.contains(&r.out) {
                         let s = Stack::new(r.out, 1);
                         self.stack_tooltip(c, a, l.px + l.pw + 4, y, &s);
                     }
@@ -2062,10 +2170,11 @@ impl Play {
                     Some(r) if r > Rarity::Common => r.ink(),
                     _ => INK,
                 };
-                let name = if sold {
-                    format!("{} (sold)", s.name())
-                } else {
-                    s.name()
+                let name = match (sold, s.item) {
+                    (true, Item::Bomb) => format!("{} (sold out - more tomorrow)", s.name()),
+                    (true, _) => format!("{} (sold)", s.name()),
+                    (false, Item::Bomb) => format!("{} ({} left today)", s.name(), self.bomb_stock),
+                    _ => s.name(),
                 };
                 c.text(l.px + 28, y + 5, &name, if sold { KHAKI } else { name_col });
                 if let Some(g) = s.gear.filter(|_| tab == ShopTab::Specials) {
@@ -2104,7 +2213,11 @@ impl Play {
             c.text(
                 l.px + 10,
                 l.py + 24,
-                "Click to sell a stack, right click sells one.",
+                if self.pad {
+                    "A sells a stack, X sells just one."
+                } else {
+                    "Click to sell a stack, right click sells one."
+                },
                 SHADOW,
             );
             let g = bag_grid(&l, 40);

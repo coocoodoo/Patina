@@ -51,7 +51,7 @@ pub fn draw_money(c: &mut Canvas, a: &Assets, x: i32, y: i32, amount: u64, color
 }
 
 /// A dark tooltip box with a border in the given colour.
-fn tip_box(c: &mut Canvas, x: i32, y: i32, w: i32, h: i32, border: u8) {
+pub(super) fn tip_box(c: &mut Canvas, x: i32, y: i32, w: i32, h: i32, border: u8) {
     c.rect(x + 1, y + 1, w - 2, h - 2, INK);
     c.rect(x + 1, y, w - 2, 1, border);
     c.rect(x + 1, y + h - 1, w - 2, 1, border);
@@ -61,14 +61,14 @@ fn tip_box(c: &mut Canvas, x: i32, y: i32, w: i32, h: i32, border: u8) {
 }
 
 /// A line of tooltip text with an optional small icon in front.
-struct Line {
-    text: String,
-    color: u8,
-    icon: Option<&'static str>,
-    gap: bool,
+pub(super) struct Line {
+    pub text: String,
+    pub color: u8,
+    pub icon: Option<&'static str>,
+    pub gap: bool,
 }
 
-fn line(text: impl Into<String>, color: u8) -> Line {
+pub(super) fn line(text: impl Into<String>, color: u8) -> Line {
     Line {
         text: text.into(),
         color,
@@ -121,8 +121,16 @@ impl Play {
     /// The tooltip for a stack, placed near (x, y) and kept on screen.
     pub fn stack_tooltip(&self, c: &mut Canvas, a: &Assets, x: i32, y: i32, s: &Stack) {
         let d = s.item.def();
-        let mut lines: Vec<Line> = Vec::new();
         let title_color = s.rarity().map_or(WHITE, |r| r.color());
+        let lines = self.stack_lines(s);
+        self.tooltip_box(c, a, x, y, s, &lines, d.desc, title_color);
+    }
+
+    /// What a stack is and does, line by line: its kind, what eating or drinking it gives
+    /// (buffs and all), a piece of gear's stats, a piece of furniture's charm.
+    pub(super) fn stack_lines(&self, s: &Stack) -> Vec<Line> {
+        let d = s.item.def();
+        let mut lines: Vec<Line> = Vec::new();
         match d.kind {
             Kind::Gear(b) => {
                 let g = s.gear.unwrap_or_else(|| super::gear::Gear::plain(b.lvl));
@@ -332,10 +340,35 @@ impl Play {
             }
             Kind::Place(_) => lines.push(line("Placeable", SKY)),
             Kind::Material => lines.push(line("Material", KHAKI)),
+            Kind::Bomb => {
+                lines.push(line(
+                    format!(
+                        "Throw it ({}) - goes off in 2 seconds",
+                        self.key(crate::input::Action::Use)
+                    ),
+                    ORANGE,
+                ));
+                lines.push(line("Opens cracked floors in the Hollow", GOLD));
+            }
             _ => lines.push(line("Special", LAVENDER)),
         }
+        lines
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn tooltip_box(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        x: i32,
+        y: i32,
+        s: &Stack,
+        lines: &[Line],
+        about: &str,
+        title_color: u8,
+    ) {
         let wrap_w = 150;
-        let desc = c.font.wrap(d.desc, wrap_w);
+        let desc = c.font.wrap(about, wrap_w);
         let name = s.name();
         let price = if super::menus::can_sell(s) {
             Some(s.unit_price())
@@ -364,7 +397,7 @@ impl Play {
         tip_box(c, x, y, w, h, border);
         c.text_shadow(x + 6, y + 4, &name, title_color, SHADOW);
         let mut yy = y + 16;
-        for l in &lines {
+        for l in lines {
             if l.gap {
                 c.rect(x + 5, yy + 1, w - 10, 1, SHADOW);
                 yy += 3;

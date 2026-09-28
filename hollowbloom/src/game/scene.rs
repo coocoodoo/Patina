@@ -269,6 +269,7 @@ impl Play {
         }
         self.draw_bus(r, a, self.sky_night());
         self.draw_drops(r, a);
+        self.draw_bombs(r, a);
         for f in self.foes.iter().filter(|f| !f.translucent()) {
             f.draw(r, a);
         }

@@ -1412,7 +1412,12 @@ impl Play {
             SHADOW,
         );
         let bg = bag_grid(&l, 78);
-        c.text(bg.x, bg.y - 11, "Bag - click a fish to put it in", RUST);
+        let tip = if self.pad {
+            "Bag - A puts a fish in"
+        } else {
+            "Bag - click a fish to put it in"
+        };
+        c.text(bg.x, bg.y - 11, tip, RUST);
         self.draw_grid(
             c,
             a,

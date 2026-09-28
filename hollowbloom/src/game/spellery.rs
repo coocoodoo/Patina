@@ -221,7 +221,11 @@ impl Play {
                 l.px + 156,
                 l.py + 38,
                 l.pw - 164,
-                "Pick a spell, then press Q or R to carry it.",
+                &format!(
+                    "Pick a spell, then press {} or {} to carry it.",
+                    self.key(Action::Spell1),
+                    self.key(Action::Spell2)
+                ),
                 SHADOW,
             );
             if rows.is_empty() {
@@ -324,7 +328,7 @@ impl Play {
             } else if self.money < d.price {
                 "Save up a little more.".to_string()
             } else {
-                "Press E to learn it.".to_string()
+                format!("Press {} to learn it.", self.key(Action::Confirm))
             };
             c.text(dx, y, &hint, RUST);
         }

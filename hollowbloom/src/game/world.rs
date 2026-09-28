@@ -117,6 +117,13 @@ pub enum Obj {
     Crate {
         hp: i16,
     },
+    /// A cracked patch of floor in the Hollow: something's hollow underneath, and a bomb
+    /// will open it up.
+    Crack,
+    /// A blasted-open hole with a rope down to a secret room.
+    Hole,
+    /// The rope back up out of a secret room, in a shaft of light.
+    Rope,
     LootChest {
         opened: bool,
         /// A rare gleaming chest, sparkling gold, with well-rolled treasure inside.
@@ -239,6 +246,7 @@ impl Obj {
                 | Obj::Crop { .. }
                 | Obj::Torch
                 | Obj::StairsDown
+                | Obj::Crack
         )
     }
 
@@ -256,6 +264,8 @@ impl Obj {
             Obj::WishTree { blooming: true } => Some((1.6, 6.0, 0.7, 2.0)),
             Obj::Hearth => Some((0.5, 4.2, 0.42, 6.5)),
             Obj::Furniture { f, .. } => f.def().light,
+            // Daylight falling down the shaft from the floor above.
+            Obj::Rope => Some((2.2, 4.5, 0.75, 2.2)),
             Obj::LootChest {
                 opened: false,
                 gleam: true,

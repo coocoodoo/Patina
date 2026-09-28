@@ -1,5 +1,6 @@
 //! Every texture, sprite, font and model the game uses, generated at start-up.
 
+pub mod delve_art;
 pub mod fish_art;
 pub mod font;
 pub mod gear_art;
@@ -380,6 +381,8 @@ pub struct Assets {
     pub home: home_art::HomeArt,
     /// Zombies, goblins, skeletons, ghosts and bugs, in a look for every biome.
     pub monsters: monster_art::Monsters,
+    /// Bombs, cracked floors, blasted holes and ropes.
+    pub delve: delve_art::DelveArt,
 }
 
 impl Assets {
@@ -529,6 +532,7 @@ impl Assets {
         let town = town_art::build(&mut bank, &icons, water[0]);
         let foes = foe_skins(&mut bank, &critters);
         let monsters = monster_art::build(&mut bank);
+        let delve = delve_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -575,6 +579,7 @@ impl Assets {
             gear,
             home,
             monsters,
+            delve,
         }
     }
 
