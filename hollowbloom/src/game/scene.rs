@@ -29,6 +29,8 @@ pub struct Dressed<'a> {
     pub hood: bool,
     pub boot: Option<&'a Mesh>,
     pub shield: Option<&'a Mesh>,
+    /// A backpack on the back (only the hero's; see `dress_hero`).
+    pub pack: Option<&'a Mesh>,
     pub remap: Vec<(TexId, TexId)>,
 }
 
@@ -41,6 +43,7 @@ impl<'a> Dressed<'a> {
             sprout: None,
             boot: self.boot,
             shield: self.shield,
+            pack: self.pack,
             hood: self.hood,
             remap,
         }
@@ -53,6 +56,7 @@ impl<'a> Dressed<'a> {
             sprout,
             boot: self.boot,
             shield: self.shield,
+            pack: self.pack,
             hood: self.hood,
             remap: &self.remap,
         }
@@ -107,8 +111,16 @@ pub fn dress<'a>(a: &'a Assets, equip: &[Option<Stack>; 5], held: Option<&Stack>
         }),
         boot: icon(Slot::Feet).and_then(|i| a.boot_mesh(i)),
         shield: icon(Slot::Shield).and_then(|i| a.shield_mesh(i)),
+        pack: None,
         remap,
     }
+}
+
+/// The hero's clothes, the item in hand and the backpack on their back.
+pub fn dress_hero<'a>(a: &'a Assets, p: &super::player::Player) -> Dressed<'a> {
+    let mut d = dress(a, &p.equip, p.held_stack());
+    d.pack = p.pack.as_ref().and_then(|s| a.pack_mesh(s));
+    d
 }
 
 impl Play {
@@ -780,7 +792,7 @@ impl Play {
             let bob = (self.time * 4.0 + d.age).sin() * 0.04;
             let base = d.pos + Vec3::Y * bob;
             let ground = Vec3::new(d.pos.x, 0.0, d.pos.z);
-            let id = a.icon(d.stack.item.def().icon);
+            let id = a.stack_icon(&d.stack);
             if d.is_coin() {
                 r.shadow(a.tex(a.disk), ground, 0.1);
                 let n = (d.stack.n as usize).clamp(1, 3);
@@ -901,7 +913,7 @@ impl Play {
     fn draw_player_body(&self, r: &mut Renderer, a: &Assets) {
         let p = &self.player;
         let (pos, pose, o, blink) = self.player_look();
-        let dressed = dress(a, &p.equip, p.held_stack());
+        let dressed = dress_hero(a, p);
         let fit = dressed.outfit(Some(&a.sprout));
         r.shadow(a.tex(a.disk), p.world_pos(), 0.3);
         if !blink {
@@ -915,7 +927,7 @@ impl Play {
         let p = &self.player;
         let (pos, pose, o, blink) = self.player_look();
         if !blink {
-            let dressed = dress(a, &p.equip, p.held_stack());
+            let dressed = dress_hero(a, p);
             let fit = dressed.outfit(Some(&a.sprout));
             let ghost = DrawOpts {
                 mode: Mode::Hidden(LAVENDER),

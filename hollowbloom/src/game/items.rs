@@ -92,6 +92,42 @@ pub enum Kind {
     Bomb,
     /// Read in the Hollow: runes of glowing ink light the way to the stairs down.
     InkMap,
+    /// A backpack, worn in its own slot: its look (see `pack_art`), and the bag slots a
+    /// plain one off the shelf adds (found ones roll their own; see `Pack`).
+    Pack {
+        style: u8,
+        slots: u8,
+    },
+}
+
+/// A backpack's own roll: how many slots it adds to the bag, and its colours (see
+/// `pack_art::HUES`). Backpacks never level up: the roomier, the rarer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Pack {
+    pub slots: u8,
+    pub hue: u8,
+}
+
+/// The fewest and the most slots a backpack can add.
+pub const MIN_PACK: u8 = 4;
+pub const MAX_PACK: u8 = 20;
+
+impl Pack {
+    pub fn rarity(self) -> Rarity {
+        match self.slots {
+            0..=6 => Rarity::Common,
+            7..=9 => Rarity::Uncommon,
+            10..=13 => Rarity::Rare,
+            14..=17 => Rarity::Epic,
+            _ => Rarity::Legendary,
+        }
+    }
+
+    /// What it sells for: a good deal more for every slot.
+    pub fn price(self) -> u64 {
+        let n = self.slots as u64;
+        30 * n + 5 * n * n
+    }
 }
 
 pub struct ItemDef {
@@ -191,6 +227,37 @@ items! {
     CinderScale = "cinder_scale", "Cinder Scale", "cinder_scale", 99, 85, Material, "A cinder drake's scale, still warm from the fire inside.";
     WolfFang = "wolf_fang", "Werewolf Fang", "wolf_fang", 99, 120, Material, "Only ever found the morning after a full moon.";
     InkMap = "ink_map", "Ink Map", "ink_map", 20, 90, Kind::InkMap, "Read it in the Hollow and runes of glowing ink light the way to the stairs down, and hint at secrets.";
+
+    // Backpacks: worn in their own slot, each adds room to the bag.
+    Knapsack = "knapsack", "Knapsack", "pack_knapsack", 1, 0, Kind::Pack { style: 0, slots: 4 }, "A drawstring sack with shoulder straps. Roomier than it looks.";
+    Rucksack = "rucksack", "Rucksack", "pack_rucksack", 1, 0, Kind::Pack { style: 1, slots: 6 }, "A sturdy canvas pack with a buckled flap and pockets all round.";
+    WickerPack = "wicker_pack", "Wicker Pack", "pack_wicker", 1, 0, Kind::Pack { style: 2, slots: 6 }, "A willow basket for your back, a cloth tucked over whatever's inside.";
+    DuffelPack = "duffel_pack", "Duffel Pack", "pack_duffel", 1, 0, Kind::Pack { style: 3, slots: 8 }, "A long canvas roll strapped across your back.";
+    FramePack = "frame_pack", "Frame Pack", "pack_frame", 1, 0, Kind::Pack { style: 4, slots: 12 }, "An explorer's pack on a wooden frame, a bedroll lashed on top.";
+    ShellPack = "shell_pack", "Shell Pack", "pack_shell", 1, 0, Kind::Pack { style: 5, slots: 14 }, "A great spiral shell, hollowed out and fitted with straps. Something lived in it once.";
+    // Monster backpacks: each creature of the Hollow now and then drops its own.
+    SlimePack = "slime_pack", "Slime Pack", "pack_slime", 1, 0, Kind::Pack { style: 6, slots: 6 }, "A squishy slime to carry your things in. It wobbles when you run.";
+    BatPack = "bat_pack", "Bat Pack", "pack_bat", 1, 0, Kind::Pack { style: 7, slots: 6 }, "A plush bat, wings spread wide, hanging on for dear life.";
+    ShroomPack = "shroom_pack", "Shroomling Pack", "pack_shroom", 1, 0, Kind::Pack { style: 8, slots: 6 }, "A sleepy shroomling under a big spotted cap.";
+    CrabPack = "crab_pack", "Crab Pack", "pack_crab", 1, 0, Kind::Pack { style: 9, slots: 6 }, "A crystal crab's shell, claws and all. It keeps a firm grip.";
+    WispPack = "wisp_pack", "Wisp Pack", "pack_wisp", 1, 0, Kind::Pack { style: 10, slots: 6 }, "A little flame of a wisp, bright at heart.";
+    BeetlePack = "beetle_pack", "Beetle Pack", "pack_beetle", 1, 0, Kind::Pack { style: 11, slots: 6 }, "A beetle's shiny wing cases open up on a roomy inside.";
+    ImpPack = "imp_pack", "Imp Pack", "pack_imp", 1, 0, Kind::Pack { style: 12, slots: 6 }, "A grinning imp with tiny wings. It's warm, and smells faintly of smoke.";
+    SkullPack = "skull_pack", "Skull Pack", "pack_skeleton", 1, 0, Kind::Pack { style: 13, slots: 6 }, "A skull over crossed bones. Spooky, but very good with snacks.";
+    GolemPack = "golem_pack", "Golem Pack", "pack_golem", 1, 0, Kind::Pack { style: 14, slots: 6 }, "A block of golem stone, hollowed out. Its crystal eye keeps watch behind you.";
+    GhostPack = "ghost_pack", "Ghost Pack", "pack_ghost", 1, 0, Kind::Pack { style: 15, slots: 6 }, "A friendly little ghost. Things put in it are never quite where you left them.";
+    FrogPack = "frog_pack", "Frog Pack", "pack_frog", 1, 0, Kind::Pack { style: 16, slots: 6 }, "A bog frog with a big smile. It croaks when you pat it.";
+    JellyPack = "jelly_pack", "Jelly Pack", "pack_jelly", 1, 0, Kind::Pack { style: 17, slots: 6 }, "A drift jelly's bell, its threads streaming out behind you.";
+    PufferPack = "puffer_pack", "Puffer Pack", "pack_puffer", 1, 0, Kind::Pack { style: 18, slots: 6 }, "A puffed-up puffer. Mind the spines.";
+    ZombiePack = "zombie_pack", "Zombie Pack", "pack_zombie", 1, 0, Kind::Pack { style: 19, slots: 6 }, "A stitched-up zombie head with one eye open. It groans when it's full.";
+    BrutePack = "brute_pack", "Goblin Brute Pack", "pack_brute", 1, 0, Kind::Pack { style: 20, slots: 6 }, "A fat goblin's head, tusks and all, with its club strapped on behind.";
+    SneakPack = "sneak_pack", "Goblin Sneak Pack", "pack_sneak", 1, 0, Kind::Pack { style: 21, slots: 6 }, "A hooded goblin sneak peering out. There's a dagger tucked in beside it.";
+    BugPack = "bug_pack", "Spider Pack", "pack_bug", 1, 0, Kind::Pack { style: 22, slots: 6 }, "A moss spider clinging on with all eight legs.";
+    SnailPack = "snail_pack", "Lantern Snail Pack", "pack_snail", 1, 0, Kind::Pack { style: 23, slots: 6 }, "A lantern snail's shell of stained glass, the snail peeping over the top.";
+    BookwormPack = "bookworm_pack", "Book-worm Pack", "pack_bookworm", 1, 0, Kind::Pack { style: 24, slots: 6 }, "A thick old book with a book-worm curled over it, reading.";
+    DrakePack = "drake_pack", "Drakeling Pack", "pack_drake", 1, 0, Kind::Pack { style: 25, slots: 6 }, "A frost drakeling, wings spread and tail curling. You can almost fly.";
+    LeaflingPack = "leafling_pack", "Leafling Pack", "pack_leafling", 1, 0, Kind::Pack { style: 26, slots: 6 }, "A cross little leafling, rustling as you go.";
+    WolfPack = "wolf_pack", "Werewolf Pack", "pack_werewolf", 1, 0, Kind::Pack { style: 27, slots: 6 }, "A shaggy werewolf, ears up and tail swishing. It howls at the full moon.";
 
     // Gems: scroll ink, and worth a pretty coin.
     Ruby = "ruby", "Ruby", "ruby", 99, 60, GemK, "Red as a winterberry. Scribes weapon scrolls.";
@@ -840,7 +907,18 @@ impl Item {
 
     /// True for things that carry their own rolled data (gear and scrolls).
     pub fn is_unique(self) -> bool {
-        matches!(self.def().kind, Kind::Gear(_) | Kind::Scroll(_))
+        matches!(
+            self.def().kind,
+            Kind::Gear(_) | Kind::Scroll(_) | Kind::Pack { .. }
+        )
+    }
+
+    /// A backpack's look (see `pack_art`), if it's a backpack.
+    pub fn pack_style(self) -> Option<usize> {
+        match self.def().kind {
+            Kind::Pack { style, .. } => Some(style as usize),
+            _ => None,
+        }
     }
 
     pub fn coin_value(self) -> Option<u32> {
@@ -1235,12 +1313,14 @@ impl Crop {
 // Stacks and inventories
 // ------------------------------------------------------------------------------------------
 
-/// Some number of an item. Gear and scrolls always come one at a time, with their rolls.
+/// Some number of an item. Gear, scrolls and backpacks always come one at a time, with their
+/// rolls.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Stack {
     pub item: Item,
     pub n: u16,
     pub gear: Option<Gear>,
+    pub pack: Option<Pack>,
 }
 
 impl Stack {
@@ -1255,7 +1335,16 @@ impl Stack {
             Kind::Scroll(group) => Some(gear::scroll_with(group.enchant_pool()[0], 1, 0.5)),
             _ => None,
         };
-        Stack { item, n, gear }
+        let pack = match item.def().kind {
+            Kind::Pack { slots, .. } => Some(Pack { slots, hue: 0 }),
+            _ => None,
+        };
+        Stack {
+            item,
+            n,
+            gear,
+            pack,
+        }
     }
 
     pub fn with_gear(item: Item, gear: Gear) -> Self {
@@ -1263,11 +1352,29 @@ impl Stack {
             item,
             n: 1,
             gear: Some(gear),
+            pack: None,
+        }
+    }
+
+    /// A backpack with its own roll.
+    pub fn with_pack(item: Item, pack: Pack) -> Self {
+        Stack {
+            item,
+            n: 1,
+            gear: None,
+            pack: Some(pack),
         }
     }
 
     pub fn rarity(&self) -> Option<Rarity> {
-        self.gear.map(|g| g.rarity)
+        self.gear
+            .map(|g| g.rarity)
+            .or(self.pack.map(|p| p.rarity()))
+    }
+
+    /// The bag slots this adds, worn, if it's a backpack.
+    pub fn pack_slots(&self) -> usize {
+        self.pack.map_or(0, |p| p.slots as usize)
     }
 
     /// The name shown for this stack ("Scroll of Embers" for a scroll).
@@ -1312,6 +1419,7 @@ impl Stack {
                 let lv = g.level as f64;
                 ((30.0 + lv * 8.0) * g.rarity.value() as f64).round() as u64
             }
+            (Kind::Pack { .. }, _) => self.pack.map_or(0, |p| p.price()),
             _ => d.price as u64,
         }
     }
@@ -1343,7 +1451,17 @@ impl Stack {
                 }
                 self.n = 1;
             }
+            Kind::Pack { slots, .. } => {
+                let p = self.pack.get_or_insert(Pack { slots, hue: 0 });
+                p.slots = p.slots.clamp(MIN_PACK, MAX_PACK);
+                p.hue %= crate::assets::pack_art::HUES as u8;
+                self.gear = None;
+                self.n = 1;
+            }
             _ => self.gear = None,
+        }
+        if !matches!(self.item.def().kind, Kind::Pack { .. }) {
+            self.pack = None;
         }
     }
 }
@@ -1367,6 +1485,9 @@ struct StackRepr {
     n: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     gear: Option<GearRepr>,
+    /// A backpack's slots and colours.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pack: Option<(u8, u8)>,
 }
 
 fn affix_repr(a: &Affix) -> AffixRepr {
@@ -1394,6 +1515,7 @@ impl Serialize for Stack {
                     .map(|e| e.as_ref().map(affix_repr))
                     .collect(),
             }),
+            pack: self.pack.map(|p| (p.slots, p.hue)),
         }
         .serialize(s)
     }
@@ -1415,7 +1537,13 @@ impl<'de> Deserialize<'de> for Stack {
             }
             g
         });
-        let mut s = Stack { item, n: r.n, gear };
+        let pack = r.pack.map(|(slots, hue)| Pack { slots, hue });
+        let mut s = Stack {
+            item,
+            n: r.n,
+            gear,
+            pack,
+        };
         s.normalize();
         Ok(s)
     }

@@ -107,7 +107,7 @@ impl Play {
                     c.px(gx, gy, WHITE);
                 }
             }
-            c.sprite(a.tex(a.icon(s.item.def().icon)), x + 1, y + 1);
+            c.sprite(a.tex(a.stack_icon(&s)), x + 1, y + 1);
             if s.n > 1 {
                 c.tiny(x + 17, y + 12, &s.n.to_string(), WHITE, INK);
             }
@@ -359,6 +359,27 @@ impl Play {
                     AQUA,
                 ));
                 lines.push(line("Glowing runes show the way down", MINT));
+            }
+            Kind::Pack { .. } => {
+                let p = s.pack.unwrap_or(super::items::Pack { slots: 0, hue: 0 });
+                lines.push(line(format!("{} Backpack", p.rarity().name()), KHAKI));
+                let mut room = line(format!("+{} bag slots", p.slots), WHITE);
+                room.gap = true;
+                // Compare with the one on your back.
+                if let Some(worn) = self.player.pack.filter(|w| w != s) {
+                    let diff = p.slots as i32 - worn.pack_slots() as i32;
+                    if diff != 0 {
+                        room.text = format!(
+                            "{}  ({}{} worn)",
+                            room.text,
+                            if diff > 0 { "+" } else { "" },
+                            diff
+                        );
+                        room.color = if diff > 0 { LIME } else { SALMON };
+                    }
+                }
+                lines.push(room);
+                lines.push(line("Wear it in the backpack slot", SKY));
             }
             _ => lines.push(line("Special", LAVENDER)),
         }

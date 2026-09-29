@@ -129,6 +129,8 @@ pub struct Player {
     pub inv: Inventory,
     /// Worn armour: head, chest, legs, feet, shield.
     pub equip: [Option<Stack>; 5],
+    /// The backpack on your back. Its pouch is the bag's slots from `BAG` on.
+    pub pack: Option<Stack>,
     pub buffs: Vec<Active>,
     /// Stats from everything worn, the item in hand and food, refreshed every frame.
     pub sheet: Sheet,
@@ -169,6 +171,8 @@ pub struct PlayerSave {
     pub inv: Inventory,
     #[serde(default)]
     pub equip: Vec<Option<Stack>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<Stack>,
     pub sel: usize,
     pub water: u32,
 }
@@ -217,6 +221,7 @@ impl Player {
             xp: 0,
             inv,
             equip,
+            pack: None,
             buffs: Vec::new(),
             sheet: Sheet::default(),
             sel: 0,
@@ -257,6 +262,7 @@ impl Player {
             xp: self.xp,
             inv: self.inv.clone(),
             equip: self.equip.to_vec(),
+            pack: self.pack,
             sel: self.sel,
             water: self.water,
         }
@@ -273,8 +279,9 @@ impl Player {
         };
         p.level = s.level.max(1);
         p.xp = s.xp;
+        p.pack = s.pack.filter(|st| st.item.pack_style().is_some());
         p.inv = s.inv;
-        p.inv.slots.resize(BAG, None);
+        p.inv.slots.resize(BAG + p.pack_slots(), None);
         p.inv.normalize();
         // Older saves have no equipment record: start them in the farming clothes.
         if !s.equip.is_empty() {
@@ -303,6 +310,104 @@ impl Player {
 
     pub fn world_pos(&self) -> Vec3 {
         Vec3::new(self.pos.x, 0.0, self.pos.y)
+    }
+
+    /// How many slots the backpack on your back adds to the bag.
+    pub fn pack_slots(&self) -> usize {
+        self.pack.map_or(0, |s| s.pack_slots())
+    }
+
+    /// Makes the pouch the size for a backpack of `slots`, moving whatever would fall out of
+    /// it into empty slots elsewhere in the bag. False (and nothing moved) if there isn't
+    /// room for it all.
+    fn fit_pouch(&mut self, slots: usize) -> bool {
+        let keep = BAG + slots;
+        let len = self.inv.slots.len();
+        let spill: Vec<usize> = (keep..len)
+            .filter(|&i| self.inv.slots[i].is_some())
+            .collect();
+        let free: Vec<usize> = (0..keep.min(len))
+            .filter(|&i| self.inv.slots[i].is_none())
+            .collect();
+        if spill.len() > free.len() {
+            return false;
+        }
+        for (&from, &to) in spill.iter().zip(&free) {
+            self.inv.slots[to] = self.inv.slots[from].take();
+        }
+        self.inv.slots.resize(keep, None);
+        true
+    }
+
+    /// Swaps the backpack on your back for `new`, handing back the one you wore. `Err(new)`
+    /// if the old pouch holds more than would fit in the bag with the new one.
+    pub fn swap_pack(&mut self, new: Stack) -> Result<Option<Stack>, Stack> {
+        if new.item.pack_style().is_none() || !self.fit_pouch(new.pack_slots()) {
+            return Err(new);
+        }
+        Ok(self.pack.replace(new))
+    }
+
+    /// Takes the backpack off to carry, if what's in its pouch fits in the rest of the bag.
+    pub fn lift_pack(&mut self) -> Option<Stack> {
+        self.pack?;
+        if !self.fit_pouch(0) {
+            return None;
+        }
+        self.pack.take()
+    }
+
+    /// Takes the backpack off into the bag, if there's room for it and all it holds.
+    pub fn unwear_pack(&mut self) -> bool {
+        let before = (self.inv.clone(), self.pack);
+        let Some(p) = self.lift_pack() else {
+            return false;
+        };
+        match self.inv.slots.iter().position(|s| s.is_none()) {
+            Some(k) => {
+                self.inv.slots[k] = Some(p);
+                true
+            }
+            None => {
+                (self.inv, self.pack) = before;
+                false
+            }
+        }
+    }
+
+    /// Puts on the backpack in bag slot `i`; the one it replaces takes its place in the bag.
+    /// False (and nothing changed) if it isn't a backpack or there isn't room.
+    pub fn wear_pack_from(&mut self, i: usize) -> bool {
+        let Some(new) = self.inv.slots.get(i).copied().flatten() else {
+            return false;
+        };
+        if new.item.pack_style().is_none() {
+            return false;
+        }
+        let before = (self.inv.clone(), self.pack);
+        self.inv.slots[i] = None;
+        let old = match self.swap_pack(new) {
+            Ok(old) => old,
+            Err(_) => {
+                (self.inv, self.pack) = before;
+                return false;
+            }
+        };
+        if let Some(old) = old {
+            let spot = if self.inv.slots.get(i).is_some_and(|s| s.is_none()) {
+                Some(i)
+            } else {
+                self.inv.slots.iter().position(|s| s.is_none())
+            };
+            match spot {
+                Some(k) => self.inv.slots[k] = Some(old),
+                None => {
+                    (self.inv, self.pack) = before;
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     pub fn tile(&self) -> (i32, i32) {

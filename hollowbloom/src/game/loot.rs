@@ -3,7 +3,7 @@
 
 use super::dungeon::{Foe, biome_seeds};
 use super::gear::{self, Class, Gear, Group};
-use super::items::{ALL_ITEMS, Base, Item, Stack};
+use super::items::{ALL_ITEMS, Base, Item, MAX_PACK, MIN_PACK, Pack, Stack};
 use crate::util::{Rng, thousands};
 
 /// 10 copper make a silver coin and 10 silver a gold coin. Money is counted in copper.
@@ -381,6 +381,67 @@ fn foe_bits(foe: Foe, biome: usize, rng: &mut Rng) -> Vec<Stack> {
     out
 }
 
+/// The backpacks, commonest first, and how often each turns up in the Hollow.
+const PACKS: [(Item, f32); 6] = [
+    (Item::Knapsack, 3.0),
+    (Item::Rucksack, 3.0),
+    (Item::WickerPack, 2.0),
+    (Item::DuffelPack, 2.0),
+    (Item::FramePack, 1.4),
+    (Item::ShellPack, 0.6),
+];
+
+/// A backpack found in the Hollow: any look, any colours, and a roll of how roomy it is
+/// (roomier deeper down, and with luck).
+pub fn random_pack(depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
+    let weights: Vec<f32> = PACKS.iter().map(|p| p.1).collect();
+    let item = PACKS[rng.weighted(&weights)].0;
+    roll_pack(item, depth, f, rng)
+}
+
+/// The backpack each creature carries, in its own shape.
+pub fn monster_pack(foe: Foe) -> Item {
+    match foe {
+        Foe::Slime => Item::SlimePack,
+        Foe::Bat => Item::BatPack,
+        Foe::Shroom => Item::ShroomPack,
+        Foe::Crab => Item::CrabPack,
+        Foe::Wisp => Item::WispPack,
+        Foe::Beetle => Item::BeetlePack,
+        Foe::Imp => Item::ImpPack,
+        Foe::Skeleton => Item::SkullPack,
+        Foe::Golem => Item::GolemPack,
+        Foe::Ghost => Item::GhostPack,
+        Foe::Frog => Item::FrogPack,
+        Foe::Jelly => Item::JellyPack,
+        Foe::Puffer => Item::PufferPack,
+        Foe::Zombie => Item::ZombiePack,
+        Foe::Brute => Item::BrutePack,
+        Foe::Sneak => Item::SneakPack,
+        Foe::Bug => Item::BugPack,
+        Foe::Snail => Item::SnailPack,
+        Foe::Bookworm => Item::BookwormPack,
+        Foe::Drake => Item::DrakePack,
+        Foe::Leafling => Item::LeaflingPack,
+        Foe::Werewolf => Item::WolfPack,
+    }
+}
+
+/// A backpack of a given look, rolled for how roomy it is and its colours.
+pub fn roll_pack(item: Item, depth: u32, f: Fortune, rng: &mut Rng) -> Stack {
+    let top = (8 + depth / 3).min(MAX_PACK as u32) as f32;
+    let roll = rng.f32().powf((1.8 - f.luck).clamp(0.6, 1.8));
+    let slots = MIN_PACK as f32 + roll * (top - MIN_PACK as f32);
+    let hue = rng.below(crate::assets::pack_art::HUES) as u8;
+    Stack::with_pack(
+        item,
+        Pack {
+            slots: (slots.round() as u8).clamp(MIN_PACK, MAX_PACK),
+            hue,
+        },
+    )
+}
+
 /// Everything a defeated creature drops.
 pub fn foe_loot(
     foe: Foe,
@@ -445,6 +506,10 @@ pub fn foe_loot(
             Item::HealthPotion
         };
         out.push(Stack::new(potion, 2 + rng.below(2) as u16));
+        // Now and then something to carry it all home in.
+        if rng.chance(0.35) {
+            out.push(random_pack(d + 6, lucky, rng));
+        }
         for _ in 0..4 {
             // Its kind's own bits, by the handful.
             out.extend(foe_bits(foe, biome, rng));
@@ -462,6 +527,24 @@ pub fn foe_loot(
         if rng.chance(0.01 + f.luck * 0.02) {
             out.push(Stack::new(random_relic(d, rng), 1));
         }
+        // Goblins make off with other delvers' backpacks.
+        let pack_p = if matches!(foe, Foe::Brute | Foe::Sneak) {
+            0.02
+        } else {
+            0.004
+        };
+        if rng.chance(pack_p + f.luck * 0.005) {
+            out.push(random_pack(d, f, rng));
+        }
+    }
+    // Now and then a creature leaves a backpack in its own shape (a guardian, often).
+    let own = if boss { 0.5 } else { 0.012 + f.luck * 0.01 };
+    if rng.chance(own) {
+        let lucky = Fortune {
+            luck: f.luck + if boss { 0.8 } else { 0.0 },
+            ..f
+        };
+        out.push(roll_pack(monster_pack(foe), d, lucky, rng));
     }
     out
 }
@@ -531,6 +614,11 @@ pub fn chest_loot(depth: u32, biome: usize, gleam: bool, f: Fortune, rng: &mut R
     }
     if rng.chance(0.25) {
         out.push(Stack::new(Item::Feather, 1));
+    }
+    // A delver's old backpack (a roomy one, in a gleaming chest).
+    if rng.chance(if gleam { 0.45 } else { 0.07 + f.luck * 0.05 }) {
+        let luck = if gleam { f.luck + 0.9 } else { f.luck };
+        out.push(random_pack(d + 2, Fortune { luck, ..f }, rng));
     }
     // Delvers who drowned their sorrows left their rods behind.
     if rng.chance(0.22 + f.luck * 0.1) {

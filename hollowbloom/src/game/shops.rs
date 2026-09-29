@@ -319,6 +319,11 @@ pub fn goods(p: &Play, at: Place) -> Vec<(Item, u32)> {
             }
         }
         Place::Guild => {
+            // Backpacks, plain off the shelf (in colours of your own when you buy one).
+            add(0, Item::Knapsack, 900);
+            add(0, Item::Rucksack, 1600);
+            add(10, Item::DuffelPack, 3200);
+            add(20, Item::FramePack, 8500);
             add(0, Item::Feather, 260);
             add(0, Item::Bait, 14);
             add(0, Item::HealingTonic, 100);

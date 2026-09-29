@@ -5178,3 +5178,211 @@ pub fn beast_shots(dir: &str) {
     tick(&mut game, &input, &audio, 2);
     snap(&mut game, &mut r, &input, dir, "b51_loot");
 }
+
+/// `--pack-shots DIR`: backpacks: the bag waiting for one, the bag with one on and its
+/// pouch beside it, every look on the hero's back, the pouch at a chest and in a shop, the
+/// guild's shelf, and one dropped in the Hollow.
+pub fn pack_shots(dir: &str) {
+    use crate::game::items::Pack;
+    use crate::game::menus::{PACK_AT, WORN_AT};
+    use crate::game::player::BAG;
+    use crate::game::town::Place;
+    use crate::game::world::Obj;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261005);
+    tick(&mut game, &input, &audio, 30);
+    let bag = |cursor| Menu::Inventory {
+        tab: Tab::Bag,
+        cursor,
+        recipe: 0,
+        scroll: 0,
+        cat: 0,
+    };
+    {
+        let p = play(&mut game);
+        p.banner = None;
+        p.toasts.clear();
+        p.clock.day = 2;
+        p.deepest = 25;
+        p.money = 12_345;
+        p.player.inv.slots[14] = Some(Stack::with_pack(Item::Rucksack, Pack { slots: 12, hue: 1 }));
+        p.menu = bag(PACK_AT);
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "k01_no_backpack");
+    // A rare rucksack on, things in its pouch.
+    {
+        let p = play(&mut game);
+        p.player.wear_pack_from(14);
+        let mut rng = Rng::new(3);
+        let stuff = [
+            Stack::new(Item::Ruby, 3),
+            Stack::new(Item::FrostScale, 5),
+            Stack::new(Item::WolfFang, 2),
+            loot::random_gear(12, Fortune::default(), &mut rng),
+            Stack::new(Item::Heartleaf, 7),
+            Stack::new(Item::GlowInk, 4),
+            loot::random_pack(40, Fortune::default(), &mut rng),
+        ];
+        for (k, s) in stuff.into_iter().enumerate() {
+            p.player.inv.slots[BAG + [0, 1, 2, 5, 6, 7, 10][k]] = Some(s);
+        }
+        p.menu = bag(PACK_AT);
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "k02_backpack_on");
+    {
+        let p = play(&mut game);
+        p.menu = bag(BAG + 10);
+    }
+    snap(&mut game, &mut r, &input, dir, "k03_pouch_tooltip");
+    // A legendary one, twenty slots.
+    {
+        let p = play(&mut game);
+        let _ = p.player.swap_pack(Stack::with_pack(
+            Item::ShellPack,
+            Pack { slots: 20, hue: 4 },
+        ));
+        p.menu = bag(WORN_AT + 1);
+    }
+    snap(&mut game, &mut r, &input, dir, "k04_legendary");
+    // Every look on the hero's back (the cloth ones in a colourway each), seen from behind
+    // and a little to the side.
+    let packs: Vec<Item> = crate::game::items::ALL_ITEMS
+        .iter()
+        .copied()
+        .filter(|i| i.pack_style().is_some())
+        .collect();
+    for (k, item) in packs.iter().enumerate() {
+        let focus = {
+            let p = play(&mut game);
+            p.menu = Menu::None;
+            p.player.pack = None;
+            p.player.inv.slots.truncate(BAG);
+            let hue = (k * 3 % crate::assets::pack_art::HUES) as u8;
+            let _ = p
+                .player
+                .swap_pack(Stack::with_pack(*item, Pack { slots: 12, hue }));
+            let yaw = std::f32::consts::PI - 0.6;
+            p.player.yaw = yaw;
+            p.player.facing = glam::Vec2::new(yaw.sin(), yaw.cos());
+            p.player.world_pos() + glam::Vec3::new(0.0, 0.3, 0.1)
+        };
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("k1_{k:02}"),
+            focus,
+            5.2,
+        );
+    }
+    // As you'd see it in play: walking away, and across.
+    for (view, yaw) in [
+        ("away", std::f32::consts::PI - 0.3),
+        ("across", 1.6),
+        ("toward", 0.4),
+    ] {
+        let focus = {
+            let p = play(&mut game);
+            p.player.yaw = yaw;
+            p.player.facing = glam::Vec2::new(yaw.sin(), yaw.cos());
+            p.player.world_pos() + glam::Vec3::Y * 0.4
+        };
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("k19_play_{view}"),
+            focus,
+            15.5,
+        );
+    }
+    // A chest on the farm, the pouch beside the bag.
+    {
+        let p = play(&mut game);
+        let (x, z) = p.player.tile();
+        let mut items = vec![None; 30];
+        items[0] = Some(Stack::new(Item::Wood, 40));
+        items[1] = Some(Stack::new(Item::Stone, 25));
+        items[11] = Some(Stack::new(Item::Turnip, 9));
+        p.farm.set_obj(x + 1, z, Some(Obj::Chest { items }));
+        p.menu = Menu::Chest {
+            x: x + 1,
+            z,
+            cursor: 30 + BAG + 3,
+        };
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "k21_chest");
+    // The guild's shelf of backpacks, and selling from the pouch.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.clock.min = 700.0;
+        p.enter_place(Place::Guild);
+        p.menu = Menu::shop_at(Place::Guild);
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "k22_guild_shelf");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Shop {
+            at: Some(Place::Guild),
+            tab: ShopTab::Sell,
+            cursor: BAG + 2,
+            scroll: 0,
+        };
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "k23_sell_from_pouch");
+    // One dropped in the Hollow.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.leave_place();
+    }
+    descend(&mut game, &input, &audio, 7, false);
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.banner = None;
+        p.toasts.clear();
+        // (A full bag, so it stays put for its picture.)
+        for slot in p.player.inv.slots.iter_mut() {
+            if slot.is_none() {
+                *slot = Some(Stack::new(Item::Stone, 1));
+            }
+        }
+        let w = &p.level.as_ref().unwrap().world;
+        let (px, pz) = p.player.tile();
+        let (dx, dz) = w.nearest_open(px + 1, pz + 2);
+        let at = glam::Vec3::new(dx as f32 + 0.5, 0.0, dz as f32 + 0.5);
+        let pack = Stack::with_pack(Item::FramePack, Pack { slots: 19, hue: 6 });
+        let mut d = crate::game::fx::Drop::new(pack, at, &mut p.rng);
+        d.vel = glam::Vec3::ZERO;
+        d.pos = at + glam::Vec3::Y * 0.3;
+        p.drops.push(d);
+    }
+    tick(&mut game, &input, &audio, 20);
+    let focus = {
+        let p = play(&mut game);
+        let d = p.drops.first().map_or(p.player.world_pos(), |d| d.pos);
+        (d + p.player.world_pos()) * 0.5 + glam::Vec3::Y * 0.4
+    };
+    close(&mut game, &mut r, &input, dir, "k31_dropped", focus, 7.0);
+}

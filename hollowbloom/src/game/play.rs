@@ -1866,6 +1866,22 @@ impl Play {
             Kind::Scroll(_) => {
                 self.toast("Bind scrolls at an enchanting table.", None, 0);
             }
+            Kind::Pack { .. } => {
+                // On your back it goes, straight from the hotbar.
+                if self.player.wear_pack_from(sel) {
+                    io.audio.play(Sfx::Equip);
+                    self.toast(format!("Wearing the {}", item.def().name), Some(item), 0);
+                    self.fx.motes(
+                        self.player.world_pos() + Vec3::Y * 0.5,
+                        8,
+                        &[WHITE, CREAM, SAND],
+                        0.3,
+                    );
+                } else {
+                    io.audio.play(Sfx::Denied);
+                    self.toast("No room in your bag for what's in your backpack!", None, 0);
+                }
+            }
             Kind::Bomb => self.throw_bomb(io),
             Kind::InkMap => self.read_ink_map(io),
             Kind::Fish => {

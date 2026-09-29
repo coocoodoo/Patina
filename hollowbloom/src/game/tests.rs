@@ -2842,7 +2842,7 @@ fn a_steam_deck_plays_the_game() {
 
 #[test]
 fn a_stack_picked_up_on_a_controller_rides_on_the_cursor() {
-    use super::menus::{bag_grid, panel_layout};
+    use super::menus::bag_grid;
     use crate::pad::{PadButton, PadState};
     let mut s = Sim::new();
     s.frames(2);
@@ -2871,7 +2871,8 @@ fn a_stack_picked_up_on_a_controller_rides_on_the_cursor() {
     press(&mut s, PadButton::A);
     assert_eq!(s.play.held.map(|h| h.item), Some(Item::Wood));
     // The Deck's pointer sits parked in the corner: the stack stays on the cursor's slot.
-    let (x, y) = bag_grid(&panel_layout(480, 270), 22).slot_pos(3);
+    // (The bag's panel stands a little left of the middle, the backpack's beside it.)
+    let (x, y) = bag_grid(&super::menus::pouch_layout(480, 270, true), 22).slot_pos(3);
     assert_eq!(
         s.play.held_spot(480, 270, Vec2::ZERO, s.input.mouse_aim),
         (x + 7, y - 7)
@@ -3823,4 +3824,242 @@ fn drakelings_leaflings_and_werewolves_drop_their_bits() {
         }
         assert!(got > 60, "{foe:?} dropped {got} {bit:?}");
     }
+}
+
+#[test]
+fn a_backpack_adds_room_to_the_bag() {
+    use super::items::Pack;
+    use super::player::BAG;
+    let mut s = Sim::new();
+    let p = &mut s.play.player;
+    // Fill the bag right up.
+    for slot in p.inv.slots.iter_mut() {
+        if slot.is_none() {
+            *slot = Some(Stack::new(Item::Stone, 1));
+        }
+    }
+    assert_eq!(p.inv.add(Item::Bone, 1), 1, "the bag is full");
+    // Swap a stone for an eight-slot rucksack and put it on.
+    p.inv.slots[30] = Some(Stack::with_pack(Item::Rucksack, Pack { slots: 8, hue: 3 }));
+    assert!(p.wear_pack_from(30));
+    assert_eq!((p.pack_slots(), p.inv.slots.len()), (8, BAG + 8));
+    assert!(p.inv.slots[30].is_none(), "no old backpack to swap back");
+    p.inv.slots[30] = Some(Stack::new(Item::Stone, 1));
+    // Now there's room, in the pouch.
+    assert_eq!(p.inv.add(Item::Bone, 3), 0);
+    assert_eq!(
+        p.inv.slots[BAG].map(|s| (s.item, s.n)),
+        Some((Item::Bone, 3))
+    );
+    // With the bag full there's nowhere for the bones to go: it stays on.
+    assert!(!p.unwear_pack() && p.lift_pack().is_none());
+    assert!(p.pack.is_some() && p.inv.count(Item::Bone) == 3);
+    // Make a little room, and off it comes, the bones tipped out into the bag.
+    p.inv.slots[5] = None;
+    p.inv.slots[6] = None;
+    assert!(p.unwear_pack());
+    assert_eq!(p.inv.slots.len(), BAG);
+    assert_eq!(p.inv.count(Item::Bone), 3);
+    assert_eq!(p.inv.count(Item::Rucksack), 1);
+    assert!(p.pack.is_none());
+}
+
+#[test]
+fn a_smaller_backpack_spills_into_the_bag() {
+    use super::items::Pack;
+    use super::player::BAG;
+    let mut s = Sim::new();
+    let p = &mut s.play.player;
+    let big = Stack::with_pack(Item::FramePack, Pack { slots: 12, hue: 0 });
+    let small = Stack::with_pack(Item::Knapsack, Pack { slots: 4, hue: 5 });
+    assert!(p.swap_pack(big).unwrap().is_none());
+    for slot in p.inv.slots.iter_mut().take(BAG) {
+        if slot.is_none() {
+            *slot = Some(Stack::new(Item::Stone, 1));
+        }
+    }
+    for k in 0..6 {
+        p.inv.slots[BAG + k] = Some(Stack::new(Item::Fiber, 1 + k as u16));
+    }
+    // Four of the six fit in the knapsack; with the bag full the other two can't go.
+    assert!(p.swap_pack(small).is_err());
+    assert_eq!(p.inv.slots.len(), BAG + 12, "nothing changed");
+    p.inv.slots[1] = None;
+    p.inv.slots[2] = None;
+    let old = p.swap_pack(small).expect("room now");
+    assert_eq!(old.map(|o| o.item), Some(Item::FramePack));
+    assert_eq!(p.inv.slots.len(), BAG + 4);
+    assert_eq!(p.inv.count(Item::Fiber), 1 + 2 + 3 + 4 + 5 + 6);
+}
+
+#[test]
+fn backpacks_are_rarer_the_roomier_and_come_in_all_looks() {
+    use super::items::{MAX_PACK, MIN_PACK, Pack};
+    use super::loot::{Fortune, random_pack};
+    let r = |slots| Pack { slots, hue: 0 }.rarity();
+    assert_eq!(r(4), Rarity::Common);
+    assert_eq!(r(8), Rarity::Uncommon);
+    assert_eq!(r(12), Rarity::Rare);
+    assert_eq!(r(16), Rarity::Epic);
+    assert_eq!(r(20), Rarity::Legendary);
+    assert!(Pack { slots: 20, hue: 0 }.price() > Pack { slots: 6, hue: 0 }.price());
+    let mut rng = crate::util::Rng::new(4);
+    let mut items = std::collections::HashSet::new();
+    let mut hues = std::collections::HashSet::new();
+    let (mut shallow, mut deep) = (0u32, 0u32);
+    for _ in 0..400 {
+        let a = random_pack(2, Fortune::plain(), &mut rng);
+        let b = random_pack(60, Fortune::plain(), &mut rng);
+        for s in [a, b] {
+            let p = s.pack.expect("a backpack's roll");
+            assert!((MIN_PACK..=MAX_PACK).contains(&p.slots));
+            assert_eq!(s.rarity(), Some(p.rarity()));
+            items.insert(s.item);
+            hues.insert(p.hue);
+        }
+        shallow += a.pack_slots() as u32;
+        deep += b.pack_slots() as u32;
+    }
+    assert_eq!(items.len(), 6, "every look turns up");
+    assert_eq!(hues.len(), crate::assets::pack_art::HUES);
+    assert!(
+        deep > shallow * 3 / 2,
+        "deeper, roomier: {deep} vs {shallow}"
+    );
+    // The guild keeps some on its shelves.
+    let mut p = Play::new(3);
+    p.deepest = 25;
+    let guild = super::shops::rows(
+        &p,
+        Some(super::town::Place::Guild),
+        super::menus::ShopTab::Goods,
+    );
+    let packs: Vec<Item> = guild
+        .iter()
+        .filter(|r| r.0.pack.is_some())
+        .map(|r| r.0.item)
+        .collect();
+    assert_eq!(packs.len(), 4, "{packs:?}");
+}
+
+#[test]
+fn a_backpack_is_worn_and_emptied_from_the_bag_tab() {
+    use super::items::Pack;
+    use super::menus::{PACK_AT, WORN_AT};
+    use super::player::BAG;
+    let mut s = Sim::new();
+    s.play.player.inv.slots[12] = Some(Stack::with_pack(Item::Knapsack, Pack { slots: 6, hue: 1 }));
+    let bag = |cursor| Menu::Inventory {
+        tab: Tab::Bag,
+        cursor,
+        recipe: 0,
+        scroll: 0,
+        cat: 0,
+    };
+    s.play.menu = bag(12);
+    s.tap(KeyCode::Enter, 2);
+    assert_eq!(s.play.player.pack.map(|p| p.item), Some(Item::Knapsack));
+    assert_eq!(s.play.player.inv.slots.len(), BAG + 6);
+    // The cursor walks off the right of the bag into the pouch, and down to the backpack.
+    s.play.menu = bag(9);
+    let cursor = |s: &Sim| match s.play.menu {
+        Menu::Inventory { cursor, .. } => cursor,
+        _ => usize::MAX,
+    };
+    s.tap(KeyCode::ArrowRight, 1);
+    assert_eq!(cursor(&s), BAG);
+    s.tap(KeyCode::ArrowDown, 1);
+    assert_eq!(cursor(&s), BAG + 5);
+    s.tap(KeyCode::ArrowDown, 1);
+    assert_eq!(cursor(&s), PACK_AT);
+    s.tap(KeyCode::ArrowRight, 1);
+    assert_eq!(cursor(&s), WORN_AT, "round to the worn gear");
+    // A on the backpack's slot takes it off into the bag.
+    s.play.menu = bag(PACK_AT);
+    s.tap(KeyCode::Enter, 2);
+    assert!(s.play.player.pack.is_none());
+    assert_eq!(s.play.player.inv.slots.len(), BAG);
+    assert_eq!(s.play.player.inv.count(Item::Knapsack), 1);
+}
+
+#[test]
+fn a_backpack_and_its_pouch_are_saved() {
+    use super::items::Pack;
+    use super::player::{BAG, Player};
+    let mut s = Sim::new();
+    let p = &mut s.play.player;
+    let pack = Stack::with_pack(Item::ShellPack, Pack { slots: 17, hue: 6 });
+    assert!(p.swap_pack(pack).is_ok());
+    p.inv.slots[BAG + 16] = Some(Stack::new(Item::Ruby, 2));
+    let json = serde_json::to_string(&p.save()).unwrap();
+    let back: super::player::PlayerSave = serde_json::from_str(&json).unwrap();
+    let q = Player::load(back, Vec2::ZERO);
+    assert_eq!(q.pack, Some(pack));
+    assert_eq!(q.pack.and_then(|s| s.rarity()), Some(Rarity::Epic));
+    assert_eq!(q.inv.slots.len(), BAG + 17);
+    assert_eq!(q.inv.slots[BAG + 16].map(|s| s.item), Some(Item::Ruby));
+    // An older save, with no backpack, still loads.
+    let mut old: serde_json::Value = serde_json::from_str(&json).unwrap();
+    old.as_object_mut().unwrap().remove("pack");
+    let q = Player::load(serde_json::from_value(old).unwrap(), Vec2::ZERO);
+    assert!(q.pack.is_none());
+    assert_eq!(q.inv.slots.len(), BAG);
+}
+
+#[test]
+fn every_monster_leaves_a_backpack_in_its_own_shape() {
+    use super::dungeon::Foe;
+    use super::loot::{Fortune, foe_loot, monster_pack};
+    let a = crate::assets::Assets::new();
+    let foes = [
+        Foe::Slime,
+        Foe::Bat,
+        Foe::Shroom,
+        Foe::Crab,
+        Foe::Wisp,
+        Foe::Beetle,
+        Foe::Imp,
+        Foe::Skeleton,
+        Foe::Golem,
+        Foe::Ghost,
+        Foe::Frog,
+        Foe::Jelly,
+        Foe::Puffer,
+        Foe::Zombie,
+        Foe::Brute,
+        Foe::Sneak,
+        Foe::Bug,
+        Foe::Snail,
+        Foe::Bookworm,
+        Foe::Drake,
+        Foe::Leafling,
+        Foe::Werewolf,
+    ];
+    let mut looks = std::collections::HashSet::new();
+    for foe in foes {
+        let item = monster_pack(foe);
+        let style = item.pack_style().expect("a backpack");
+        assert!(looks.insert(style), "{foe:?} shares a look");
+        // Worn, and in the bag, it looks like itself.
+        let s = Stack::with_pack(item, super::items::Pack { slots: 9, hue: 3 });
+        assert!(a.pack_mesh(&s).is_some_and(|m| !m.tris.is_empty()));
+        assert_eq!(a.stack_icon(&s), a.icon(item.def().icon));
+    }
+    // Rarely from a creature, often from a guardian.
+    let mut rng = crate::util::Rng::new(12);
+    let own = |boss: bool, rng: &mut crate::util::Rng| {
+        (0..400)
+            .filter(|_| {
+                foe_loot(Foe::Slime, boss, 0, 12, Fortune::plain(), rng)
+                    .iter()
+                    .any(|s| s.item == super::items::Item::SlimePack)
+            })
+            .count()
+    };
+    let (plain, boss) = (own(false, &mut rng), own(true, &mut rng));
+    assert!(
+        (1..20).contains(&plain),
+        "{plain} slime packs from 400 slimes"
+    );
+    assert!(boss > 120, "{boss} from 400 King Slimes");
 }

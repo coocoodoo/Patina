@@ -122,7 +122,7 @@ install: it is a single executable.
 | At home: turn a piece before placing it / pick it back up | T / J | left click picks up |
 | Dodge roll | Space or Shift | |
 | Hotbar | 1-9, 0, [ / ] | wheel |
-| Bag, worn gear, stats / crafting | Tab or I / C | right click wears armour |
+| Bag, worn gear, stats / crafting | Tab or I / C | right click wears armour and backpacks |
 | Quest journal, friends, records | L | |
 | Minimap (in the Hollow and in town) | M | |
 | Pause, settings, save & quit | Esc | |
@@ -552,6 +552,21 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   rarity comes from how strong its enchantment rolled. Bind them at the **enchanting table**
   by your house (or the one at every waystone) for a few coins; each piece has three sockets,
   and enchanting can raise its rarity.
+* **Backpacks** go in a slot of their own, beside the bag, and add their own **pouch** of
+  4 to 20 slots to it (shown in a little panel beside the bag, at chests, shops and the
+  shipping bin too). They never level up: a backpack's **rarity comes from how roomy it
+  is**, from a Common knapsack to a Legendary twenty slots. Six kinds (knapsack, rucksack,
+  wicker pack with a leek and a loaf poking out, duffel, explorer's frame pack with a
+  bedroll, snail-shell pack) come in eight colourways, and every **monster has a plush
+  backpack in its own shape** (a wobbly slime, a bat with its wings spread, a spotted
+  shroomling, a crystal crab, a wisp, a beetle, an imp, a skull and crossbones, a golem's
+  block, a ghost, a bog frog, a drift jelly, a spiny puffer, a stitched zombie, both goblins,
+  a moss spider, a stained-glass snail shell, a book with its book-worm, a drakeling, a
+  leafling and a werewolf). Found backpacks roll their size (roomier deeper down): in
+  treasure chests (often, in gleaming ones), from guardians, from goblins now and then, and
+  every creature once in a while drops the one in its own shape. Rowan's guild sells plain
+  ones in town. You wear yours on your back, where everyone can see it. Taking one off (or
+  swapping to a smaller one) tips out what's in the pouch, as long as the bag has room.
 * **Coins**: creatures, pots and chests drop **copper, silver and gold coins** (10 copper make
   a silver, 10 silver a gold). Guardians shower you in gold, gear, scrolls and gems; relics
   like rubber ducks, music boxes and tiny crowns sell well to Burrowby, who also has new
@@ -630,6 +645,7 @@ hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and th
 hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
+hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)

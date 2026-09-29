@@ -1380,6 +1380,8 @@ pub struct Outfit<'a> {
     pub boot: Option<&'a Mesh>,
     /// Strapped to the left arm.
     pub shield: Option<&'a Mesh>,
+    /// Worn on the back (made in the body's own space: see `pack_art`).
+    pub pack: Option<&'a Mesh>,
     /// The hat is a hood, hiding all loose hair (other hats tuck it under the brim).
     pub hood: bool,
     /// Texture swaps for clothes (body, arms, legs).
@@ -1444,6 +1446,11 @@ fn draw_body(
     }
     let body = root * Mat4::from_translation(Vec3::new(0.0, h.hip - 0.02 + bob, 0.0));
     r.mesh(&a.bank, &h.parts[BODY], &body, o);
+    if let Some(pack) = fit.pack {
+        // It jostles a little as you go.
+        let jostle = Mat4::from_rotation_x(pose.walk.cos() * 0.05 * pose.stride);
+        r.mesh(&a.bank, pack, &(body * jostle), o);
+    }
     // Arms: the right follows the swing, the left carries any shield.
     let guard = fit.shield.is_some() && matches!(pose.swing, None | Some((_, Swing::Slash)));
     let off = -HAND;

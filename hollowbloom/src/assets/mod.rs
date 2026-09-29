@@ -13,7 +13,9 @@ pub mod logo;
 pub mod magic_art;
 pub mod models;
 pub mod monster_art;
+pub mod pack_art;
 pub mod pet_art;
+pub mod plush_art;
 pub mod quest_art;
 pub mod season_art;
 pub mod sewer_art;
@@ -673,6 +675,8 @@ pub struct Assets {
     pub glowcave: glowcave_art::GlowcaveArt,
     /// Drakelings and leaflings.
     pub beasts: beast_art::Beasts,
+    /// Backpacks, worn and as icons, in every style and colourway.
+    pub packs: pack_art::PackArt,
 }
 
 impl Assets {
@@ -685,6 +689,7 @@ impl Assets {
         season_art::build(&mut bank, &mut icons);
         deep_art::icons(&mut bank, &mut icons);
         beast_art::icons(&mut bank, &mut icons);
+        let packs = pack_art::build(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
         fish_art::build(&mut bank, &mut icons);
         let home = home_art::build(&mut bank, &mut icons);
@@ -889,7 +894,22 @@ impl Assets {
             sewer,
             glowcave,
             beasts,
+            packs,
         }
+    }
+
+    /// A stack's icon: its item's, or for a backpack, its own style in its own colours.
+    pub fn stack_icon(&self, s: &crate::game::items::Stack) -> TexId {
+        match (s.item.pack_style(), s.pack) {
+            (Some(style), Some(p)) => self.packs.icon(style, p.hue as usize),
+            _ => self.icon(s.item.def().icon),
+        }
+    }
+
+    /// The model of a backpack as worn.
+    pub fn pack_mesh(&self, s: &crate::game::items::Stack) -> Option<&Mesh> {
+        let style = s.item.pack_style()?;
+        Some(self.packs.mesh(style, s.pack.map_or(0, |p| p.hue as usize)))
     }
 
     /// The 3D model of a weapon or tool held in the hand.

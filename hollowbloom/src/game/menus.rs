@@ -9,6 +9,7 @@ use super::gear::{Rarity, SLOTS, Slot, Stat};
 use super::items::{CATS, Inventory, Item, Kind, RECIPES, Recipe, Stack, seasonal_seeds};
 use super::loot;
 use super::play::{Play, Trans, transfer};
+use super::player::BAG;
 use super::shops;
 use super::talk::Say;
 use super::tips::{draw_money, money_width, stat_icon};
@@ -16,7 +17,7 @@ use super::town::Place;
 use super::{Io, Settings};
 use crate::assets::Assets;
 use crate::audio::Sfx;
-use crate::input::{Action, Button, KeyCode};
+use crate::input::{Action, Button, Input, KeyCode};
 use crate::palette::*;
 use crate::ui::{Canvas, Style};
 
@@ -73,7 +74,8 @@ pub enum Menu {
     None,
     Inventory {
         tab: Tab,
-        /// 0..40 the bag, 40..45 worn gear.
+        /// The bag and the backpack's pouch (bag indices), or the worn gear and the
+        /// backpack (see `WORN_AT`, `PACK_AT`).
         cursor: usize,
         recipe: usize,
         scroll: usize,
@@ -366,6 +368,233 @@ pub fn worn_hit(l: &Layout, top: i32, p: Vec2) -> Option<usize> {
     })
 }
 
+/// What's said when a backpack's pouch holds more than the rest of the bag has room for.
+const NO_ROOM: &str = "No room in your bag for what's in the backpack!";
+
+/// Armour and backpacks: things you wear.
+pub fn wearable(s: &Stack) -> bool {
+    s.item.pack_style().is_some() || s.item.class().is_some_and(|c| c.is_armor())
+}
+
+/// Bag-tab cursor spots past the bag and the backpack's pouch (which are bag indices): the
+/// worn gear (head to shield), and the backpack itself.
+pub const WORN_AT: usize = 100;
+pub const PACK_AT: usize = 110;
+
+/// Columns in a backpack's pouch.
+pub const POUCH_COLS: usize = 5;
+/// The pouch's panel: how wide it is, and the gap between it and the main panel.
+pub const POUCH_W: i32 = POUCH_COLS as i32 * CELL - 1 + 14;
+pub const POUCH_GAP: i32 = 3;
+
+/// The main panel, moved over to make room for the pouch's panel beside it (when there's
+/// one to show).
+pub fn pouch_layout(w: i32, h: i32, pouch: bool) -> Layout {
+    let l = panel_layout(w, h);
+    if pouch {
+        Layout {
+            px: ((w - l.pw - POUCH_GAP - POUCH_W) / 2).max(2),
+            ..l
+        }
+    } else {
+        l
+    }
+}
+
+/// A backpack's pouch: its slots (the bag's from `BAG` on) in a panel of their own beside
+/// the bag, row for row with it; on the bag tab, with the backpack's own slot below.
+pub struct Pouch {
+    pub x: i32,
+    pub y: i32,
+    /// How many slots it has.
+    pub n: usize,
+    /// The bag's extra gap after its first row, so the rows line up.
+    pub gap: i32,
+    /// Shows the backpack's own slot.
+    pub slot: bool,
+}
+
+impl Pouch {
+    pub fn rows(&self) -> usize {
+        self.n.div_ceil(POUCH_COLS)
+    }
+
+    /// Where pouch slot `j` is (slot 0 is the bag's slot `BAG`).
+    pub fn slot_pos(&self, j: usize) -> (i32, i32) {
+        let (c, r) = ((j % POUCH_COLS) as i32, (j / POUCH_COLS) as i32);
+        let gap = if r > 0 { self.gap } else { 0 };
+        (self.x + c * CELL, self.y + r * CELL + gap)
+    }
+
+    pub fn hit(&self, p: Vec2) -> Option<usize> {
+        (0..self.n).find(|&j| {
+            let (x, y) = self.slot_pos(j);
+            inside(p, x, y, 18, 18)
+        })
+    }
+
+    /// Where the backpack's own slot is: under the pouch's slots.
+    pub fn pack_pos(&self) -> (i32, i32) {
+        let rows = self.rows() as i32;
+        let gap = if rows > 1 { self.gap } else { 0 };
+        let below = if rows > 0 { 12 } else { 0 };
+        (self.x, self.y + rows * CELL + gap + below)
+    }
+
+    pub fn on_pack(&self, p: Vec2) -> bool {
+        let (x, y) = self.pack_pos();
+        self.slot && inside(p, x, y, 18, 18)
+    }
+
+    /// The panel round it all: (x, y, w, h).
+    pub fn frame(&self) -> (i32, i32, i32, i32) {
+        let top = self.y - 16;
+        let bottom = if self.slot {
+            self.pack_pos().1 + 18 + 16
+        } else {
+            self.slot_pos(self.n.saturating_sub(1)).1 + 18 + 7
+        };
+        (self.x - 7, top, POUCH_W, bottom - top)
+    }
+}
+
+/// How wide the main panel and the pouch's panel beside it are, together.
+pub fn w_with_pouch(l: &Layout) -> i32 {
+    l.pw + POUCH_GAP + POUCH_W
+}
+
+/// The pouch of a backpack with `n` slots beside a bag grid.
+pub fn pouch_of(l: &Layout, bag: &Grid, n: usize, slot: bool) -> Pouch {
+    Pouch {
+        x: l.px + l.pw + POUCH_GAP + 7,
+        y: bag.y,
+        n,
+        gap: bag.gap,
+        slot,
+    }
+}
+
+/// Moves a bag cursor with the arrow keys over the bag (0..40, ten across) and, beside it,
+/// the backpack's pouch (from 40, `POUCH_COLS` across, row for row with the bag). `edge` is
+/// where the cursor goes off either side: the bag tab's worn gear and backpack, say.
+fn step_bag(i: &Input, cursor: usize, pouch: usize, edge: (Option<usize>, Option<usize>)) -> usize {
+    let (left, right) = edge;
+    if cursor < BAG {
+        let (col, row) = (cursor % 10, cursor / 10);
+        if i.pressed_repeat(Action::Left) {
+            if col > 0 {
+                return cursor - 1;
+            }
+            return left.unwrap_or(row * 10 + 9);
+        }
+        if i.pressed_repeat(Action::Right) {
+            if col < 9 {
+                return cursor + 1;
+            }
+            if row * POUCH_COLS < pouch {
+                return BAG + row * POUCH_COLS;
+            }
+            return right.unwrap_or(row * 10);
+        }
+        if i.pressed_repeat(Action::Down) {
+            return (cursor + 10) % BAG;
+        }
+        if i.pressed_repeat(Action::Up) {
+            return (cursor + BAG - 10) % BAG;
+        }
+        return cursor;
+    }
+    let j = cursor - BAG;
+    let (col, row) = (j % POUCH_COLS, j / POUCH_COLS);
+    if i.pressed_repeat(Action::Left) {
+        if col > 0 {
+            return cursor - 1;
+        }
+        return row.min(3) * 10 + 9;
+    }
+    if i.pressed_repeat(Action::Right) {
+        if col + 1 < POUCH_COLS && j + 1 < pouch {
+            return cursor + 1;
+        }
+        return right.unwrap_or(row.min(3) * 10);
+    }
+    if i.pressed_repeat(Action::Down) {
+        if j + POUCH_COLS < pouch {
+            return cursor + POUCH_COLS;
+        }
+        return right.unwrap_or(BAG + col);
+    }
+    if i.pressed_repeat(Action::Up) {
+        if j >= POUCH_COLS {
+            return cursor - POUCH_COLS;
+        }
+        // Round to the bottom of the column.
+        let last = (pouch - 1 - col) / POUCH_COLS * POUCH_COLS + col;
+        return if right.is_some() { cursor } else { BAG + last };
+    }
+    cursor
+}
+
+/// Moves the bag tab's cursor: over the worn gear, the bag, the backpack's pouch and the
+/// backpack's own slot (see `WORN_AT`, `PACK_AT`).
+pub fn nav_inventory(io: &Io, cursor: &mut usize, pouch: usize) {
+    let i = io.input;
+    let before = *cursor;
+    if *cursor >= PACK_AT {
+        if i.pressed_repeat(Action::Up) && pouch > 0 {
+            *cursor = BAG + (pouch - 1) / POUCH_COLS * POUCH_COLS;
+        } else if i.pressed_repeat(Action::Left) {
+            *cursor = if pouch > 0 { BAG + pouch - 1 } else { 9 };
+        } else if i.pressed_repeat(Action::Right) {
+            *cursor = WORN_AT;
+        }
+    } else if *cursor >= WORN_AT {
+        let k = *cursor - WORN_AT;
+        if i.pressed_repeat(Action::Down) {
+            *cursor = WORN_AT + (k + 1) % 5;
+        } else if i.pressed_repeat(Action::Up) {
+            *cursor = WORN_AT + (k + 4) % 5;
+        } else if i.pressed_repeat(Action::Right) {
+            *cursor = k.min(3) * 10;
+        } else if i.pressed_repeat(Action::Left) {
+            *cursor = PACK_AT;
+        }
+    } else {
+        let row = if *cursor < BAG { *cursor / 10 } else { 0 };
+        *cursor = step_bag(i, *cursor, pouch, (Some(WORN_AT + row), Some(PACK_AT)));
+    }
+    if before != *cursor {
+        io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+    }
+}
+
+/// Moves a cursor over the bag and the pouch beside it (as bag indices), with `base` the
+/// cursor of the bag's first slot and anything before it (a chest's slots, say) handled by
+/// `nav` over `before` slots ten across. Returns true if it moved.
+pub fn nav_bag_pouch(io: &Io, cursor: &mut usize, base: usize, pouch: usize) -> bool {
+    let i = io.input;
+    let before = *cursor;
+    if *cursor < base {
+        // Above the bag: plain rows of ten, dropping into the bag's first row.
+        nav(io, cursor, 10, base + BAG);
+        return before != *cursor;
+    }
+    let k = *cursor - base;
+    let up_out = k < 10 && base > 0 && i.pressed_repeat(Action::Up);
+    let down_out = (30..BAG).contains(&k) && base > 0 && i.pressed_repeat(Action::Down);
+    if up_out {
+        *cursor = base - 10 + k;
+    } else if down_out {
+        *cursor = k % 10;
+    } else {
+        *cursor = base + step_bag(i, k, pouch, (None, None));
+    }
+    if before != *cursor {
+        io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
+    }
+    before != *cursor
+}
+
 /// Seeds Burrowby sells; more as you go deeper.
 pub fn shop_seeds(p: &Play) -> Vec<(Item, u32)> {
     let d = p.deepest;
@@ -546,6 +775,61 @@ impl Play {
                     self.held = Some(s);
                     self.player.refresh();
                     io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
+                }
+            }
+        }
+    }
+
+    /// Wears whatever's in bag slot `i`: a piece of armour, or a backpack.
+    fn wear_from(&mut self, i: usize, io: &Io) {
+        let Some(s) = self.player.inv.slots.get(i).copied().flatten() else {
+            return;
+        };
+        let worn = if s.item.pack_style().is_some() {
+            let ok = self.player.wear_pack_from(i);
+            if !ok {
+                self.toast(NO_ROOM, None, 0);
+            }
+            ok
+        } else {
+            self.player.equip_from(i)
+        };
+        io.audio.play(if worn { Sfx::Equip } else { Sfx::Denied });
+    }
+
+    /// The backpack's own slot: put one on (or swap it for the one on the cursor), take it
+    /// off onto the cursor, or (`quick`) straight into the bag.
+    fn pack_click(&mut self, quick: bool, io: &Io) {
+        match self.held {
+            Some(h) if h.item.pack_style().is_some() => match self.player.swap_pack(h) {
+                Ok(old) => {
+                    self.held = old;
+                    io.audio.play(Sfx::Equip);
+                }
+                Err(_) => {
+                    self.toast(NO_ROOM, None, 0);
+                    io.audio.play(Sfx::Denied);
+                }
+            },
+            Some(_) => io.audio.play(Sfx::Denied),
+            None if self.player.pack.is_none() => {}
+            None => {
+                let off = if quick {
+                    self.player.unwear_pack()
+                } else {
+                    match self.player.lift_pack() {
+                        Some(p) => {
+                            self.held = Some(p);
+                            true
+                        }
+                        None => false,
+                    }
+                };
+                if off {
+                    io.audio.play_at(Sfx::Equip, 0.8, 0.9);
+                } else {
+                    self.toast(NO_ROOM, None, 0);
+                    io.audio.play(Sfx::Denied);
                 }
             }
         }
@@ -910,7 +1194,7 @@ impl Play {
                 mut scroll,
                 mut cat,
             } => {
-                let l = panel_layout(w, h);
+                let l = pouch_layout(w, h, true);
                 // Tabs.
                 for (i, (x, tw)) in tab_rects(&l, &[34, 38, 54]).into_iter().enumerate() {
                     if lclick && inside(mouse, x, l.py + 5, tw, 12) {
@@ -947,75 +1231,67 @@ impl Play {
                 match tab {
                     Tab::Bag => {
                         let g = bag_grid(&l, 22);
-                        nav_bag(io, &mut cursor);
-                        let hit = g.hit(mouse);
+                        let pouch = pouch_of(&l, &g, self.player.pack_slots(), true);
+                        nav_inventory(io, &mut cursor, pouch.n);
+                        let hit = g.hit(mouse).or_else(|| pouch.hit(mouse).map(|j| BAG + j));
                         let worn = worn_hit(&l, 22, mouse);
-                        if let Some(i) = hit {
-                            if input.mouse_moved {
+                        let on_pack = pouch.on_pack(mouse);
+                        if input.mouse_moved {
+                            if let Some(i) = hit {
                                 cursor = i;
-                            }
-                        }
-                        if let Some(i) = worn {
-                            if input.mouse_moved {
-                                cursor = 40 + i;
+                            } else if let Some(i) = worn {
+                                cursor = WORN_AT + i;
+                            } else if on_pack {
+                                cursor = PACK_AT;
                             }
                         }
                         if let Some(i) = hit.filter(|_| lclick || rclick) {
-                            let armor = self.player.inv.slots[i]
-                                .is_some_and(|s| s.item.class().is_some_and(|c| c.is_armor()));
-                            if (rclick || shift) && self.held.is_none() && armor {
-                                self.player.equip_from(i);
-                                io.audio.play(Sfx::Equip);
+                            let wearable = self.player.inv.slots[i].is_some_and(|s| wearable(&s));
+                            if (rclick || shift) && self.held.is_none() && wearable {
+                                self.wear_from(i, io);
                             } else {
                                 Self::grid_click(&mut self.held, &mut self.player.inv, i, rclick);
                                 io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
                             }
                         } else if let Some(i) = worn.filter(|_| lclick || rclick) {
                             self.worn_click(i, rclick || shift, io);
-                        } else if input.pressed(Action::Alt) {
-                            // A controller's right click: take off, wear, or split a stack.
-                            if cursor >= 40 {
-                                self.worn_click(cursor - 40, true, io);
-                            } else {
-                                let armor = self.player.inv.slots[cursor]
-                                    .is_some_and(|s| s.item.class().is_some_and(|c| c.is_armor()));
-                                if armor && self.held.is_none() {
-                                    self.player.equip_from(cursor);
-                                    io.audio.play(Sfx::Equip);
+                        } else if on_pack && (lclick || rclick) {
+                            self.pack_click(rclick || shift, io);
+                        } else if input.pressed(Action::Alt) || input.pressed(Action::Confirm) {
+                            // A controller's buttons: A picks up (or wears, or swaps), X is a
+                            // right click (take off, wear, or split a stack).
+                            let alt = input.pressed(Action::Alt);
+                            if cursor >= PACK_AT {
+                                self.pack_click(alt || self.held.is_none(), io);
+                            } else if cursor >= WORN_AT {
+                                self.worn_click(cursor - WORN_AT, alt || self.held.is_none(), io);
+                            } else if cursor < self.player.inv.slots.len() {
+                                let wearable =
+                                    self.player.inv.slots[cursor].is_some_and(|s| wearable(&s));
+                                if wearable && self.held.is_none() {
+                                    self.wear_from(cursor, io);
                                 } else {
                                     Self::grid_click(
                                         &mut self.held,
                                         &mut self.player.inv,
                                         cursor,
-                                        true,
-                                    );
-                                    io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
-                                }
-                            }
-                        } else if input.pressed(Action::Confirm) {
-                            if cursor >= 40 {
-                                self.worn_click(cursor - 40, self.held.is_none(), io);
-                            } else {
-                                let armor = self.player.inv.slots[cursor]
-                                    .is_some_and(|s| s.item.class().is_some_and(|c| c.is_armor()));
-                                if armor && self.held.is_none() {
-                                    self.player.equip_from(cursor);
-                                    io.audio.play(Sfx::Equip);
-                                } else {
-                                    Self::grid_click(
-                                        &mut self.held,
-                                        &mut self.player.inv,
-                                        cursor,
-                                        false,
+                                        alt,
                                     );
                                     io.audio.play_at(Sfx::UiMove, 0.8, 1.2);
                                 }
                             }
                         } else if lclick && !inside(mouse, l.px, l.py, l.pw, l.ph) {
-                            if let Some(hs) = self.held.take() {
-                                self.drop_stack(hs);
-                                io.audio.play(Sfx::Place);
+                            let (fx, fy, fw, fh) = pouch.frame();
+                            if !inside(mouse, fx, fy, fw, fh) {
+                                if let Some(hs) = self.held.take() {
+                                    self.drop_stack(hs);
+                                    io.audio.play(Sfx::Place);
+                                }
                             }
+                        }
+                        // A backpack taken off takes its pouch with it.
+                        if cursor < WORN_AT && cursor >= self.player.inv.slots.len() {
+                            cursor = PACK_AT;
                         }
                     }
                     Tab::Stats => {}
@@ -1097,14 +1373,17 @@ impl Play {
                 }
             }
             Menu::Chest { x, z, mut cursor } => {
-                let l = panel_layout(w, h);
+                let n = self.player.pack_slots();
+                let l = pouch_layout(w, h, n > 0);
                 let cg = chest_grid(&l);
                 let bg = bag_grid(&l, 20 + 3 * CELL + 16);
+                let pouch = pouch_of(&l, &bg, n, false);
                 if input.pressed(Action::Cancel) || input.pressed(Action::Inventory) {
                     self.close_menu(io);
                     return;
                 }
-                nav(io, &mut cursor, 10, 70);
+                nav_bag_pouch(io, &mut cursor, 30, n);
+                cursor = cursor.min(30 + BAG + n - 1);
                 let mut chest = match self.world_mut().obj_mut(x, z) {
                     Some(super::world::Obj::Chest { items }) => Inventory {
                         slots: std::mem::take(items),
@@ -1123,7 +1402,8 @@ impl Play {
                     } else if lclick || rclick {
                         Self::grid_click(&mut self.held, &mut chest, i, rclick);
                     }
-                } else if let Some(i) = bg.hit(mouse) {
+                } else if let Some(i) = bg.hit(mouse).or_else(|| pouch.hit(mouse).map(|j| BAG + j))
+                {
                     if input.mouse_moved {
                         cursor = 30 + i;
                     }
@@ -1168,7 +1448,7 @@ impl Play {
                 mut cursor,
                 mut scroll,
             } => {
-                let l = panel_layout(w, h);
+                let l = pouch_layout(w, h, self.player.pack_slots() > 0);
                 if input.pressed(Action::Cancel) {
                     self.close_menu(io);
                     return;
@@ -1239,7 +1519,7 @@ impl Play {
                                 self.money -= price;
                                 // Plain gear off the shelf still gets its own rolls, except
                                 // fishing rods: the shop's are plain, the Hollow's are not.
-                                let stack = match (stack.item.base(), stack.gear) {
+                                let mut stack = match (stack.item.base(), stack.gear) {
                                     (Some(b), Some(g))
                                         if g.affixes.iter().all(|a| a.is_none())
                                             && b.class != super::gear::Class::Rod =>
@@ -1248,6 +1528,10 @@ impl Play {
                                     }
                                     _ => stack,
                                 };
+                                // A backpack off the shelf comes in colours of its own.
+                                if let Some(p) = &mut stack.pack {
+                                    p.hue = self.rng.below(crate::assets::pack_art::HUES) as u8;
+                                }
                                 self.player.inv.add_stack(stack);
                                 self.on_pickup(stack.item);
                                 if stack.item == Item::Bomb {
@@ -1267,10 +1551,12 @@ impl Play {
                     }
                 } else {
                     let g = bag_grid(&l, 40);
-                    nav(io, &mut cursor, 10, 40);
-                    cursor = cursor.min(39);
+                    let n = self.player.pack_slots();
+                    let pouch = pouch_of(&l, &g, n, false);
+                    nav_bag_pouch(io, &mut cursor, 0, n);
+                    cursor = cursor.min(BAG + n - 1);
                     let mut target = None;
-                    if let Some(i) = g.hit(mouse) {
+                    if let Some(i) = g.hit(mouse).or_else(|| pouch.hit(mouse).map(|j| BAG + j)) {
                         if input.mouse_moved {
                             cursor = i;
                         }
@@ -1311,15 +1597,18 @@ impl Play {
                 }
             }
             Menu::Ship { mut cursor } => {
-                let l = panel_layout(w, h);
+                let n = self.player.pack_slots();
+                let l = pouch_layout(w, h, n > 0);
                 if input.pressed(Action::Cancel) || input.pressed(Action::Inventory) {
                     self.close_menu(io);
                     return;
                 }
                 let g = bag_grid(&l, 60);
-                nav(io, &mut cursor, 10, 40);
+                let pouch = pouch_of(&l, &g, n, false);
+                nav_bag_pouch(io, &mut cursor, 0, n);
+                cursor = cursor.min(BAG + n - 1);
                 let mut target = None;
-                if let Some(i) = g.hit(mouse) {
+                if let Some(i) = g.hit(mouse).or_else(|| pouch.hit(mouse).map(|j| BAG + j)) {
                     if input.mouse_moved {
                         cursor = i;
                     }
@@ -1393,6 +1682,56 @@ impl Play {
         for i in 0..(g.cols * g.rows).min(inv.slots.len()) {
             let (x, y) = g.slot_pos(i);
             self.draw_slot(c, a, x, y, inv.slots[i], cursor == Some(i));
+        }
+    }
+
+    /// A backpack's pouch in its panel beside the main one, and on the bag tab the backpack's
+    /// own slot below it (with a faint outline when there's none on).
+    pub fn draw_pouch(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        pouch: &Pouch,
+        cursor: Option<usize>,
+        on_pack: bool,
+    ) {
+        if pouch.n == 0 && !pouch.slot {
+            return;
+        }
+        let (fx, fy, fw, fh) = pouch.frame();
+        c.panel(fx, fy, fw, fh, Style::Paper);
+        c.text(fx + 7, fy + 4, "Backpack", RUST);
+        for j in 0..pouch.n {
+            let (x, y) = pouch.slot_pos(j);
+            let s = self.player.inv.slots.get(BAG + j).copied().flatten();
+            self.draw_slot(c, a, x, y, s, cursor == Some(j));
+        }
+        if pouch.slot {
+            let (x, y) = pouch.pack_pos();
+            self.draw_slot(c, a, x, y, self.player.pack, on_pack);
+            c.frame(x - 3, y - 3, 24, 24, KHAKI);
+            match self.player.pack {
+                Some(p) => {
+                    let r = p.rarity().unwrap_or_default();
+                    c.text(
+                        x + 24,
+                        y + 1,
+                        &format!("+{} slots", p.pack_slots()),
+                        r.ink(),
+                    );
+                    c.text(x + 24, y + 10, r.name(), KHAKI);
+                }
+                None => {
+                    c.sprite(
+                        a.tex(a.icon(super::super::assets::pack_art::ICONS[1])),
+                        x + 1,
+                        y + 1,
+                    );
+                    c.shade(x + 1, y + 1, 16, 16, 1);
+                    c.text(x + 24, y + 1, "None on", KHAKI);
+                    c.text(x + 24, y + 10, "(more room!)", KHAKI);
+                }
+            }
         }
     }
 
@@ -1654,7 +1993,7 @@ impl Play {
                 scroll,
                 cat,
             } => {
-                let l = panel_layout(w, h);
+                let l = pouch_layout(w, h, true);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 let ti = match tab {
                     Tab::Bag => 0,
@@ -1677,7 +2016,8 @@ impl Play {
                 }
             }
             Menu::Chest { x, z, cursor } => {
-                let l = panel_layout(w, h);
+                let n = self.player.pack_slots();
+                let l = pouch_layout(w, h, n > 0);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 c.text(l.px + 10, l.py + 7, "Chest", RUST);
                 let tip = if self.pad {
@@ -1699,22 +2039,21 @@ impl Play {
                         if *cursor < 30 { Some(*cursor) } else { None },
                     );
                     let bg = bag_grid(&l, 20 + 3 * CELL + 16);
+                    let pouch = pouch_of(&l, &bg, n, false);
                     c.text(bg.x, bg.y - 11, "Bag", RUST);
-                    self.draw_grid(
-                        c,
-                        a,
-                        &bg,
-                        &self.player.inv,
-                        if *cursor >= 30 {
-                            Some(*cursor - 30)
-                        } else {
-                            None
-                        },
-                    );
+                    let mine = cursor.checked_sub(30);
+                    self.draw_grid(c, a, &bg, &self.player.inv, mine.filter(|&i| i < BAG));
+                    self.draw_pouch(c, a, &pouch, mine.and_then(|i| i.checked_sub(BAG)), false);
                     if self.held.is_none() {
                         let at = |i: usize| {
                             if i < 30 {
                                 (inv.slots.get(i).copied().flatten(), cg.slot_pos(i))
+                            } else if i - 30 >= BAG {
+                                let k = i - 30;
+                                (
+                                    self.player.inv.slots.get(k).copied().flatten(),
+                                    pouch.slot_pos(k - BAG),
+                                )
                             } else {
                                 (self.player.inv.slots[i - 30], bg.slot_pos(i - 30))
                             }
@@ -1722,9 +2061,18 @@ impl Play {
                         let hover = cg
                             .hit(mouse)
                             .or_else(|| bg.hit(mouse).map(|i| i + 30))
+                            .or_else(|| pouch.hit(mouse).map(|j| 30 + BAG + j))
                             .map_or_else(|| at(*cursor), at);
                         if let (Some(s), (sx, sy)) = hover {
-                            self.tip_at(c, a, &l, sx, sy, &s);
+                            let tip = if n > 0 {
+                                Layout {
+                                    pw: w_with_pouch(&l),
+                                    ..l
+                                }
+                            } else {
+                                l
+                            };
+                            self.tip_at(c, a, &tip, sx, sy, &s);
                         }
                     }
                 }
@@ -1751,14 +2099,15 @@ impl Play {
             Menu::Controls { deck } => self.draw_controls(c, *deck),
             Menu::Tank { x, z, cursor } => self.draw_tank(c, a, *x, *z, *cursor, mouse),
             Menu::Ship { cursor } => {
-                let l = panel_layout(w, h);
+                let n = self.player.pack_slots();
+                let l = pouch_layout(w, h, n > 0);
                 c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
                 c.text(l.px + 10, l.py + 7, "Shipping bin - sold overnight", RUST);
                 c.panel(l.px + 8, l.py + 20, l.pw - 16, 34, Style::Inset);
                 let total: u64 = self.shipping.iter().map(|s| s.value()).sum();
                 for (i, s) in self.shipping.iter().rev().take(11).enumerate() {
                     let x = l.px + 10 + i as i32 * 19;
-                    c.sprite(a.tex(a.icon(s.item.def().icon)), x, l.py + 22);
+                    c.sprite(a.tex(a.stack_icon(s)), x, l.py + 22);
                     if s.n > 1 {
                         c.tiny(x + 16, l.py + 33, &s.n.to_string(), WHITE, INK);
                     }
@@ -1772,9 +2121,12 @@ impl Play {
                     SHADOW,
                 );
                 let g = bag_grid(&l, 60);
+                let pouch = pouch_of(&l, &g, n, false);
                 self.draw_grid(c, a, &g, &self.player.inv, Some(*cursor));
-                if let Some(i) = g.hit(mouse).or(Some(*cursor)) {
-                    if let Some(s) = self.player.inv.slots[i] {
+                self.draw_pouch(c, a, &pouch, cursor.checked_sub(BAG), false);
+                let hover = g.hit(mouse).or_else(|| pouch.hit(mouse).map(|j| BAG + j));
+                if let Some(i) = hover.or(Some(*cursor)) {
+                    if let Some(s) = self.player.inv.slots.get(i).copied().flatten() {
                         let t = format!("{} x{} -", s.name(), s.n);
                         let tw = c.text(l.px + 10, g.y + g.h() + 8, &t, INK);
                         draw_money(c, a, l.px + 14 + tw, g.y + g.h() + 8, s.value(), RUST);
@@ -1793,7 +2145,7 @@ impl Play {
         // The stack being carried rides on the cursor (or follows the mouse).
         if let Some(hs) = self.held {
             let (x, y) = self.held_spot(w, h, mouse, pointer);
-            c.sprite(a.tex(a.icon(hs.item.def().icon)), x, y);
+            c.sprite(a.tex(a.stack_icon(&hs)), x, y);
             if hs.n > 1 {
                 c.tiny(x + 16, y + 11, &hs.n.to_string(), WHITE, INK);
             }
@@ -1813,16 +2165,32 @@ impl Play {
                 tab: Tab::Bag,
                 cursor,
                 ..
-            } => Some(if cursor < 40 {
-                bag_grid(&l, 22).slot_pos(cursor)
-            } else {
-                worn_pos(&l, 22, cursor - 40)
-            }),
-            Menu::Chest { cursor, .. } => Some(if cursor < 30 {
-                chest_grid(&l).slot_pos(cursor)
-            } else {
-                bag_grid(&l, 20 + 3 * CELL + 16).slot_pos(cursor - 30)
-            }),
+            } => {
+                let l = pouch_layout(w, h, true);
+                let g = bag_grid(&l, 22);
+                let pouch = pouch_of(&l, &g, self.player.pack_slots(), true);
+                Some(if cursor >= PACK_AT {
+                    pouch.pack_pos()
+                } else if cursor >= WORN_AT {
+                    worn_pos(&l, 22, cursor - WORN_AT)
+                } else if cursor >= BAG {
+                    pouch.slot_pos(cursor - BAG)
+                } else {
+                    g.slot_pos(cursor)
+                })
+            }
+            Menu::Chest { cursor, .. } => {
+                let l = pouch_layout(w, h, self.player.pack_slots() > 0);
+                let g = bag_grid(&l, 20 + 3 * CELL + 16);
+                let pouch = pouch_of(&l, &g, self.player.pack_slots(), false);
+                Some(if cursor < 30 {
+                    chest_grid(&l).slot_pos(cursor)
+                } else if cursor - 30 >= BAG {
+                    pouch.slot_pos(cursor - 30 - BAG)
+                } else {
+                    g.slot_pos(cursor - 30)
+                })
+            }
             _ => None,
         };
         match slot {
@@ -1833,23 +2201,29 @@ impl Play {
 
     fn draw_bag_tab(&self, c: &mut Canvas, a: &Assets, l: &Layout, cursor: usize, mouse: Vec2) {
         let g = bag_grid(l, 22);
+        let pouch = pouch_of(l, &g, self.player.pack_slots(), true);
         self.draw_grid(
             c,
             a,
             &g,
             &self.player.inv,
-            if cursor < 40 { Some(cursor) } else { None },
+            if cursor < BAG { Some(cursor) } else { None },
         );
         self.draw_worn(
             c,
             a,
             l,
             22,
-            if cursor >= 40 {
-                Some(cursor - 40)
-            } else {
-                None
-            },
+            (WORN_AT..PACK_AT)
+                .contains(&cursor)
+                .then(|| cursor - WORN_AT),
+        );
+        self.draw_pouch(
+            c,
+            a,
+            &pouch,
+            cursor.checked_sub(BAG).filter(|_| cursor < WORN_AT),
+            cursor >= PACK_AT,
         );
         // Hotbar marker.
         let (hx, hy) = g.slot_pos(self.player.sel);
@@ -1900,29 +2274,48 @@ impl Play {
             },
             KHAKI,
         );
-        let hover_bag = g
-            .hit(mouse)
-            .or(if cursor < 40 { Some(cursor) } else { None });
-        let hover_worn = worn_hit(l, 22, mouse).or(if cursor >= 40 {
-            Some(cursor - 40)
-        } else {
-            None
-        });
+        // What's under the mouse (or else the cursor) gets its tooltip, beside it (the pouch
+        // takes the room to the right of the panel).
         if self.held.is_none() {
-            if let Some(i) = worn_hit(l, 22, mouse).or(if g.hit(mouse).is_none() {
-                hover_worn
+            let under = if let Some(i) = g.hit(mouse) {
+                Some(i)
+            } else if let Some(j) = pouch.hit(mouse) {
+                Some(BAG + j)
+            } else if let Some(i) = worn_hit(l, 22, mouse) {
+                Some(WORN_AT + i)
+            } else if pouch.on_pack(mouse) {
+                Some(PACK_AT)
             } else {
-                None
-            }) {
-                if let Some(s) = self.player.equip[i] {
-                    let (sx, sy) = worn_pos(l, 22, i);
-                    self.tip_at(c, a, l, sx, sy, &s);
+                Some(cursor)
+            };
+            let tip = Layout {
+                pw: w_with_pouch(l),
+                ..*l
+            };
+            match under {
+                Some(k) if k >= PACK_AT => {
+                    if let Some(s) = self.player.pack {
+                        let (sx, sy) = pouch.pack_pos();
+                        self.tip_at(c, a, &tip, sx, sy, &s);
+                    }
                 }
-            } else if let Some(i) = hover_bag {
-                if let Some(s) = self.player.inv.slots[i] {
-                    let (sx, sy) = g.slot_pos(i);
-                    self.tip_at(c, a, l, sx, sy, &s);
+                Some(k) if k >= WORN_AT => {
+                    if let Some(s) = self.player.equip[k - WORN_AT] {
+                        let (sx, sy) = worn_pos(l, 22, k - WORN_AT);
+                        self.tip_at(c, a, &tip, sx, sy, &s);
+                    }
                 }
+                Some(k) => {
+                    if let Some(s) = self.player.inv.slots.get(k).copied().flatten() {
+                        let (sx, sy) = if k >= BAG {
+                            pouch.slot_pos(k - BAG)
+                        } else {
+                            g.slot_pos(k)
+                        };
+                        self.tip_at(c, a, &tip, sx, sy, &s);
+                    }
+                }
+                None => {}
             }
         }
     }
@@ -2199,7 +2592,8 @@ impl Play {
         mouse: Vec2,
     ) {
         let (w, h) = (c.w(), c.h());
-        let l = panel_layout(w, h);
+        let n = self.player.pack_slots();
+        let l = pouch_layout(w, h, n > 0);
         c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
         let all = shops::tabs(at);
         let ti = all.iter().position(|t| *t == tab).unwrap_or(0);
@@ -2294,9 +2688,12 @@ impl Play {
                 SHADOW,
             );
             let g = bag_grid(&l, 40);
+            let pouch = pouch_of(&l, &g, n, false);
             self.draw_grid(c, a, &g, &self.player.inv, Some(cursor));
-            if let Some(i) = g.hit(mouse).or(Some(cursor)) {
-                if let Some(s) = self.player.inv.slots[i] {
+            self.draw_pouch(c, a, &pouch, cursor.checked_sub(BAG), false);
+            let hover = g.hit(mouse).or_else(|| pouch.hit(mouse).map(|j| BAG + j));
+            if let Some(i) = hover.or(Some(cursor)) {
+                if let Some(s) = self.player.inv.slots.get(i).copied().flatten() {
                     let y = g.y + g.h() + 8;
                     if can_sell(&s) {
                         let rate = self.sell_rate(at, &s);
@@ -2309,8 +2706,20 @@ impl Play {
                     } else {
                         c.text(l.px + 10, y, &format!("{} - keep this one!", s.name()), INK);
                     }
-                    let (sx, sy) = g.slot_pos(i);
-                    self.tip_at(c, a, &l, sx, sy, &s);
+                    let (sx, sy) = if i >= BAG {
+                        pouch.slot_pos(i - BAG)
+                    } else {
+                        g.slot_pos(i)
+                    };
+                    let tip = if n > 0 {
+                        Layout {
+                            pw: w_with_pouch(&l),
+                            ..l
+                        }
+                    } else {
+                        l
+                    };
+                    self.tip_at(c, a, &tip, sx, sy, &s);
                 }
             }
         }
