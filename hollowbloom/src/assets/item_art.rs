@@ -188,7 +188,7 @@ const OLD_COIN: &[&str] = &[
     ".....KKKKKK.....",
 ];
 
-const ACORN: &[&str] = &[
+pub(super) const ACORN: &[&str] = &[
     "................",
     "................",
     ".......KK.......",
@@ -405,7 +405,7 @@ const CHITIN: &[&str] = &[
 // Crops
 // ------------------------------------------------------------------------------------------
 
-const ROUND_FRUIT: &[&str] = &[
+pub(super) const ROUND_FRUIT: &[&str] = &[
     "................",
     "................",
     ".......KK.......",
@@ -422,7 +422,7 @@ const ROUND_FRUIT: &[&str] = &[
     "......KKKK......",
 ];
 
-const ROOT: &[&str] = &[
+pub(super) const ROOT: &[&str] = &[
     "................",
     "....KK...KK.....",
     "...K33K.K33K....",
@@ -456,7 +456,7 @@ const EARS_ROOT: &[&str] = &[
     ".......K........",
 ];
 
-const POTATO: &[&str] = &[
+pub(super) const POTATO: &[&str] = &[
     "................",
     "................",
     "................",
@@ -473,7 +473,7 @@ const POTATO: &[&str] = &[
     ".....KKKKKKK....",
 ];
 
-const CABBAGE: &[&str] = &[
+pub(super) const CABBAGE: &[&str] = &[
     "................",
     "................",
     "......KKKK......",
@@ -537,7 +537,7 @@ const CORN: &[&str] = &[
     ".......KK.......",
 ];
 
-const EGGPLANT: &[&str] = &[
+pub(super) const EGGPLANT: &[&str] = &[
     "................",
     "..........KK....",
     ".........KgK....",
@@ -588,7 +588,7 @@ const SUNFLOWER: &[&str] = &[
     "......KK........",
 ];
 
-const ROSE: &[&str] = &[
+pub(super) const ROSE: &[&str] = &[
     "................",
     "......KKKK......",
     ".....KrcrrK.....",
@@ -620,7 +620,7 @@ const POD: &[&str] = &[
     "...KKKKKKKKKK...",
 ];
 
-const PEAR: &[&str] = &[
+pub(super) const PEAR: &[&str] = &[
     "................",
     ".......KK.......",
     "......KuK.KK....",
@@ -654,7 +654,7 @@ const GOURD: &[&str] = &[
     ".....KKKKKKKK...",
 ];
 
-const TULIP: &[&str] = &[
+pub(super) const TULIP: &[&str] = &[
     "................",
     "................",
     "....K..KK..K....",
@@ -673,7 +673,7 @@ const TULIP: &[&str] = &[
     ".......KK.......",
 ];
 
-const SPRIG: &[&str] = &[
+pub(super) const SPRIG: &[&str] = &[
     "................",
     ".......KK.......",
     "......K00K......",
@@ -803,7 +803,7 @@ const BREAD: &[&str] = &[
     "..KKKKKKKKKKKK..",
 ];
 
-const BAKED: &[&str] = &[
+pub(super) const BAKED: &[&str] = &[
     "................",
     "................",
     "................",
@@ -833,7 +833,7 @@ const MUFFIN: &[&str] = &[
     "....KKKKKKKK....",
 ];
 
-const CUP: &[&str] = &[
+pub(super) const CUP: &[&str] = &[
     "................",
     "......K..K......",
     ".......K..K.....",
@@ -850,7 +850,7 @@ const CUP: &[&str] = &[
     "...KKKKKKKKK....",
 ];
 
-const GLASS: &[&str] = &[
+pub(super) const GLASS: &[&str] = &[
     "................",
     "..........K.....",
     ".........K......",
@@ -881,7 +881,7 @@ const POPCORN: &[&str] = &[
     "....KKKKKKKK....",
 ];
 
-const CAKE: &[&str] = &[
+pub(super) const CAKE: &[&str] = &[
     "................",
     "................",
     "........K.......",

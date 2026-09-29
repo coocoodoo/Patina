@@ -169,6 +169,9 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::FreshBread,
             Item::MintTea,
             Item::TinyCrown,
+            Item::Pumpkin,
+            Item::Chrysanthemum,
+            Item::Poinsettia,
         ],
         hates: &[Item::SlimeGel, Item::Bone],
         hello: "Oh! A new face! You must be the one who took on the old farm over the \
@@ -210,6 +213,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::IronOre,
             Item::VeggieStew,
             Item::BatWing,
+            Item::RoastedChestnuts,
+            Item::StuffedPeppers,
         ],
         hates: &[Item::Rose, Item::Popcorn],
         hello: "So you're the farmer who goes down the Hollow. Brave, or a little mad - \
@@ -253,7 +258,15 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         ],
         haunts: &[(55, 12), (58, 21), (65, 15), (65, 24)],
         loves: &[Item::WishStar, Item::Moonbloom, Item::StarFossil],
-        likes: &[Item::Amethyst, Item::WispDust, Item::MintTea, Item::Glowcap],
+        likes: &[
+            Item::Amethyst,
+            Item::WispDust,
+            Item::MintTea,
+            Item::Glowcap,
+            Item::LavenderTea,
+            Item::Bluebell,
+            Item::SnowRoseTea,
+        ],
         hates: &[Item::GhostPepper],
         hello: "Hm? Ah, a visitor. Forgive me, I was reading. The Moonquill Scriptorium \
                 sells scrolls for the enchanting table - weapon, armour and tool, each \
@@ -298,6 +311,9 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::CopperOre,
             Item::CrabShell,
             Item::BeetleShell,
+            Item::KaleStew,
+            Item::Crabapple,
+            Item::HollyCake,
         ],
         hates: &[Item::JellyShroom],
         hello: "HA! Another adventurer with no armour worth the name! Come in, come in. \
@@ -354,6 +370,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::Wood,
             Item::BrookTrout,
             Item::Bait,
+            Item::Watermelon,
+            Item::PumpkinSoup,
         ],
         hates: &[Item::FrostLily, Item::SoggyBoot],
         hello: "...Hm. Sprig & Steel. Swords, wands, staffs. And rods - fishing's the only \
@@ -402,6 +420,9 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::GlassMarble,
             Item::LostButton,
             Item::Popcorn,
+            Item::CandyCorn,
+            Item::Frostberry,
+            Item::WatermelonSlush,
         ],
         hates: &[Item::Fiber],
         hello: "Oh! Hi! Hello! Are you the farmer? Do you need a hoe? A better hoe? A hoe \
@@ -448,6 +469,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::Emerald,
             Item::Topaz,
             Item::Amethyst,
+            Item::SnowRose,
+            Item::Grapes,
         ],
         hates: &[Item::Bone, Item::SlimeGel],
         hello: "Welcome to Glimmer & Gold, darling. I buy gems and curios at the finest \
@@ -495,6 +518,9 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::BlueberryMuffin,
             Item::Fiber,
             Item::LilyKoi,
+            Item::Cosmos,
+            Item::Poppy,
+            Item::Mistletoe,
         ],
         hates: &[Item::Ectoplasm, Item::TinCan],
         hello: "Oh, hello! Come in out of the draught. The Cozy Nook has everything to make \
@@ -543,6 +569,10 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::SweetPea,
             Item::FrostLily,
             Item::Strawberry,
+            Item::PastelTulip,
+            Item::Daffodil,
+            Item::Hibiscus,
+            Item::Snowdrop,
         ],
         hates: &[Item::ShroomCap],
         hello: "Hiiii! Welcome to Sproutling Seeds! Every seed is a tiny promise! I stock \
@@ -585,7 +615,15 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         ],
         haunts: &[(35, 21), (33, 27)],
         loves: &[Item::Strawberry, Item::GoldenAcorn, Item::AncientGrain],
-        likes: &[Item::Wheat, Item::Blueberry, Item::CarrotCake, Item::Corn],
+        likes: &[
+            Item::Wheat,
+            Item::Blueberry,
+            Item::CarrotCake,
+            Item::Corn,
+            Item::SweetCherry,
+            Item::CherryTart,
+            Item::Cranberry,
+        ],
         hates: &[Item::GhostPepper],
         hello: "Well aren't you a sight! Come here, you look half-starved. Honeycrumb \
                 Bakery has fresh bread, cakes and treats - and every one of them gives \
@@ -624,7 +662,15 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         hours: &[(480.0, 540.0, Town), (540.0, 1500.0, Inside(Place::Tavern))],
         haunts: &[(54, 34), (45, 34)],
         loves: &[Item::AncientGrain, Item::TruffleRisotto, Item::LavaLemonade],
-        likes: &[Item::Wheat, Item::Corn, Item::Potato, Item::Garlic],
+        likes: &[
+            Item::Wheat,
+            Item::Corn,
+            Item::Potato,
+            Item::Garlic,
+            Item::Pineapple,
+            Item::GrapeJuice,
+            Item::SweetPotato,
+        ],
         hates: &[Item::WispDust],
         hello: "Welcome to the Sleepy Snail, friend! Best stew this side of the Hollow, \
                 and the only place in town open past dark. Sit, eat, listen to the gossip. \
@@ -664,7 +710,15 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         ],
         haunts: &[(6, 42), (9, 25), (12, 26), (15, 25)],
         loves: &[Item::ChippedTeacup, Item::PlumPudding, Item::SweetPea],
-        likes: &[Item::Rose, Item::MintTea, Item::Blueberry, Item::PumpkinPie],
+        likes: &[
+            Item::Rose,
+            Item::MintTea,
+            Item::Blueberry,
+            Item::PumpkinPie,
+            Item::RhubarbCrumble,
+            Item::PeachCobbler,
+            Item::Lavender,
+        ],
         hates: &[Item::ImpHorn],
         hello: "Oh my, what a sweet face. You remind me of my Albert, when he was young. \
                 He used to go down that Hollow too, you know. Come and visit an old \
@@ -709,6 +763,9 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::Strawberry,
             Item::ToyBoat,
             Item::BatWing,
+            Item::CandyCorn,
+            Item::PineappleCake,
+            Item::FrostberrySorbet,
         ],
         hates: &[Item::Garlic, Item::Cabbage],
         hello: "WHOA! Are you a REAL adventurer?! Have you fought a slime? Have you \
@@ -748,7 +805,15 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         ],
         haunts: &[(16, 10), (26, 12), (65, 30), (5, 24), (18, 25)],
         loves: &[Item::Truffle, Item::JellyShroom, Item::CrystalBerry],
-        likes: &[Item::Glowcap, Item::Spore, Item::ShroomCap, Item::Puffball],
+        likes: &[
+            Item::Glowcap,
+            Item::Spore,
+            Item::ShroomCap,
+            Item::Puffball,
+            Item::Snowdrop,
+            Item::Cloudberry,
+            Item::Chestnut,
+        ],
         hates: &[Item::Popcorn],
         hello: "Oh, hello - careful, don't step on the moss, it's a rare strain. I'm \
                 Juniper. I study the plants that grow in the Hollow. Did you know they \
@@ -792,6 +857,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::AncientCoin,
             Item::GlassMarble,
             Item::Starfruit,
+            Item::Honeydew,
+            Item::Raspberry,
         ],
         hates: &[Item::Cabbage],
         hello: "Ahh, a new verse walks into my song! I am Bramble, bard of the byways, \
@@ -836,6 +903,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::Radish,
             Item::LostButton,
             Item::Tomato,
+            Item::SnowMelon,
+            Item::Peach,
         ],
         hates: &[Item::Ectoplasm],
         hello: "Ribbit! Ha, sorry, habit. I'm Toby, I deliver the post! Rain or shine - \
@@ -879,7 +948,14 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         ],
         haunts: &[(34, 42), (35, 34), (21, 30), (30, 24)],
         loves: &[Item::DragonScale, Item::FrostGem, Item::AncientCoin],
-        likes: &[Item::IronOre, Item::Bone, Item::FrostMint, Item::VeggieStew],
+        likes: &[
+            Item::IronOre,
+            Item::Bone,
+            Item::FrostMint,
+            Item::VeggieStew,
+            Item::Parsnip,
+            Item::BrusselsSprouts,
+        ],
         hates: &[Item::Sunflower],
         hello: "Halt! Who goes... oh, a farmer. Forgive me, old habits. Sir Clank, knight \
                 of the Frost Guard, retired. I fought on floor fifty when it was just \
@@ -923,6 +999,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::Moonstone,
             Item::WishStar,
             Item::WispDust,
+            Item::SnowMelon,
+            Item::Bluebell,
         ],
         hates: &[Item::EmberPepper],
         hello: "Mm? Oh... hello. Sorry, I'm usually asleep at this hour. I watch the \
@@ -963,7 +1041,16 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
         ],
         haunts: &[(16, 32), (5, 23), (18, 23), (32, 23), (38, 29), (65, 24)],
         loves: &[Item::Sunflower, Item::Cabbage, Item::MossMelon],
-        likes: &[Item::Turnip, Item::Potato, Item::Tomato, Item::SporePumpkin],
+        likes: &[
+            Item::Turnip,
+            Item::Potato,
+            Item::Tomato,
+            Item::SporePumpkin,
+            Item::Zucchini,
+            Item::Butternut,
+            Item::Beetroot,
+            Item::ButterLettuce,
+        ],
         hates: &[Item::Bone],
         hello: "Morning! Mind the flower beds - well, what's left of them. I'm Olive, I \
                 look after Bramblewick's green bits. The beds have been bare for years. \
@@ -1015,6 +1102,8 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             Item::Amethyst,
             Item::MintTea,
             Item::Glowcap,
+            Item::Mistletoe,
+            Item::Lavender,
         ],
         hates: &[Item::Garlic, Item::Bone],
         hello: "Oh! Careful, that cauldron bites. Welcome to the Starfall Spellery! I'm Hazel. \

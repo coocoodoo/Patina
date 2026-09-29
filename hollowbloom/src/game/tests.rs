@@ -2996,3 +2996,87 @@ fn the_cat_and_the_spider_play_together() {
     assert!(s.play.pet_nearby(&mut io));
     assert!(s.play.spider.expect("still here").wave > 0.0 || s.play.cat.pet > 0.0);
 }
+
+#[test]
+fn seasonal_crops_keep_to_their_season() {
+    use super::play::SEASON_DAYS;
+    let mut s = Sim::new();
+    s.play.clock.day = 1;
+    clear_farm_tile(&mut s.play, 35, 15);
+    clear_farm_tile(&mut s.play, 35, 16);
+    s.play.farm.set_floor(35, 16, Floor::Tilled);
+    s.stand(35, 15, Vec2::new(0.0, 1.0));
+    s.frames(2);
+
+    // Snowdrops wait for winter...
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::SnowdropBulb, 3));
+    s.select(5);
+    s.tap(KeyCode::KeyJ, 5);
+    assert!(s.play.farm.obj(35, 16).is_none(), "no snowdrops in spring");
+    assert_eq!(s.play.player.inv.count(Item::SnowdropBulb), 3);
+    assert!(
+        s.play
+            .toasts
+            .iter()
+            .any(|t| t.text.contains("only grows in winter")),
+        "says why"
+    );
+
+    // ...but tulips go straight in.
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::TulipBulb, 3));
+    s.tap(KeyCode::KeyJ, 5);
+    assert!(matches!(
+        s.play.farm.obj(35, 16),
+        Some(Obj::Crop {
+            crop: Crop::PastelTulip,
+            ..
+        })
+    ));
+    // A year-round turnip beside it lives through the change of season.
+    clear_farm_tile(&mut s.play, 36, 16);
+    s.play.farm.set_floor(36, 16, Floor::Tilled);
+    s.play.farm.set_obj(
+        36,
+        16,
+        Some(Obj::Crop {
+            crop: Crop::Turnip,
+            days: 0,
+            harvested: false,
+        }),
+    );
+
+    // The last day of spring warns about the tulip...
+    s.play.clock.day = SEASON_DAYS - 1;
+    s.play.start_fade(Trans::Sleep { passed_out: false });
+    s.frames(60);
+    assert_eq!(s.play.clock.season_day(), SEASON_DAYS);
+    let notes = &s.play.last_summary.as_ref().unwrap().notes;
+    assert!(
+        notes
+            .iter()
+            .any(|(n, _)| n.contains("Last day of Spring! 1 crop")),
+        "{notes:?}"
+    );
+
+    // ...and the first night of summer wilts it into a weed.
+    s.play.menu = Menu::None;
+    s.play.start_fade(Trans::Sleep { passed_out: false });
+    s.frames(60);
+    assert_eq!(s.play.clock.season(), super::play::Season::Summer);
+    assert!(matches!(s.play.farm.obj(35, 16), Some(Obj::Weed { .. })));
+    assert!(matches!(
+        s.play.farm.obj(36, 16),
+        Some(Obj::Crop {
+            crop: Crop::Turnip,
+            ..
+        })
+    ));
+    let notes = &s.play.last_summary.as_ref().unwrap().notes;
+    assert!(notes.iter().any(|(n, _)| n.contains("Summer is here")));
+    assert!(
+        notes
+            .iter()
+            .any(|(n, _)| n.contains("1 out-of-season crop withered")),
+        "{notes:?}"
+    );
+}

@@ -251,6 +251,47 @@ items! {
     StarfruitSeeds = "starfruit_seeds", "Starfruit Seeds", "starfruit_seeds", 99, 200, Kind::Seed(Crop::Starfruit), "Shaped like a wish. Glows. 12 days.";
     GhostPepperSeeds = "ghost_pepper_seeds", "Ghost Pepper Seeds", "ghost_pepper_seeds", 99, 90, Kind::Seed(Crop::GhostPepper), "Boo! 7 days, then every 3.";
     AncientGrainSeeds = "ancient_grain_seeds", "Ancient Grain Seeds", "ancient_grain_seeds", 99, 100, Kind::Seed(Crop::AncientGrain), "From a forgotten farm. 6 days.";
+    // Seasonal seeds: each grows only in its season (see `Crop::seasons`).
+    TulipBulb = "tulip_bulb", "Tulip Bulb", "tulip_bulb", 99, 30, Kind::Seed(Crop::PastelTulip), "Spring only. Pastel petals in 6 days.";
+    DaffodilBulb = "daffodil_bulb", "Daffodil Bulb", "daffodil_bulb", 99, 25, Kind::Seed(Crop::Daffodil), "Spring only. Sunny trumpets in 5 days.";
+    BluebellBulb = "bluebell_bulb", "Bluebell Bulb", "bluebell_bulb", 99, 30, Kind::Seed(Crop::Bluebell), "Spring only. Little blue bells in 6 days.";
+    LavenderSeeds = "lavender_seeds", "Lavender Seeds", "lavender_seeds", 99, 35, Kind::Seed(Crop::Lavender), "Spring and Summer. Sweet-smelling sprigs in 6 days, then every 3.";
+    CherryPits = "cherry_pits", "Cherry Pits", "cherry_pits", 99, 60, Kind::Seed(Crop::SweetCherry), "Spring only. Cherries in pairs in 8 days, then every 3.";
+    CloudberrySeeds = "cloudberry_seeds", "Cloudberry Seeds", "cloudberry_seeds", 99, 45, Kind::Seed(Crop::Cloudberry), "Spring only. Golden berries in 7 days, then every 2.";
+    RhubarbCrown = "rhubarb_crown", "Rhubarb Crown", "rhubarb_crown", 99, 50, Kind::Seed(Crop::Rhubarb), "Spring only. Rosy stalks in 9 days.";
+    OnionSeeds = "onion_seeds", "Spring Onion Seeds", "onion_seeds", 99, 15, Kind::Seed(Crop::SpringOnion), "Spring only. Zingy onions in 3 days.";
+    LettuceSeeds = "lettuce_seeds", "Lettuce Seeds", "lettuce_seeds", 99, 20, Kind::Seed(Crop::ButterLettuce), "Spring and Autumn. Soft heads in 4 days.";
+    BabyCarrotSeeds = "baby_carrot_seeds", "Baby Carrot Seeds", "baby_carrot_seeds", 99, 18, Kind::Seed(Crop::BabyCarrot), "Spring only. Tiny carrots in 4 days.";
+    WatermelonSeeds = "watermelon_seeds", "Watermelon Seeds", "watermelon_seeds", 99, 60, Kind::Seed(Crop::Watermelon), "Summer only. Great big melons in 10 days.";
+    HoneydewSeeds = "honeydew_seeds", "Honeydew Seeds", "honeydew_seeds", 99, 55, Kind::Seed(Crop::Honeydew), "Summer only. Pale sweet melons in 9 days.";
+    PineappleTop = "pineapple_top", "Pineapple Top", "pineapple_top", 99, 90, Kind::Seed(Crop::Pineapple), "Summer only. Plant the crown in 12 days.";
+    PeachPit = "peach_pit", "Peach Pit", "peach_pit", 99, 70, Kind::Seed(Crop::Peach), "Summer only. Fuzzy peaches in 9 days, then every 3.";
+    RaspberryCanes = "raspberry_canes", "Raspberry Canes", "raspberry_canes", 99, 50, Kind::Seed(Crop::Raspberry), "Summer only. Thimble berries in 7 days, then every 2.";
+    BellPepperSeeds = "bell_pepper_seeds", "Bell Pepper Seeds", "bell_pepper_seeds", 99, 40, Kind::Seed(Crop::BellPepper), "Summer and Autumn. Crunchy peppers in 6 days, then every 3.";
+    ZucchiniSeeds = "zucchini_seeds", "Zucchini Seeds", "zucchini_seeds", 99, 35, Kind::Seed(Crop::Zucchini), "Summer only. Endless zucchini in 5 days, then every 3.";
+    HibiscusSeeds = "hibiscus_seeds", "Hibiscus Seeds", "hibiscus_seeds", 99, 40, Kind::Seed(Crop::Hibiscus), "Summer only. Tropical blooms in 6 days.";
+    PoppySeeds = "poppy_seeds", "Poppy Seeds", "poppy_seeds", 99, 25, Kind::Seed(Crop::Poppy), "Summer only. Scarlet poppies in 4 days.";
+    CosmosSeeds = "cosmos_seeds", "Cosmos Seeds", "cosmos_seeds", 99, 30, Kind::Seed(Crop::Cosmos), "Summer only. Dancing flowers in 5 days.";
+    HarvestPumpkinSeeds = "harvest_pumpkin_seeds", "Pumpkin Seeds", "harvest_pumpkin_seeds", 99, 70, Kind::Seed(Crop::Pumpkin), "Autumn only. Big orange pumpkins in 11 days.";
+    SquashSeeds = "squash_seeds", "Squash Seeds", "squash_seeds", 99, 50, Kind::Seed(Crop::Butternut), "Autumn only. Butternut squash in 9 days.";
+    SweetPotatoSlips = "sweet_potato_slips", "Sweet Potato Slips", "sweet_potato_slips", 99, 35, Kind::Seed(Crop::SweetPotato), "Autumn only. Rosy tubers in 6 days.";
+    CranberrySeeds = "cranberry_seeds", "Cranberry Seeds", "cranberry_seeds", 99, 55, Kind::Seed(Crop::Cranberry), "Autumn only. Tart little berries in 7 days, then every 2.";
+    GrapeVine = "grape_vine", "Grape Vine", "grape_vine", 99, 80, Kind::Seed(Crop::Grapes), "Autumn only. Bunches of grapes in 9 days, then every 3.";
+    CrabappleSeeds = "crabapple_seeds", "Crabapple Seeds", "crabapple_seeds", 99, 45, Kind::Seed(Crop::Crabapple), "Autumn only. Tart apples in 8 days, then every 3.";
+    ChestnutSapling = "chestnut_sapling", "Chestnut Sapling", "chestnut_sapling", 99, 40, Kind::Seed(Crop::Chestnut), "Autumn only. A little chestnut tree in 8 days, then every 4.";
+    BeetSeeds = "beet_seeds", "Beet Seeds", "beet_seeds", 99, 22, Kind::Seed(Crop::Beetroot), "Autumn and Winter. Ruby roots in 5 days.";
+    MumSeeds = "mum_seeds", "Chrysanthemum Seeds", "mum_seeds", 99, 35, Kind::Seed(Crop::Chrysanthemum), "Autumn only. Harvest flowers in 6 days.";
+    CandyCornKernels = "candy_corn_kernels", "Candy Corn Kernels", "candy_corn_kernels", 99, 60, Kind::Seed(Crop::CandyCorn), "Autumn only. Grows candy! in 8 days, then every 3.";
+    SnowdropBulb = "snowdrop_bulb", "Snowdrop Bulb", "snowdrop_bulb", 99, 35, Kind::Seed(Crop::Snowdrop), "Winter only. Brave little bells in 6 days.";
+    SnowRoseSeeds = "snow_rose_seeds", "Snow Rose Seeds", "snow_rose_seeds", 99, 60, Kind::Seed(Crop::SnowRose), "Winter only. Frosted roses in 8 days.";
+    PoinsettiaCutting = "poinsettia_cutting", "Poinsettia Cutting", "poinsettia_cutting", 99, 50, Kind::Seed(Crop::Poinsettia), "Winter only. Starry red leaves in 7 days.";
+    MistletoeSprig = "mistletoe_sprig", "Mistletoe Sprig", "mistletoe_sprig", 99, 40, Kind::Seed(Crop::Mistletoe), "Winter only. Pearly berries in 7 days.";
+    HollySeeds = "holly_seeds", "Holly Seeds", "holly_seeds", 99, 45, Kind::Seed(Crop::HollyBerry), "Winter only. Prickly and merry in 8 days, then every 3.";
+    KaleSeeds = "kale_seeds", "Kale Seeds", "kale_seeds", 99, 25, Kind::Seed(Crop::Kale), "Autumn and Winter. Frilly greens in 5 days.";
+    ParsnipSeeds = "parsnip_seeds", "Parsnip Seeds", "parsnip_seeds", 99, 20, Kind::Seed(Crop::Parsnip), "Spring and Winter. Pale sweet roots in 4 days.";
+    SproutSeeds = "sprout_seeds", "Sprout Seeds", "sprout_seeds", 99, 40, Kind::Seed(Crop::BrusselsSprouts), "Winter only. Tiny cabbages in 8 days, then every 3.";
+    SnowMelonSeeds = "snow_melon_seeds", "Snow Melon Seeds", "snow_melon_seeds", 99, 70, Kind::Seed(Crop::SnowMelon), "Winter only. Ice-cold melons in 11 days.";
+    FrostberrySeeds = "frostberry_seeds", "Frostberry Seeds", "frostberry_seeds", 99, 45, Kind::Seed(Crop::Frostberry), "Winter only. Sweet in the cold in 7 days, then every 2.";
 
     // Produce.
     Turnip = "turnip", "Turnip", "turnip", 99, 35, produce(8, 20), "Crisp and humble.";
@@ -291,6 +332,47 @@ items! {
     Starfruit = "starfruit", "Starfruit", "starfruit", 99, 700, produce(50, 70), "Shaped like a wish.";
     GhostPepper = "ghost_pepper", "Ghost Pepper", "ghost_pepper", 99, 130, produce(22, 26), "Boo! (It's very hot.)";
     AncientGrain = "ancient_grain", "Ancient Grain", "ancient_grain", 99, 150, produce(12, 30), "It remembers an older sun.";
+    // What the seasonal crops give.
+    PastelTulip = "pastel_tulip", "Pastel Tulip", "pastel_tulip", 99, 80, produce(2, 20), "Soft as a spring morning.";
+    Daffodil = "daffodil", "Daffodil", "daffodil", 99, 65, produce(2, 18), "It toots a tiny trumpet at the sun.";
+    Bluebell = "bluebell", "Bluebell", "bluebell", 99, 75, produce(2, 18), "Rings when the wind blows. Very quietly.";
+    Lavender = "lavender", "Lavender", "lavender", 99, 45, produce(2, 16), "Smells like clean sheets and sleepy afternoons.";
+    SweetCherry = "sweet_cherry", "Sweet Cherry", "sweet_cherry", 99, 40, produce(8, 12), "Two little hearts on one stem.";
+    Cloudberry = "cloudberry", "Cloudberry", "cloudberry", 99, 30, produce(6, 10), "Soft and golden. Tastes the way clouds look.";
+    Rhubarb = "rhubarb", "Rhubarb", "rhubarb", 99, 130, produce(14, 20), "Sour, pink and made for crumble.";
+    SpringOnion = "spring_onion", "Spring Onion", "spring_onion", 99, 38, produce(6, 12), "Crisp, green and a little bit cheeky.";
+    ButterLettuce = "butter_lettuce", "Butter Lettuce", "butter_lettuce", 99, 55, produce(10, 14), "Folded up like a green rose.";
+    BabyCarrot = "baby_carrot", "Baby Carrot", "baby_carrot", 99, 24, produce(6, 10), "Tiny, sweet and very crunchy.";
+    Watermelon = "watermelon", "Watermelon", "watermelon", 99, 260, produce(30, 40), "Summer in a stripy shell.";
+    Honeydew = "honeydew", "Honeydew", "honeydew", 99, 220, produce(26, 36), "Pale green, cool and honey-sweet.";
+    Pineapple = "pineapple", "Pineapple", "pineapple", 99, 320, produce(24, 40), "A prickly crown on a sweet, sunny heart.";
+    Peach = "peach", "Peach", "peach", 99, 60, produce(12, 16), "Fuzzy, blushing and very soft.";
+    Raspberry = "raspberry", "Raspberry", "raspberry", 99, 28, produce(6, 10), "Wear one on each fingertip. Then eat them.";
+    BellPepper = "bell_pepper", "Bell Pepper", "bell_pepper", 99, 55, produce(12, 14), "Crunchy, sweet and shaped like a bell.";
+    Zucchini = "zucchini", "Zucchini", "zucchini", 99, 50, produce(12, 14), "Grows faster than you can pick it.";
+    Hibiscus = "hibiscus", "Hibiscus", "hibiscus", 99, 90, produce(2, 22), "Big, bold and on holiday.";
+    Poppy = "poppy", "Poppy", "poppy", 99, 60, produce(2, 16), "Scarlet petals like crumpled silk.";
+    Cosmos = "cosmos", "Cosmos", "cosmos", 99, 70, produce(2, 18), "Dances in the smallest breeze.";
+    Pumpkin = "pumpkin", "Pumpkin", "pumpkin", 99, 300, produce(30, 44), "Round, orange and perfect for pie. (Or a face.)";
+    Butternut = "butternut", "Butternut Squash", "butternut", 99, 180, produce(22, 30), "Nutty, buttery and shaped like a pear.";
+    SweetPotato = "sweet_potato", "Sweet Potato", "sweet_potato", 99, 60, produce(14, 20), "Rosy outside, sunset inside.";
+    Cranberry = "cranberry", "Cranberry", "cranberry", 99, 26, produce(4, 10), "They bounce! (Try it.)";
+    Grapes = "grapes", "Grapes", "grapes", 99, 50, produce(10, 14), "A whole bunch of happiness.";
+    Crabapple = "crabapple", "Crabapple", "crabapple", 99, 36, produce(8, 12), "Small, tart and very shiny.";
+    Chestnut = "chestnut", "Chestnut", "chestnut", 99, 35, produce(6, 14), "Glossy and brown, snug in a prickly jacket.";
+    Beetroot = "beetroot", "Beetroot", "beetroot", 99, 48, produce(10, 14), "Earthy, sweet and very, very red.";
+    Chrysanthemum = "chrysanthemum", "Chrysanthemum", "chrysanthemum", 99, 85, produce(2, 20), "The flower of the harvest moon.";
+    CandyCorn = "candy_corn", "Candy Corn", "candy_corn", 99, 45, produce(4, 26), "It grows on a stalk. Nobody knows how.";
+    Snowdrop = "snowdrop", "Snowdrop", "snowdrop", 99, 85, produce(2, 20), "The first flower brave enough for the snow.";
+    SnowRose = "snow_rose", "Snow Rose", "snow_rose", 99, 140, produce(2, 26), "Petals like snowflakes that never melt.";
+    Poinsettia = "poinsettia", "Poinsettia", "poinsettia", 99, 110, produce(2, 22), "A red star for the darkest days.";
+    Mistletoe = "mistletoe", "Mistletoe", "mistletoe", 99, 90, produce(2, 16), "Stand underneath it with someone you like.";
+    HollyBerry = "holly_berry", "Holly Berry", "holly_berry", 99, 40, produce(4, 12), "Prickly leaves, merry berries.";
+    Kale = "kale", "Kale", "kale", 99, 60, produce(14, 16), "Frilly, hardy and good for you. Mostly.";
+    Parsnip = "parsnip", "Parsnip", "parsnip", 99, 45, produce(10, 16), "A pale root that the frost makes sweeter.";
+    BrusselsSprouts = "brussels_sprouts", "Brussels Sprouts", "brussels_sprouts", 99, 30, produce(6, 10), "Tiny cabbages. Tiny opinions.";
+    SnowMelon = "snow_melon", "Snow Melon", "snow_melon", 99, 280, produce(28, 44), "Cold to hold, and it never melts.";
+    Frostberry = "frostberry", "Frostberry", "frostberry", 99, 32, produce(6, 12), "Sweet little berries that only ripen in the cold.";
 
     // Cooking.
     VeggieStew = "veggie_stew", "Veggie Stew", "veggie_stew", 20, 120, feast(50, 50, S::Defense, 3, 120), "Hearty. Tastes like home.";
@@ -320,6 +402,23 @@ items! {
     SpookyChili = "spooky_chili", "Spooky Chili", "spooky_chili", 20, 340, feast(90, 60, S::Shock, 18, 240), "Hot enough to make your hair stand up.";
     SunflowerCookies = "sunflower_cookies", "Sunflower Cookies", "sunflower_cookies", 20, 190, feast(30, 70, S::Greed, 25, 240), "Crunchy, golden and good for business.";
     PearCrumble = "pear_crumble", "Prism Pear Crumble", "pear_crumble", 20, 260, feast(60, 60, S::Block, 8, 240), "Glitters when the light hits it.";
+    // Seasonal dishes, from the seasonal crops.
+    CherryTart = "cherry_tart", "Cherry Tart", "cherry_tart", 20, 180, feast(55, 45, S::Luck, 8, 240), "Glossy cherries in a buttery crust.";
+    SpringSalad = "spring_salad", "Spring Salad", "spring_salad", 20, 160, feast(45, 50, S::Swift, 10, 240), "Crunchy, fresh and very green.";
+    LavenderTea = "lavender_tea", "Lavender Tea", "lavender_tea", 20, 150, feast(20, 60, S::Wisdom, 20, 240), "Calm in a cup.";
+    RhubarbCrumble = "rhubarb_crumble", "Rhubarb Crumble", "rhubarb_crumble", 20, 300, feast(70, 60, S::Stamina, 25, 300), "Sweet, sour and crumbly on top.";
+    WatermelonSlush = "watermelon_slush", "Watermelon Slush", "watermelon_slush", 20, 320, feast(30, 90, S::Haste, 10, 240), "Brain freeze, the nice kind.";
+    PineappleCake = "pineapple_cake", "Pineapple Upside-Down Cake", "pineapple_cake", 20, 420, feast(90, 70, S::Luck, 14, 300), "The right way up, if you're a pineapple.";
+    PeachCobbler = "peach_cobbler", "Peach Cobbler", "peach_cobbler", 20, 260, feast(70, 55, S::Regen, 4, 240), "Warm peaches under a golden lid.";
+    StuffedPeppers = "stuffed_peppers", "Stuffed Peppers", "stuffed_peppers", 20, 280, feast(75, 50, S::Damage, 7, 240), "Peppers with a surprise inside.";
+    PumpkinSoup = "pumpkin_soup", "Pumpkin Soup", "pumpkin_soup", 20, 380, feast(90, 70, S::Defense, 8, 300), "Thick, golden and warm as a blanket.";
+    CandiedSweetPotato = "candied_sweet_potato", "Candied Sweet Potato", "candied_sweet_potato", 20, 240, feast(60, 70, S::Stamina, 30, 300), "Sticky, sweet and a little bit crunchy.";
+    GrapeJuice = "grape_juice", "Grape Juice", "grape_juice", 20, 200, feast(25, 70, S::Wisdom, 25, 240), "Purple, and proud of it.";
+    RoastedChestnuts = "roasted_chestnuts", "Roasted Chestnuts", "roasted_chestnuts", 20, 170, feast(40, 50, S::Vitality, 15, 240), "Warm hands, happy tummy.";
+    KaleStew = "kale_stew", "Hearty Kale Stew", "kale_stew", 20, 260, feast(80, 60, S::Defense, 7, 300), "Keeps the cold out and the frost off.";
+    HollyCake = "holly_cake", "Holly Cake", "holly_cake", 20, 300, feast(70, 70, S::Luck, 12, 300), "Snowy icing and a sprig of holly.";
+    SnowRoseTea = "snow_rose_tea", "Snow Rose Tea", "snow_rose_tea", 20, 340, feast(30, 80, S::Chill, 18, 240), "Cool petals in a warm cup.";
+    FrostberrySorbet = "frostberry_sorbet", "Frostberry Sorbet", "frostberry_sorbet", 20, 250, feast(50, 70, S::Dodge, 6, 240), "Sparkly, icy and gone too soon.";
 
     // Cooking with fish.
     FishAndChips = "fish_and_chips", "Fish & Chips", "fish_and_chips", 20, 180, feast(60, 50, S::Damage, 5, 240), "Crispy, golden and wrapped in paper.";
@@ -793,9 +892,50 @@ pub enum Crop {
     Starfruit,
     GhostPepper,
     AncientGrain,
+    // Seasonal: they grow only in their own season or two.
+    PastelTulip,
+    Daffodil,
+    Bluebell,
+    Lavender,
+    SweetCherry,
+    Cloudberry,
+    Rhubarb,
+    SpringOnion,
+    ButterLettuce,
+    BabyCarrot,
+    Watermelon,
+    Honeydew,
+    Pineapple,
+    Peach,
+    Raspberry,
+    BellPepper,
+    Zucchini,
+    Hibiscus,
+    Poppy,
+    Cosmos,
+    Pumpkin,
+    Butternut,
+    SweetPotato,
+    Cranberry,
+    Grapes,
+    Crabapple,
+    Chestnut,
+    Beetroot,
+    Chrysanthemum,
+    CandyCorn,
+    Snowdrop,
+    SnowRose,
+    Poinsettia,
+    Mistletoe,
+    HollyBerry,
+    Kale,
+    Parsnip,
+    BrusselsSprouts,
+    SnowMelon,
+    Frostberry,
 }
 
-pub const ALL_CROPS: [Crop; 38] = [
+pub const ALL_CROPS: [Crop; 78] = [
     Crop::Turnip,
     Crop::CaveCarrot,
     Crop::Glowcap,
@@ -834,7 +974,65 @@ pub const ALL_CROPS: [Crop; 38] = [
     Crop::Starfruit,
     Crop::GhostPepper,
     Crop::AncientGrain,
+    Crop::PastelTulip,
+    Crop::Daffodil,
+    Crop::Bluebell,
+    Crop::Lavender,
+    Crop::SweetCherry,
+    Crop::Cloudberry,
+    Crop::Rhubarb,
+    Crop::SpringOnion,
+    Crop::ButterLettuce,
+    Crop::BabyCarrot,
+    Crop::Watermelon,
+    Crop::Honeydew,
+    Crop::Pineapple,
+    Crop::Peach,
+    Crop::Raspberry,
+    Crop::BellPepper,
+    Crop::Zucchini,
+    Crop::Hibiscus,
+    Crop::Poppy,
+    Crop::Cosmos,
+    Crop::Pumpkin,
+    Crop::Butternut,
+    Crop::SweetPotato,
+    Crop::Cranberry,
+    Crop::Grapes,
+    Crop::Crabapple,
+    Crop::Chestnut,
+    Crop::Beetroot,
+    Crop::Chrysanthemum,
+    Crop::CandyCorn,
+    Crop::Snowdrop,
+    Crop::SnowRose,
+    Crop::Poinsettia,
+    Crop::Mistletoe,
+    Crop::HollyBerry,
+    Crop::Kale,
+    Crop::Parsnip,
+    Crop::BrusselsSprouts,
+    Crop::SnowMelon,
+    Crop::Frostberry,
 ];
+
+/// Seasons as bits, for the crops that keep to theirs (see `Season::bit`).
+pub const SPRING: u8 = 1;
+pub const SUMMER: u8 = 2;
+pub const AUTUMN: u8 = 4;
+pub const WINTER: u8 = 8;
+
+/// The seeds of the seasonal crops that grow in this season, in list order.
+pub fn seasonal_seeds(season: u8) -> Vec<Item> {
+    ALL_ITEMS
+        .iter()
+        .copied()
+        .filter(|i| match i.def().kind {
+            Kind::Seed(c) => c.def().seasons != 0 && c.grows_in(season),
+            _ => false,
+        })
+        .collect()
+}
 
 pub struct CropDef {
     pub days: u8,
@@ -845,6 +1043,8 @@ pub struct CropDef {
     /// Glows at night (a light source on the farm).
     pub glow: bool,
     pub yield_max: u8,
+    /// The seasons it grows in (`SPRING` | ...), or 0 for all year round.
+    pub seasons: u8,
 }
 
 impl Crop {
@@ -857,6 +1057,16 @@ impl Crop {
             young,
             glow,
             yield_max,
+            seasons: 0,
+        };
+        let s = |days, regrow, produce, young, glow, yield_max, seasons| CropDef {
+            days,
+            regrow,
+            produce,
+            young,
+            glow,
+            yield_max,
+            seasons,
         };
         match self {
             Turnip => d(4, 0, Item::Turnip, "young", false, 1),
@@ -897,6 +1107,96 @@ impl Crop {
             Starfruit => d(12, 0, Item::Starfruit, "young_ruin", true, 1),
             GhostPepper => d(7, 3, Item::GhostPepper, "young_ruin", false, 2),
             AncientGrain => d(6, 0, Item::AncientGrain, "young_grain", false, 2),
+            PastelTulip => s(6, 0, Item::PastelTulip, "young_bud", false, 1, SPRING),
+            Daffodil => s(5, 0, Item::Daffodil, "young_bud", false, 1, SPRING),
+            Bluebell => s(6, 0, Item::Bluebell, "young_bud", false, 1, SPRING),
+            Lavender => s(
+                6,
+                3,
+                Item::Lavender,
+                "young_leafy",
+                false,
+                2,
+                SPRING | SUMMER,
+            ),
+            SweetCherry => s(8, 3, Item::SweetCherry, "young_leafy", false, 3, SPRING),
+            Cloudberry => s(7, 2, Item::Cloudberry, "young_leafy", false, 4, SPRING),
+            Rhubarb => s(9, 0, Item::Rhubarb, "young_leafy", false, 1, SPRING),
+            SpringOnion => s(3, 0, Item::SpringOnion, "young_grain", false, 1, SPRING),
+            ButterLettuce => s(
+                4,
+                0,
+                Item::ButterLettuce,
+                "young_leafy",
+                false,
+                1,
+                SPRING | AUTUMN,
+            ),
+            BabyCarrot => s(4, 0, Item::BabyCarrot, "young", false, 2, SPRING),
+            Watermelon => s(10, 0, Item::Watermelon, "young_vine", false, 1, SUMMER),
+            Honeydew => s(9, 0, Item::Honeydew, "young_vine", false, 1, SUMMER),
+            Pineapple => s(12, 0, Item::Pineapple, "young_leafy", false, 1, SUMMER),
+            Peach => s(9, 3, Item::Peach, "young_leafy", false, 2, SUMMER),
+            Raspberry => s(7, 2, Item::Raspberry, "young_leafy", false, 4, SUMMER),
+            BellPepper => s(
+                6,
+                3,
+                Item::BellPepper,
+                "young_vine",
+                false,
+                2,
+                SUMMER | AUTUMN,
+            ),
+            Zucchini => s(5, 3, Item::Zucchini, "young_vine", false, 2, SUMMER),
+            Hibiscus => s(6, 0, Item::Hibiscus, "young_bud", false, 1, SUMMER),
+            Poppy => s(4, 0, Item::Poppy, "young_bud", false, 1, SUMMER),
+            Cosmos => s(5, 0, Item::Cosmos, "young_bud", false, 1, SUMMER),
+            Pumpkin => s(11, 0, Item::Pumpkin, "young_vine", false, 1, AUTUMN),
+            Butternut => s(9, 0, Item::Butternut, "young_vine", false, 1, AUTUMN),
+            SweetPotato => s(6, 0, Item::SweetPotato, "young_vine", false, 2, AUTUMN),
+            Cranberry => s(7, 2, Item::Cranberry, "young_leafy", false, 4, AUTUMN),
+            Grapes => s(9, 3, Item::Grapes, "young_vine", false, 3, AUTUMN),
+            Crabapple => s(8, 3, Item::Crabapple, "young_leafy", false, 3, AUTUMN),
+            Chestnut => s(8, 4, Item::Chestnut, "young_leafy", false, 3, AUTUMN),
+            Beetroot => s(5, 0, Item::Beetroot, "young", false, 1, AUTUMN | WINTER),
+            Chrysanthemum => s(6, 0, Item::Chrysanthemum, "young_bud", false, 1, AUTUMN),
+            CandyCorn => s(8, 3, Item::CandyCorn, "young_grain", false, 3, AUTUMN),
+            Snowdrop => s(6, 0, Item::Snowdrop, "young_frost", false, 1, WINTER),
+            SnowRose => s(8, 0, Item::SnowRose, "young_frost", true, 1, WINTER),
+            Poinsettia => s(7, 0, Item::Poinsettia, "young_bud", false, 1, WINTER),
+            Mistletoe => s(7, 0, Item::Mistletoe, "young_leafy", false, 1, WINTER),
+            HollyBerry => s(8, 3, Item::HollyBerry, "young_leafy", false, 3, WINTER),
+            Kale => s(5, 0, Item::Kale, "young_leafy", false, 1, AUTUMN | WINTER),
+            Parsnip => s(4, 0, Item::Parsnip, "young", false, 1, SPRING | WINTER),
+            BrusselsSprouts => s(8, 3, Item::BrusselsSprouts, "young_leafy", false, 4, WINTER),
+            SnowMelon => s(11, 0, Item::SnowMelon, "young_frost", true, 1, WINTER),
+            Frostberry => s(7, 2, Item::Frostberry, "young_frost", false, 4, WINTER),
+        }
+    }
+
+    /// Whether it grows in the season with this bit (year-round crops always do).
+    pub fn grows_in(self, season: u8) -> bool {
+        let s = self.def().seasons;
+        s == 0 || s & season != 0
+    }
+
+    /// The seasons it grows in, in words ("spring and summer").
+    pub fn seasons_text(self) -> String {
+        let s = self.def().seasons;
+        let names: Vec<&str> = [
+            (SPRING, "spring"),
+            (SUMMER, "summer"),
+            (AUTUMN, "autumn"),
+            (WINTER, "winter"),
+        ]
+        .iter()
+        .filter(|(b, _)| s & b != 0)
+        .map(|(_, n)| *n)
+        .collect();
+        if names.is_empty() {
+            "any season".to_string()
+        } else {
+            names.join(" and ")
         }
     }
 
@@ -1365,6 +1665,22 @@ recipes! {
     Kitchen: EelKebab x 1 <= [LavaEel 1, EmberPepper 1];
     Kitchen: FishTacos x 1 <= [RainbowTrout 1, Corn 1, Tomato 1];
     Kitchen: EmperorPlatter x 1 <= [GoldenCarp 1, Truffle 1];
+    Kitchen: CherryTart x 1 <= [SweetCherry 3, Wheat 1];
+    Kitchen: SpringSalad x 1 <= [ButterLettuce 1, SpringOnion 1, BabyCarrot 1];
+    Kitchen: LavenderTea x 1 <= [Lavender 2];
+    Kitchen: RhubarbCrumble x 1 <= [Rhubarb 1, Cloudberry 2, Wheat 1];
+    Kitchen: WatermelonSlush x 2 <= [Watermelon 1, Raspberry 2];
+    Kitchen: PineappleCake x 1 <= [Pineapple 1, Wheat 2];
+    Kitchen: PeachCobbler x 1 <= [Peach 2, Wheat 1];
+    Kitchen: StuffedPeppers x 1 <= [BellPepper 2, Zucchini 1];
+    Kitchen: PumpkinSoup x 1 <= [Pumpkin 1, Garlic 1];
+    Kitchen: CandiedSweetPotato x 1 <= [SweetPotato 2, CandyCorn 1];
+    Kitchen: GrapeJuice x 1 <= [Grapes 3];
+    Kitchen: RoastedChestnuts x 1 <= [Chestnut 4];
+    Kitchen: KaleStew x 1 <= [Kale 1, Parsnip 1, Potato 1];
+    Kitchen: HollyCake x 1 <= [HollyBerry 2, Wheat 2, Frostberry 1];
+    Kitchen: SnowRoseTea x 1 <= [SnowRose 1, Frostberry 2];
+    Kitchen: FrostberrySorbet x 1 <= [Frostberry 4];
 
     // Tools.
     Tools: Sickle x 1 <= [Wood 3, Stone 4];

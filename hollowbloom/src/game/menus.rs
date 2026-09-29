@@ -6,7 +6,7 @@ use glam::Vec2;
 
 use super::folk::Villager;
 use super::gear::{Rarity, SLOTS, Slot, Stat};
-use super::items::{CATS, Inventory, Item, Kind, RECIPES, Recipe, Stack};
+use super::items::{CATS, Inventory, Item, Kind, RECIPES, Recipe, Stack, seasonal_seeds};
 use super::loot;
 use super::play::{Play, Trans, transfer};
 use super::shops;
@@ -408,6 +408,12 @@ pub fn shop_seeds(p: &Play) -> Vec<(Item, u32)> {
     for (need, item, price) in unlocks {
         if d >= need {
             v.push((item, price));
+        }
+    }
+    // The cheaper seeds of the season; Posy keeps the whole range.
+    for item in seasonal_seeds(p.clock.season().bit()) {
+        if item.def().price <= 40 {
+            v.push((item, item.def().price * 2));
         }
     }
     v

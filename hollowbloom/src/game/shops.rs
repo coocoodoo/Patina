@@ -2,7 +2,7 @@
 //! special pieces each morning, and pays extra for the things it specialises in.
 
 use super::gear::Class;
-use super::items::{ALL_ITEMS, Item, Kind, Placeable, Stack};
+use super::items::{ALL_ITEMS, Item, Kind, Placeable, Stack, seasonal_seeds};
 use super::loot::{self, Fortune};
 use super::menus::{ShopTab, shop_goods, shop_seeds};
 use super::play::Play;
@@ -375,6 +375,12 @@ pub fn seeds(p: &Play) -> Vec<(Item, u32)> {
             v.push((item, price));
         }
     }
+    // Every seed of the season, a little cheaper than at the stall.
+    for item in seasonal_seeds(p.clock.season().bit()) {
+        if !v.iter().any(|(i, _)| *i == item) {
+            v.push((item, item.def().price * 9 / 5));
+        }
+    }
     v
 }
 
@@ -548,5 +554,48 @@ mod tests {
         assert!(buy_rate(Some(Place::Armory), &helm) > buy_rate(Some(Place::Bakery), &helm));
         let ruby = Stack::new(Item::Ruby, 1);
         assert_eq!(buy_rate(Some(Place::Jeweler), &ruby), 150);
+    }
+
+    #[test]
+    fn seed_shelves_follow_the_seasons() {
+        use crate::game::menus::shop_seeds;
+        use crate::game::play::SEASON_DAYS;
+        let mut p = Play::new(4);
+        let has = |v: &[(Item, u32)], i: Item| v.iter().any(|(s, _)| *s == i);
+        for (season, native, alien) in [
+            (0, Item::TulipBulb, Item::SnowdropBulb),
+            (1, Item::WatermelonSeeds, Item::TulipBulb),
+            (2, Item::HarvestPumpkinSeeds, Item::WatermelonSeeds),
+            (3, Item::SnowdropBulb, Item::HarvestPumpkinSeeds),
+        ] {
+            p.clock.day = season * SEASON_DAYS + 5;
+            let posy = seeds(&p);
+            assert!(
+                has(&posy, native),
+                "Posy sells {native:?} in season {season}"
+            );
+            assert!(!has(&posy, alien), "but not {alien:?}");
+            // Every seed she sells will grow today.
+            let bit = p.clock.season().bit();
+            for (item, _) in &posy {
+                if let Kind::Seed(c) = item.def().kind {
+                    assert!(c.grows_in(bit), "{item:?} can't grow now");
+                }
+            }
+            // Burrowby keeps the cheap ones, and never undercuts her.
+            let stall = shop_seeds(&p);
+            assert!(stall.len() < posy.len());
+            assert!(!has(&stall, Item::PineappleTop));
+            for (item, price) in &stall {
+                let hers = posy.iter().find(|(i, _)| i == item).map(|e| e.1);
+                assert!(hers.is_some_and(|h| h <= *price), "{item:?}");
+            }
+            // Each season brings at least ten seasonal seeds.
+            let seasonal = posy
+                .iter()
+                .filter(|(i, _)| matches!(i.def().kind, Kind::Seed(c) if c.def().seasons != 0))
+                .count();
+            assert!(seasonal >= 10, "{seasonal} in season {season}");
+        }
     }
 }

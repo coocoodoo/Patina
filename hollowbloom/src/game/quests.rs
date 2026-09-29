@@ -9,7 +9,7 @@ use super::dungeon::{Foe, biome_for};
 use super::folk::{VILLAGERS, Villager};
 use super::fx::Drop;
 use super::gear::{Group, Rarity};
-use super::items::{Crop, Item, Kind, Stack};
+use super::items::{Crop, Item, Kind, Stack, seasonal_seeds};
 use super::loot;
 use super::play::{Play, Season};
 use super::town::{self, FOUNTAIN};
@@ -170,6 +170,25 @@ const LEGEND: Rarity = Rarity::Legendary;
 
 pub static QUESTS: &[QuestDef] = &[
     // ---------------------------------------------------------------- Mayor Thistle
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "thistle_harvest",
+        giver: V::Thistle,
+        title: "The Harvest Festival",
+        ask: "Autumn means the Harvest Festival! Well, it used to. Three big pumpkins for the plaza \
+              and we'll bring it back. Carved, uncarved - I'm not fussy!",
+        thanks: "Jack-o'-lanterns all over the plaza, and everyone's out! Soup from the festival pot, \
+                 and candy corn to plant for next year.",
+        goal: Bring(Item::Pumpkin, 3),
+        reward: &[
+            Coins(3000),
+            item(Item::PumpkinSoup, 3),
+            item(Item::CandyCornKernels, 10),
+        ],
+        day: 2,
+        season: Some(Season::Autumn),
+        ..Q
+    },
     QuestDef {
         key: "thistle_hello",
         giver: V::Thistle,
@@ -523,6 +542,20 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Hilde
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "hilde_kale",
+        giver: V::Hilde,
+        title: "Winter Warmth",
+        ask: "The forge keeps my hands warm, but my belly's another story. Three kale, and I'll \
+              make stew the way they do up north.",
+        thanks: "Thick enough to stand a spoon in! That's how you know it's done. Three bowls for you.",
+        goal: Bring(Item::Kale, 3),
+        reward: &[Coins(1400), item(Item::KaleStew, 3)],
+        day: 2,
+        season: Some(Season::Winter),
+        ..Q
+    },
     QuestDef {
         key: "hilde_ore",
         giver: V::Hilde,
@@ -683,6 +716,25 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Nix
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "nix_holly",
+        giver: V::Nix,
+        title: "Deck the Workshop",
+        ask: "I'm decorating the whole workshop for the long nights! Holly, holly and more holly. \
+              Six berries' worth?",
+        thanks: "Merry! Bright! Prickly! Just how I like it. Have some cake - and mistletoe, if \
+                 you're feeling brave.",
+        goal: Bring(Item::HollyBerry, 6),
+        reward: &[
+            Coins(1800),
+            item(Item::HollyCake, 2),
+            item(Item::MistletoeSprig, 5),
+        ],
+        day: 2,
+        season: Some(Season::Winter),
+        ..Q
+    },
     QuestDef {
         key: "nix_test",
         giver: V::Nix,
@@ -845,6 +897,25 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Wren
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "wren_poppies",
+        giver: V::Wren,
+        title: "Painted Poppies",
+        ask: "I'm painting poppies on a dresser, and I paint best from life. Eight in a jar on the \
+              bench?",
+        thanks: "Look at those petals on the drawers! Keep these seeds - cosmos and hibiscus, for \
+                 my next piece.",
+        goal: Bring(Item::Poppy, 8),
+        reward: &[
+            Coins(1500),
+            item(Item::CosmosSeeds, 8),
+            item(Item::HibiscusSeeds, 5),
+        ],
+        day: 2,
+        season: Some(Season::Summer),
+        ..Q
+    },
     QuestDef {
         key: "wren_wood",
         giver: V::Wren,
@@ -916,6 +987,25 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Posy
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "posy_tulips",
+        giver: V::Posy,
+        title: "First Blooms",
+        ask: "Spring! Spring spring spring! I want the very first tulips of the year in my window. \
+              Five pastel tulips? Pleeease?",
+        thanks: "My window's a rainbow! Here - daffodil and bluebell bulbs. Fill your fields with \
+                 spring!",
+        goal: Bring(Item::PastelTulip, 5),
+        reward: &[
+            Coins(1200),
+            item(Item::DaffodilBulb, 8),
+            item(Item::BluebellBulb, 8),
+        ],
+        day: 2,
+        season: Some(Season::Spring),
+        ..Q
+    },
     QuestDef {
         key: "posy_turnips",
         giver: V::Posy,
@@ -984,10 +1074,11 @@ pub static QUESTS: &[QuestDef] = &[
     QuestDef {
         key: "posy_almanac3",
         giver: V::Posy,
-        title: "The Complete Almanac",
-        ask: "Every. Single. Crop. All thirty-eight! Then my almanac will be complete forever!",
-        thanks: "COMPLETE! The first complete almanac EVER! You're the best farmer in the whole \
-                 world! Take my crystal hoe - I've been saving it for someone special!",
+        title: "The Great Almanac",
+        ask: "Thirty-eight different crops! Every one from the valley and the Hollow! Then my \
+              almanac will be nearly complete!",
+        thanks: "THIRTY-EIGHT! Nobody's ever filled so many pages! You're the best farmer in the \
+                 whole world! Take my crystal hoe - I've been saving it for someone special!",
         goal: Almanac(38),
         reward: &[
             Coins(30000),
@@ -998,7 +1089,53 @@ pub static QUESTS: &[QuestDef] = &[
         hearts: 6,
         ..Q
     },
+    QuestDef {
+        key: "posy_almanac4",
+        giver: V::Posy,
+        title: "A Year in Bloom",
+        ask: "The seasonal crops are pages too! Spring, summer, autumn AND winter! All \
+              seventy-eight crops, and my almanac will truly, truly be complete!",
+        thanks: "Every page, every season, every crop! It's COMPLETE! This crown grew with the \
+                 almanac - it's only ever been meant for you.",
+        goal: Almanac(78),
+        reward: &[
+            Coins(60000),
+            item(Item::StarfruitSeeds, 10),
+            gear(Item::FlowerCrown, LEGEND),
+        ],
+        after: "posy_almanac3",
+        hearts: 8,
+        ..Q
+    },
     // ---------------------------------------------------------------- Mabel
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "mabel_cherries",
+        giver: V::Mabel,
+        title: "Cherry Season",
+        ask: "The cherry trees used to turn this whole street pink. I miss cherry tarts something \
+              awful. Six sweet cherries, dear?",
+        thanks: "Pitted, baked and golden! Three tarts, still warm. Mind the plate.",
+        goal: Bring(Item::SweetCherry, 6),
+        reward: &[Coins(1500), item(Item::CherryTart, 3)],
+        day: 2,
+        season: Some(Season::Spring),
+        ..Q
+    },
+    QuestDef {
+        key: "mabel_cranberries",
+        giver: V::Mabel,
+        title: "Pie Season",
+        ask: "Autumn is pie season, and pie season needs cranberries! Five, and I'll show you \
+              what a proper pie looks like.",
+        thanks: "A crust you could write home about! Two pumpkin pies for you - the cranberry ones \
+                 are going to the tavern.",
+        goal: Bring(Item::Cranberry, 5),
+        reward: &[Coins(1600), item(Item::PumpkinPie, 2)],
+        day: 2,
+        season: Some(Season::Autumn),
+        ..Q
+    },
     QuestDef {
         key: "mabel_wheat",
         giver: V::Mabel,
@@ -1092,6 +1229,20 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Barley
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "barley_melons",
+        giver: V::Barley,
+        title: "Summer Refreshment",
+        ask: "Phew, it's a hot one. Nothing beats cold watermelon after a day in the fields. Two of \
+              the big ones?",
+        thanks: "Crunchy, sweet and cold! I blended the rest. Slushes, for the hottest days.",
+        goal: Bring(Item::Watermelon, 2),
+        reward: &[Coins(1800), item(Item::WatermelonSlush, 4)],
+        day: 2,
+        season: Some(Season::Summer),
+        ..Q
+    },
     QuestDef {
         key: "barley_stew",
         giver: V::Barley,
@@ -1176,6 +1327,25 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Grandma Fern
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "fern_rhubarb",
+        giver: V::Fern,
+        title: "Rhubarb and Custard",
+        ask: "Albert grew the finest rhubarb in the valley. Every spring I made crumble for the \
+              whole street. Four stalks, dear, and I'll make it again.",
+        thanks: "It tastes just like it used to. Two helpings for you - and lavender seeds from \
+                 Albert's old tin.",
+        goal: Bring(Item::Rhubarb, 4),
+        reward: &[
+            Coins(1600),
+            item(Item::RhubarbCrumble, 2),
+            item(Item::LavenderSeeds, 10),
+        ],
+        day: 2,
+        season: Some(Season::Spring),
+        ..Q
+    },
     QuestDef {
         key: "fern_locket",
         giver: V::Fern,
@@ -1245,6 +1415,25 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Pip
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "pip_pineapple",
+        giver: V::Pip,
+        title: "Pineapple Party!",
+        ask: "I'm throwing a PINEAPPLE PARTY. It's like a normal party but with a pineapple. I just \
+              need the pineapple. One! Please!",
+        thanks: "It's SPIKY! And it smells like sunshine! You're invited, obviously. Here's cake. I \
+                 made it. Mom helped.",
+        goal: Bring(Item::Pineapple, 1),
+        reward: &[
+            Coins(900),
+            item(Item::PineappleCake, 2),
+            item(Item::PineappleTop, 2),
+        ],
+        day: 2,
+        season: Some(Season::Summer),
+        ..Q
+    },
     // Only in autumn, and only ever once: the egg that hatches the farm's jumping spider.
     QuestDef {
         key: "pip_candy",
@@ -1345,6 +1534,21 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Juniper
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "juniper_snowdrops",
+        giver: V::Juniper,
+        title: "Snowdrops in the Snow",
+        ask: "Snowdrops push up through the frost when nothing else dares. I'd like five for my \
+              study. Brave little things.",
+        thanks: "They nod at me while I read. Here: snow rose seeds. They glow a little on the \
+                 coldest nights.",
+        goal: Bring(Item::Snowdrop, 5),
+        reward: &[Coins(1600), item(Item::SnowRoseSeeds, 5)],
+        day: 2,
+        season: Some(Season::Winter),
+        ..Q
+    },
     QuestDef {
         key: "juniper_moss",
         giver: V::Juniper,
@@ -1505,6 +1709,21 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Toby
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "toby_frostberries",
+        giver: V::Toby,
+        title: "Frosty Rounds",
+        ask: "Winter rounds are cold ones. A pocketful of frostberries keeps me going, somehow. \
+              Eight of them?",
+        thanks: "Sweet in the cold, just like the seed packet says! Here - sorbet. Yes, in winter. \
+                 Trust me.",
+        goal: Bring(Item::Frostberry, 8),
+        reward: &[Coins(1700), item(Item::FrostberrySorbet, 3)],
+        day: 2,
+        season: Some(Season::Winter),
+        ..Q
+    },
     QuestDef {
         key: "toby_mailbag",
         giver: V::Toby,
@@ -1711,6 +1930,25 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Olive
+    // Seasonal: only asked in its season.
+    QuestDef {
+        key: "olive_grapes",
+        giver: V::Olive,
+        title: "The Grape Stomp",
+        ask: "Every autumn my family stomped grapes barefoot in a big wooden tub. Messy, sticky, \
+              wonderful! Nine bunches and we'll start again.",
+        thanks: "Purple feet and all! Only juice this year, but next year... Here, try it. And plant \
+                 these - chestnuts for roasting.",
+        goal: Bring(Item::Grapes, 9),
+        reward: &[
+            Coins(2400),
+            item(Item::GrapeJuice, 4),
+            item(Item::ChestnutSapling, 4),
+        ],
+        day: 2,
+        season: Some(Season::Autumn),
+        ..Q
+    },
     QuestDef {
         key: "olive_sunflowers",
         giver: V::Olive,
@@ -3398,9 +3636,19 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
             coins,
         )
     } else if r.chance(0.5) {
-        // Crops from the farm.
-        let crops = super::menus::shop_seeds(p);
-        let seed = crops[r.below(crops.len())].0;
+        // Crops from the farm, often something in season.
+        let season = super::play::Clock { day, min: 0.0 }.season();
+        let ripe = seasonal_seeds(season.bit());
+        let fresh = r.chance(0.5);
+        let seed = if fresh {
+            ripe[r.below(ripe.len())]
+        } else {
+            // Only what grows on the notice's day.
+            let mut crops = super::menus::shop_seeds(p);
+            crops
+                .retain(|(i, _)| matches!(i.def().kind, Kind::Seed(c) if c.grows_in(season.bit())));
+            crops[r.below(crops.len())].0
+        };
         let crop = match seed.def().kind {
             Kind::Seed(c) => c,
             _ => Crop::Turnip,
@@ -3408,15 +3656,22 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
         let produce = crop.def().produce;
         let n = r.range(4, 12) as u16;
         let coins = (produce.def().price as f32 * n as f32 * 2.4) as u64 + 100;
-        (
-            format!("Wanted: {}", produce.def().name),
-            format!(
-                "I need {n} {} for something special. Can you help?",
-                produce.def().name
-            ),
-            Goal::Bring(produce, n),
-            coins,
-        )
+        let name = produce.def().name;
+        if fresh {
+            (
+                format!("In Season: {name}"),
+                format!("It's {} at last! I'd love {n} fresh {name}.", season.name()),
+                Goal::Bring(produce, n),
+                coins,
+            )
+        } else {
+            (
+                format!("Wanted: {name}"),
+                format!("I need {n} {name} for something special. Can you help?"),
+                Goal::Bring(produce, n),
+                coins,
+            )
+        }
     } else {
         // Things from the Hollow.
         let mats: &[Item] = match biome {
@@ -3557,6 +3812,66 @@ mod tests {
                 "{} is idle",
                 v.name()
             );
+        }
+    }
+
+    #[test]
+    fn seasonal_quests_wait_for_their_season() {
+        use crate::game::play::SEASON_DAYS;
+        let mut p = Play::new(9);
+        let seasonal: Vec<&QuestDef> = QUESTS.iter().filter(|q| q.season.is_some()).collect();
+        assert!(
+            seasonal.len() >= 12,
+            "only {} seasonal quests",
+            seasonal.len()
+        );
+        for q in seasonal {
+            let at = q.season.unwrap() as u32;
+            for s in 0..4 {
+                // A few days in, and again a year later.
+                for year in [0, 4] {
+                    p.clock.day = (s + year) * SEASON_DAYS + 5;
+                    let asks = p.quest_for(q.giver).is_some_and(|d| d.key == q.key);
+                    assert_eq!(asks, s == at, "{} in season {s}", q.key);
+                }
+            }
+            // What they ask for can be grown in that season.
+            if let Goal::Bring(item, _) = q.goal {
+                let crop = crate::game::items::ALL_CROPS
+                    .iter()
+                    .find(|c| c.def().produce == item);
+                if let Some(c) = crop {
+                    assert!(c.grows_in(1 << at), "{} asks out of season", q.key);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn board_asks_for_what_is_in_season() {
+        use crate::game::play::SEASON_DAYS;
+        let p = Play::new(9);
+        for season in 0..4u32 {
+            let bit = 1u8 << season;
+            let mut fresh = 0;
+            for d in 0..SEASON_DAYS {
+                let day = season * SEASON_DAYS + d + 1;
+                for slot in 0..3 {
+                    let r = make_request(&p, day, slot, false);
+                    if let Goal::Bring(item, _) = r.goal {
+                        let c = crate::game::items::ALL_CROPS
+                            .iter()
+                            .find(|c| c.def().produce == item);
+                        if let Some(c) = c {
+                            assert!(c.grows_in(bit), "{} asked for out of season", r.title);
+                            if c.def().seasons != 0 {
+                                fresh += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            assert!(fresh > 0, "no seasonal notices in season {season}");
         }
     }
 

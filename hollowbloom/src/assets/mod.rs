@@ -12,6 +12,7 @@ pub mod models;
 pub mod monster_art;
 pub mod pet_art;
 pub mod quest_art;
+pub mod season_art;
 pub mod sprites;
 pub mod tiles;
 pub mod town_art;
@@ -398,6 +399,7 @@ impl Assets {
         item_art::build(&mut bank, &mut icons);
         let gear = gear_art::build(&mut bank, &mut icons);
         quest_art::build(&mut bank, &mut icons);
+        season_art::build(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
         fish_art::build(&mut bank, &mut icons);
         let home = home_art::build(&mut bank, &mut icons);

@@ -1,6 +1,6 @@
 //! The farm: layout generation and the overnight update (growth, sprinklers, weeds).
 
-use super::items::Crop;
+use super::items::{AUTUMN, Crop, SPRING, WINTER};
 use super::world::{Area, FERTILE, Floor, Obj, WATERED, Wall, World};
 use crate::util::{Rng, hash2};
 
@@ -339,10 +339,13 @@ pub struct Night {
     pub ready: u32,
     /// Weeds, flowers and bushes that sprang up.
     pub sprouted: u32,
+    /// Crops lost to the change of season.
+    pub withered: u32,
 }
 
-/// Advances the farm by one day.
-pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
+/// Advances the farm by one day, into the season with bit `season` (`turned` on its first
+/// morning, when anything that doesn't grow in it withers).
+pub fn new_day(w: &mut World, day: u32, rain: bool, season: u8, turned: bool) -> Night {
     let mut night = Night::default();
     let mut r = Rng::new(day as u64 * 7919);
     // Sprinklers water first so today's growth counts them.
@@ -351,6 +354,19 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
         for x in 0..w.w {
             if let Some(Obj::Sprinkler { tier }) = w.obj(x, z) {
                 sprinklers.push((x, z, *tier));
+            }
+        }
+    }
+    if turned {
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if let Some(Obj::Crop { crop, .. }) = w.obj(x, z) {
+                    if !crop.grows_in(season) {
+                        // Out of season: it wilts to a dry, straggly weed.
+                        w.set_obj(x, z, Some(Obj::Weed { var: 1 }));
+                        night.withered += 1;
+                    }
+                }
             }
         }
     }
@@ -429,14 +445,18 @@ pub fn new_day(w: &mut World, day: u32, rain: bool) -> Night {
             }
         }
     }
-    night.sprouted = grow_wild(w, &mut r);
+    night.sprouted = grow_wild(w, &mut r, season);
     night
 }
 
 /// Overnight the wild creeps back in: weeds, wildflowers and the odd bush spring up on empty
 /// ground. Never on paths, dug soil or right by the house, and it eases off once the farm is
 /// already overgrown. Returns how many things sprouted.
-pub fn grow_wild(w: &mut World, r: &mut Rng) -> u32 {
+pub fn grow_wild(w: &mut World, r: &mut Rng, season: u8) -> u32 {
+    // Snow lies over everything in winter: nothing springs up.
+    if season == WINTER {
+        return 0;
+    }
     let wild = w
         .objs
         .iter()
@@ -474,10 +494,16 @@ pub fn grow_wild(w: &mut World, r: &mut Rng) -> u32 {
             if !open || !roomy {
                 continue;
             }
+            // Spring is full of wildflowers; autumn has few.
+            let weedy = match season {
+                SPRING => 0.55,
+                AUTUMN => 0.9,
+                _ => 0.82,
+            };
             let o = if bush {
                 let var = [0, 0, 0, 1, 1, 2][r.below(6)];
                 Obj::Shrub { var, hp: 4 }
-            } else if r.chance(0.82) {
+            } else if r.chance(weedy) {
                 Obj::Weed {
                     var: r.below(2) as u8,
                 }

@@ -59,6 +59,11 @@ impl Season {
         }
     }
 
+    /// Its bit, as crops keep their seasons (`items::SPRING`...).
+    pub fn bit(self) -> u8 {
+        1 << self as u8
+    }
+
     /// Readable on the HUD's paper.
     pub fn color(self) -> u8 {
         match self {
@@ -772,7 +777,12 @@ impl Play {
         self.friends.new_day();
         let today = (day + 1) * 16;
         self.taken.retain(|id| *id >= today);
-        let night = farm::new_day(&mut self.farm, day + 1, false);
+        let next = Clock {
+            day: day + 1,
+            min: DAY_START,
+        };
+        let turned = next.season() != self.clock.season();
+        let night = farm::new_day(&mut self.farm, day + 1, false, next.season().bit(), turned);
         self.rain = Rng::new(self.seed ^ ((day as u64 + 1) * 31)).chance(0.18);
         if self.rain {
             // Rain waters everything for the new day.
@@ -823,6 +833,42 @@ impl Play {
                 format!("{} is here - {}", s.name(), s.greeting()),
                 s.color(),
             ));
+        }
+        if night.withered > 0 {
+            notes.push((
+                format!(
+                    "{} out-of-season crop{} withered overnight.",
+                    night.withered,
+                    if night.withered == 1 { "" } else { "s" }
+                ),
+                ROSEWOOD,
+            ));
+        }
+        // The last day of a season: warn about anything that won't live through the night.
+        if self.clock.season_day() == SEASON_DAYS {
+            let next = Clock {
+                day: self.clock.day + 1,
+                min: DAY_START,
+            }
+            .season();
+            let doomed = self
+                .farm
+                .objs
+                .iter()
+                .flatten()
+                .filter(|o| matches!(o, Obj::Crop { crop, .. } if !crop.grows_in(next.bit())))
+                .count();
+            if doomed > 0 {
+                notes.push((
+                    format!(
+                        "Last day of {}! {doomed} crop{} won't survive into {}.",
+                        self.clock.season().name(),
+                        if doomed == 1 { "" } else { "s" },
+                        next.name()
+                    ),
+                    CRIMSON,
+                ));
+            }
         }
         notes.extend(self.egg_news());
         self.last_summary = Some(super::menus::Summary {
@@ -1434,8 +1480,11 @@ impl Play {
                 }
                 _ => false,
             },
-            Kind::Seed(_) => {
-                self.area == Area::Farm && w.floor(x, z) == Floor::Tilled && w.obj(x, z).is_none()
+            Kind::Seed(crop) => {
+                self.area == Area::Farm
+                    && w.floor(x, z) == Floor::Tilled
+                    && w.obj(x, z).is_none()
+                    && crop.grows_in(self.clock.season().bit())
             }
             Kind::Place(pl) => self.can_place(pl, x, z),
             _ => false,
@@ -1613,6 +1662,17 @@ impl Play {
             Kind::Seed(crop) => {
                 if self.area != Area::Farm {
                     self.toast("Seeds need farm soil.", None, 0);
+                    io.audio.play(Sfx::Denied);
+                } else if !crop.grows_in(self.clock.season().bit()) {
+                    if self.nag <= 0.0 {
+                        self.nag = 2.0;
+                        let name = crop.def().produce.def().name;
+                        self.toast(
+                            format!("{name} only grows in {}.", crop.seasons_text()),
+                            Some(item),
+                            0,
+                        );
+                    }
                     io.audio.play(Sfx::Denied);
                 } else if self.world().floor(x, z) == Floor::Tilled
                     && self.world().obj(x, z).is_none()
