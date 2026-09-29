@@ -83,6 +83,15 @@ pub const TRACKS: &[Track] = &[
         rest: REST,
         gain: 0.673,
     },
+    // "Sunday Morning Curio"
+    Track {
+        song: Song::Shop,
+        mp3: include_bytes!("../../music/shop.mp3"),
+        start: 103_635,
+        end: 7_750_575,
+        rest: REST,
+        gain: 0.629,
+    },
 ];
 
 pub fn track(song: Song) -> Option<&'static Track> {

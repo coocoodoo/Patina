@@ -536,11 +536,10 @@ hollowbloom --mute                # no sound
   town's buildings are generated from a short description each (size, walls, roof, awning,
   sign), and villagers find their way about with a simple breadth-first path search over
   the town's tiles.
-* **Recorded music**: songs can also have a recorded track in `music/` (the title, the
-  farm's morning, afternoon and night, and the town so far, made with Google's Lyria 3),
-  built into the executable and decoded in the background by a pure-Rust MP3 decoder
-  (Symphonia). Each plays all the way through and starts again, or loops between two
-  points with the seam blended, at a matched loudness; a track you come back to within
+* **Recorded music**: songs can also have a recorded track in `music/` (made with Google's
+  Lyria 3), built into the executable and decoded in the background by a pure-Rust MP3
+  decoder (Symphonia). Each plays all the way through and starts again, or loops between
+  two points with the seam blended, at a matched loudness; a track you come back to within
   three minutes carries on where it left off. Songs without a track are played by the
   band. `hollowbloom --decode` and `tools/find_loop.py` find a new track's loop and
   loudness.
