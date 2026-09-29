@@ -5826,3 +5826,257 @@ pub fn labyrinth_shots(dir: &str) {
         );
     }
 }
+
+/// `--canyon-shots DIR`: a floor of the sunscorch canyon: in by the gateway, the whole
+/// canyon from high above, the torch-lit halls, the pit's sandfalls and quicksand, the
+/// bone warrens, the wyvern's bones on their hoard, the tombs, and what stands about.
+pub fn canyon_shots(dir: &str) {
+    use crate::game::canyon::is_canyon;
+    use crate::game::world::{Floor, Obj, World};
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261201);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+        p.player.level = 30;
+        p.player.refresh();
+    }
+    let depth = {
+        let p = play(&mut game);
+        (6..200)
+            .find(|&d| is_canyon(p.seed, d, p.biome_at(d)))
+            .expect("a canyon floor")
+    };
+    descend(&mut game, &input, &audio, depth, false);
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.toasts.clear();
+        let biome = p.hollow_biome(depth);
+        p.banner = Some(crate::game::play::Banner {
+            title: format!("Floor {depth}"),
+            sub: format!(
+                "{} - the sunscorch canyon",
+                crate::assets::BIOME_STYLES[biome].name
+            ),
+            t: 0.0,
+        });
+    }
+    tick(&mut game, &input, &audio, 30);
+    snap(&mut game, &mut r, &input, dir, "c01_arrival");
+    let find = |game: &mut Game, want: &dyn Fn(&World, i32, i32) -> bool| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (sx, sz) = p.player.tile();
+        let mut best = None;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if want(w, x, z) {
+                    let d = (x - sx).abs() + (z - sz).abs();
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, (x, z)));
+                    }
+                }
+            }
+        }
+        best.map(|(_, t)| t)
+    };
+    let tile = |(x, z): (i32, i32)| Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+    let stand = |game: &mut Game, at: (i32, i32)| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (x, z) = w.nearest_open(at.0, at.1);
+        p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    };
+    let mid = {
+        let p = play(&mut game);
+        p.banner = None;
+        let w = &p.level.as_ref().unwrap().world;
+        Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5)
+    };
+    play(&mut game).cam.dist = 52.0;
+    snap_on(&mut game, &mut r, &input, dir, "c02_overview", Some(mid));
+    play(&mut game).cam.dist = 15.5;
+    // The halls, lit by torches on the canyon walls.
+    if let Some(t) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Sconce)) && w.floor(x, z) == Floor::Sand
+    }) {
+        stand(&mut game, (t.0, t.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(&mut game, &mut r, &input, dir, "c03_halls", tile(t), 11.0);
+    }
+    // The pit: sand pouring off the pillars, and the quicksand.
+    if let Some(f) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Sandfall { .. }))
+    }) {
+        stand(&mut game, (f.0, f.1 + 3));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c04_pit",
+            tile(f) + Vec3::new(0.0, 0.5, 1.5),
+            13.0,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c05_sandfall",
+            tile(f) + Vec3::new(0.0, 1.2, 0.0),
+            6.5,
+        );
+    }
+    if let Some(q) = find(&mut game, &|w, x, z| w.floor(x, z) == Floor::Quicksand) {
+        stand(&mut game, q);
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c06_quicksand",
+            tile(q),
+            8.0,
+        );
+    }
+    // The warrens.
+    if let Some(s) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Skull { var: 0 | 2 }))
+    }) {
+        stand(&mut game, (s.0, s.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(&mut game, &mut r, &input, dir, "c07_warrens", tile(s), 11.0);
+    }
+    // The wyvern's bones on their hoard.
+    if let Some(wy) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Wyvern))
+    }) {
+        let at = Vec3::new(wy.0 as f32 + 1.5, 0.0, wy.1 as f32 + 1.0);
+        stand(&mut game, (wy.0 + 1, wy.1 + 4));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c08_maw",
+            at + Vec3::new(0.0, 0.0, 1.0),
+            10.0,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c09_wyvern",
+            at + Vec3::new(0.0, 0.3, 0.0),
+            6.0,
+        );
+    }
+    // The tombs.
+    if let Some(sc) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Sarcophagus))
+    }) {
+        stand(&mut game, (sc.0, sc.1 + 3));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c10_tombs",
+            tile(sc) + Vec3::new(0.0, 0.0, 1.5),
+            11.0,
+        );
+    }
+    // The gateway you came in by.
+    if let Some(g) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Gateway))
+    }) {
+        stand(&mut game, (g.0, g.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c11_gateway",
+            tile(g) + Vec3::new(0.0, 1.0, 0.5),
+            7.0,
+        );
+    }
+    // Everything that stands about, in a row.
+    let pit = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Sandfall { .. }))
+    });
+    if let Some((fx, fz)) = pit {
+        let (x0, z0) = (fx - 3, fz + 3);
+        {
+            let p = play(&mut game);
+            let w = &mut p.level.as_mut().unwrap().world;
+            for z in z0 - 1..z0 + 4 {
+                for x in x0 - 1..x0 + 8 {
+                    if w.wall(x, z) == crate::game::world::Wall::None {
+                        w.set_obj(x, z, None);
+                        w.set_floor(x, z, Floor::Sand);
+                    }
+                }
+            }
+            let row = [
+                Obj::Cactus { var: 0 },
+                Obj::Cactus { var: 1 },
+                Obj::Cactus { var: 2 },
+                Obj::Skull { var: 0 },
+                Obj::Skull { var: 2 },
+                Obj::Sarcophagus,
+                Obj::GoldPile,
+            ];
+            for (k, o) in row.into_iter().enumerate() {
+                w.set_obj(x0 + k as i32, z0 + 1, Some(o));
+            }
+            w.set_obj(x0 + 3, z0 + 2, Some(Obj::Skull { var: 1 }));
+            w.set_obj(x0 + 5, z0 + 2, Some(Obj::Bones));
+            p.player.pos = Vec2::new(x0 as f32 + 3.5, z0 as f32 + 3.5);
+        }
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c12_props",
+            Vec3::new(x0 as f32 + 3.5, 0.5, z0 as f32 + 1.8),
+            8.5,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c13_skulls",
+            Vec3::new(x0 as f32 + 4.0, 0.3, z0 as f32 + 1.5),
+            3.5,
+        );
+    }
+}

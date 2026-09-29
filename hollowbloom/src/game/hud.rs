@@ -649,6 +649,7 @@ impl Play {
                         }
                     }
                     (Wall::None, _) if wld.floor(x, z) == Floor::Bridge => CLAY,
+                    (Wall::None, _) if wld.floor(x, z) == Floor::Quicksand => RUST,
                     (Wall::None, _) if wld.floor(x, z) == Floor::CopperBridge => AQUA,
                     (
                         Wall::None,

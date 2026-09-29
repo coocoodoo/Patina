@@ -80,7 +80,7 @@ pub struct SaveData {
     pub spider: bool,
 }
 
-const FLOORS: [(Floor, char); 18] = [
+const FLOORS: [(Floor, char); 19] = [
     (Floor::Void, '.'),
     (Floor::Grass, 'g'),
     (Floor::Path, 'p'),
@@ -99,6 +99,7 @@ const FLOORS: [(Floor, char); 18] = [
     (Floor::Walkway, 'k'),
     (Floor::Bridge, 'B'),
     (Floor::CopperBridge, 'u'),
+    (Floor::Quicksand, 'q'),
 ];
 
 fn floor_char(f: Floor) -> char {
@@ -128,6 +129,7 @@ fn wall_char(w: Wall) -> char {
         Wall::Paper(_) => '.',
         Wall::Sewer => 'x',
         Wall::Marble(_) => 'm',
+        Wall::Sandstone(_) => 'd',
     }
 }
 
@@ -141,6 +143,7 @@ fn char_wall(c: char) -> Wall {
         'h' => Wall::Hedge,
         'x' => Wall::Sewer,
         'm' => Wall::Marble(0),
+        'd' => Wall::Sandstone(0),
         d if d.is_ascii_digit() => Wall::Ore(d as u8 - b'0'),
         _ => Wall::None,
     }

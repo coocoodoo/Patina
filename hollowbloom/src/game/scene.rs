@@ -140,11 +140,13 @@ impl Play {
         r.blobs = shadows < 0.35;
         let mut lights = Vec::new();
         let ppos = self.player.world_pos();
+        // The sunlit canyon needs less of your lantern.
+        let canyon = self.level.as_ref().is_some_and(|l| l.world.canyon);
         match self.area {
             Area::Hollow { .. } => lights.push(PointLight {
                 pos: ppos + Vec3::Y * 1.2,
                 radius: 6.8,
-                power: 0.8,
+                power: if canyon { 0.4 } else { 0.8 },
                 warmth: 5.0,
             }),
             Area::Farm | Area::Town if env.night > 0.2 => lights.push(PointLight {

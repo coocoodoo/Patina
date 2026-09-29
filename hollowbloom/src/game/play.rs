@@ -2,6 +2,7 @@
 
 use glam::{Vec2, Vec3};
 
+use super::canyon::QUICKSAND_DRAG;
 use super::combat::{Bolt, Flash};
 use super::draw::Env;
 use super::dungeon::{self, Level, is_waystone_floor, ore_item};
@@ -597,10 +598,14 @@ impl Play {
                 // the labyrinth's marble shows pale and warm.
                 let glowing = self.level.as_ref().is_some_and(|l| l.world.glowcave);
                 let marble = self.level.as_ref().is_some_and(|l| l.world.labyrinth);
+                let canyon = self.level.as_ref().is_some_and(|l| l.world.canyon);
                 let (ambient, warmth, clear) = if glowing {
                     (0.42, 2.0, INK)
                 } else if marble {
                     (0.56, 4.8, INK)
+                } else if canyon {
+                    // Sun falling into it from far above: hot, and lit orange.
+                    (0.68, 5.4, INK)
                 } else {
                     (st.ambient, st.warmth, st.clear)
                 };
@@ -734,10 +739,11 @@ impl Play {
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
         self.revealed = vec![false; (level.world.w * level.world.h) as usize];
-        let (sewer, glowcave, labyrinth) = (
+        let (sewer, glowcave, labyrinth, canyon) = (
             level.world.sewer,
             level.world.glowcave,
             level.world.labyrinth,
+            level.world.canyon,
         );
         self.level = Some(level);
         self.area = Area::Hollow { depth };
@@ -762,6 +768,8 @@ impl Play {
                 format!("{} - the glowcap caves", BIOME_STYLES[biome].name)
             } else if labyrinth {
                 format!("{} - the marble labyrinth", BIOME_STYLES[biome].name)
+            } else if canyon {
+                format!("{} - the sunscorch canyon", BIOME_STYLES[biome].name)
             } else {
                 BIOME_STYLES[biome].name.to_string()
             },
@@ -1367,7 +1375,12 @@ impl Play {
             mv *= 0.25;
         }
         let tired = p.energy <= 0.0;
-        let speed = p.move_speed() * if tired { 0.65 } else { 1.0 };
+        // Quicksand drags at your feet.
+        let (tx, tz) = (p.pos.x.floor() as i32, p.pos.y.floor() as i32);
+        let sinking = world.floor(tx, tz) == Floor::Quicksand;
+        let speed = p.move_speed()
+            * if tired { 0.65 } else { 1.0 }
+            * if sinking { QUICKSAND_DRAG } else { 1.0 };
         if mv.length_squared() > 0.0 {
             p.pos = world.move_circle(p.pos, mv * speed * dt, RADIUS);
             if !busy {
@@ -2694,6 +2707,7 @@ impl Play {
                 | Wall::Cliff
                 | Wall::Sewer
                 | Wall::Marble(_)
+                | Wall::Sandstone(_)
         ) && w.inside(x, z);
         let hard_obj = w.obj(x, z).is_some_and(|o| {
             matches!(

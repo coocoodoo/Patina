@@ -2,6 +2,7 @@
 
 pub mod bombs;
 pub mod candy;
+pub mod canyon;
 pub mod combat;
 pub mod controls;
 pub mod discover;

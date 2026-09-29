@@ -54,6 +54,8 @@ pub enum Floor {
     Bridge,
     /// A bridge of old copper plate, gone green with age.
     CopperBridge,
+    /// Quicksand in the sunscorch canyon: it drags at your feet (see `canyon`).
+    Quicksand,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
@@ -75,6 +77,9 @@ pub enum Wall {
     Sewer,
     /// The labyrinth's marble, by look (see `labyrinth::PLAIN` and so on).
     Marble(u8),
+    /// The sunscorch canyon's layered sandstone, or its tombs' carved blocks, rising in
+    /// terraces away from the canyon floor (see `canyon::sandstone`).
+    Sandstone(u8),
 }
 
 impl Wall {
@@ -84,6 +89,7 @@ impl Wall {
             Wall::Paper(_) => 2.0,
             Wall::Hedge => 0.8,
             Wall::Marble(super::labyrinth::PIER) => super::labyrinth::PIER_H,
+            Wall::Sandstone(v) => super::canyon::terrace_height(v),
             _ => WALL_H,
         }
     }
@@ -311,6 +317,28 @@ pub enum Obj {
     Sconce,
     /// A shaft of daylight falling into the labyrinth's courtyard.
     Sunbeam,
+    /// A tall pillar of sandstone in the sunscorch canyon, sand pouring off its top.
+    Sandfall {
+        var: u8,
+    },
+    /// A great bleached skull half sunk in the sand, or a few little ones among bones (see
+    /// `canyon::SKULL_PILE`).
+    Skull {
+        var: u8,
+    },
+    /// A cactus: tall with arms, round and squat, or a clump of paddles.
+    Cactus {
+        var: u8,
+    },
+    /// A stone coffin in the canyon's tombs.
+    Sarcophagus,
+    /// The bones of a great wyvern, lying over six tiles (the others are `Part`s).
+    Wyvern,
+    /// A heap of old gold coins, glittering.
+    GoldPile,
+    /// The ancient gateway you come into the canyon by: two posts and a lintel, the posts
+    /// on the tiles either side (`Part`s).
+    Gateway,
 }
 
 impl Obj {
@@ -320,6 +348,9 @@ impl Obj {
         }
         if let Obj::Rubble { var } = self {
             return *var == super::labyrinth::HEAP;
+        }
+        if let Obj::Skull { var } = self {
+            return *var != super::canyon::SKULL_PILE;
         }
         !matches!(
             self,
@@ -338,6 +369,8 @@ impl Obj {
                 | Obj::Arch
                 | Obj::Sconce
                 | Obj::Sunbeam
+                | Obj::GoldPile
+                | Obj::Gateway
         )
     }
 
@@ -387,6 +420,7 @@ impl Obj {
             Obj::Sconce => Some((0.8, 4.2, 0.5, 6.5)),
             // Daylight from far above.
             Obj::Sunbeam => Some((1.4, 3.8, 0.45, 3.8)),
+            Obj::GoldPile => Some((0.3, 1.8, 0.14, 6.5)),
             _ => None,
         }
     }
@@ -427,6 +461,8 @@ pub struct World {
     pub glowcave: bool,
     /// The marble labyrinth: its flagstones and mosaics (see `labyrinth`).
     pub labyrinth: bool,
+    /// The sunscorch canyon: sand, strata and tombs (see `canyon`).
+    pub canyon: bool,
     chunks: Vec<Mesh>,
     /// What glows in each chunk (sewer water, glowing pools), drawn with a light floor of
     /// `SEWER_GLOW` or `POOL_GLOW`.
@@ -465,6 +501,7 @@ impl World {
             sewer: false,
             glowcave: false,
             labyrinth: false,
+            canyon: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             glowing: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
@@ -993,6 +1030,18 @@ impl World {
                     grass[lawn]
                 }
             }
+            // The canyon's rippled sand, and the tombs' flagstones.
+            Floor::Sand if self.canyon => {
+                let s = &a.canyon.sand;
+                match h % 9 {
+                    0 => s[1],
+                    1 => s[2],
+                    2 => s[3],
+                    _ => s[0],
+                }
+            }
+            Floor::Walkway if self.canyon => a.canyon.flags[(h % 3 == 0) as usize],
+            Floor::Quicksand => a.canyon.quicksand[0],
             Floor::Path
             | Floor::Sand
             | Floor::Cobble
@@ -1095,6 +1144,10 @@ impl World {
             }
         }
         match w {
+            Wall::Sandstone(v) => {
+                let look = super::canyon::sandstone_look(v);
+                (a.canyon.side[look], a.canyon.top[look])
+            }
             Wall::Marble(look) => {
                 let l = &a.labyrinth;
                 let top = if look == super::labyrinth::PIER {
@@ -1156,6 +1209,7 @@ impl World {
         match f {
             Floor::Water => self.water_y(),
             Floor::Lava => -0.12,
+            Floor::Quicksand => -0.07,
             _ => 0.0,
         }
     }
@@ -1182,6 +1236,7 @@ impl World {
                     let top_ao = match wall {
                         Wall::Cliff | Wall::Brick | Wall::Timber | Wall::Hedge => [1.0; 4],
                         Wall::Marble(_) => [0.86; 4],
+                        Wall::Sandstone(_) => [0.8; 4],
                         Wall::Paper(_) => [0.5; 4],
                         _ => [0.62; 4],
                     };
@@ -1277,6 +1332,8 @@ impl World {
                     // Earthy banks up top; the cave's own rock underground.
                     let bank = if self.sewer {
                         a.sewer.bank
+                    } else if self.canyon {
+                        a.canyon.bank
                     } else if self.glowcave {
                         a.glowcave.bank
                     } else if f == Floor::Water && !matches!(self.area, Area::Hollow { .. }) {

@@ -53,6 +53,9 @@ pub struct LabyrinthArt {
     pub sconce: Mesh,
     /// A shaft of daylight leaning away up out of sight, drawn as added light.
     pub beam: Mesh,
+    /// The columns' textures: their fluted shafts, plain marble and gilding (for recarving
+    /// them in other stone: see `canyon_art`).
+    pub stone: (TexId, TexId, TexId),
 }
 
 /// The walls' top rows: pale where the edge catches the light, then the gilded band and
@@ -1235,6 +1238,7 @@ pub fn build(bank_: &mut TexBank) -> LabyrinthArt {
         arch,
         sconce,
         beam,
+        stone,
     }
 }
 

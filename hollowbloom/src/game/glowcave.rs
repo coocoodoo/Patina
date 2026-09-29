@@ -123,7 +123,7 @@ impl Play {
 }
 
 /// Smooth value noise in -1..1, varying over `cell` tiles.
-fn noise(x: f32, z: f32, cell: f32, seed: u32) -> f32 {
+pub(super) fn noise(x: f32, z: f32, cell: f32, seed: u32) -> f32 {
     let (gx, gz) = (x / cell, z / cell);
     let (ix, iz) = (gx.floor() as i32, gz.floor() as i32);
     let (tx, tz) = (gx - ix as f32, gz - iz as f32);
@@ -136,7 +136,13 @@ fn noise(x: f32, z: f32, cell: f32, seed: u32) -> f32 {
 }
 
 /// A point along a Catmull-Rom curve through `b` and `c`.
-fn curve(a: (f32, f32), b: (f32, f32), c: (f32, f32), d: (f32, f32), t: f32) -> (f32, f32) {
+pub(super) fn curve(
+    a: (f32, f32),
+    b: (f32, f32),
+    c: (f32, f32),
+    d: (f32, f32),
+    t: f32,
+) -> (f32, f32) {
     let (t2, t3) = (t * t, t * t * t);
     let f = |a: f32, b: f32, c: f32, d: f32| {
         0.5 * (2.0 * b
@@ -173,7 +179,7 @@ fn dig(w: &mut World, cx: f32, cz: f32, rad: f32) {
 }
 
 /// How many tiles you can walk to from `from`.
-fn reach(w: &World, from: (i32, i32)) -> usize {
+pub(super) fn reach(w: &World, from: (i32, i32)) -> usize {
     let mut seen = vec![false; (w.w * w.h) as usize];
     let mut q = std::collections::VecDeque::new();
     seen[w.idx(from.0, from.1)] = true;

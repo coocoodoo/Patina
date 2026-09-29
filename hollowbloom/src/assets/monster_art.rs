@@ -101,7 +101,7 @@ fn speck(bank: &mut TexBank, c: [u8; 3]) -> TexId {
 }
 
 /// Paints rows of characters into a texture at (x0, y0) with a legend.
-fn paint(t: &mut Texture, x0: i32, y0: i32, rows: &[&str], legend: &[(char, u8)]) {
+pub(super) fn paint(t: &mut Texture, x0: i32, y0: i32, rows: &[&str], legend: &[(char, u8)]) {
     for (y, row) in rows.iter().enumerate() {
         for (x, ch) in row.chars().enumerate() {
             if let Some(&(_, c)) = legend.iter().find(|(k, _)| *k == ch) {

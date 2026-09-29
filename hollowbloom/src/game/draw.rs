@@ -146,10 +146,12 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
                     } else {
                         1.0
                     };
+                // The canyon's pale sand is lit bright enough already.
+                let dim = if w.canyon { 0.6 } else { 1.0 };
                 out.push(PointLight {
                     pos: base + Vec3::Y * hgt,
                     radius: radius * flicker,
-                    power: power * flicker,
+                    power: power * flicker * dim,
                     warmth,
                 });
             } else if matches!(o, Obj::House) {
@@ -225,6 +227,10 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
         .push((a.lava[0], a.lava[((env.time * 2.0) as usize) % 2]));
     if w.sewer {
         r.remap.push((a.sewer.water[0], a.sewer.water[frame]));
+    }
+    if w.canyon {
+        let q = &a.canyon.quicksand;
+        r.remap.push((q[0], q[((env.time * 1.5) as usize) % 4]));
     }
     if w.glowcave {
         let water = &a.glowcave.water;
@@ -649,8 +655,13 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             }
         }
         Obj::Column { var } => {
-            let l = &a.labyrinth;
-            let var = *var as usize % l.columns.len();
+            // Marble in the labyrinth, sandstone in the canyon's tombs.
+            let columns = if w.canyon {
+                &a.canyon.columns
+            } else {
+                &a.labyrinth.columns
+            };
+            let var = *var as usize % columns.len();
             let turn = if var == FALLEN as usize {
                 small_rot(x, z)
             } else {
@@ -660,8 +671,88 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             if var != FALLEN as usize {
                 r.shadow(a.tex(a.disk), base, 0.38);
             }
-            r.mesh(&a.bank, &l.columns[var], &(at * turn), &lit);
+            r.mesh(&a.bank, &columns[var], &(at * turn), &lit);
         }
+        Obj::Sandfall { var } => {
+            let c = &a.canyon;
+            r.mesh(&a.bank, &c.sandfall, &at, &lit);
+            // Sand pouring off the top of the pillar down its front, and dust rising where
+            // it lands.
+            let top = base + Vec3::new(0.0, 2.5, 0.32);
+            for k in 0..28 {
+                let t = (env.time * 0.9 + k as f32 / 28.0 + *var as f32 * 0.31).fract();
+                let spread = ((k * 7) % 5) as f32 * 0.04 - 0.08;
+                let q = top + Vec3::new(spread, -t * t * 2.4, 0.02 + t * 0.1);
+                let col = [SAND, GOLD, CREAM, WHITE][k % 4];
+                r.point(q, if k % 3 == 0 { 2 } else { 1 }, col);
+            }
+            let pulse = (env.time * 2.0 + x as f32).sin() * 0.5 + 0.5;
+            r.halo(
+                base + Vec3::new(0.0, 0.15, 0.3),
+                0.45,
+                SAND,
+                0.12 + pulse * 0.06,
+            );
+            for k in 0..3 {
+                let t = (env.time * 0.5 + k as f32 / 3.0).fract();
+                let a2 = k as f32 * 2.1 + env.time;
+                let q = base + Vec3::new(a2.cos() * 0.35, 0.1 + t * 0.4, 0.35 + a2.sin() * 0.15);
+                r.point(q, 1, GOLD);
+            }
+        }
+        Obj::Skull { var } => {
+            let c = &a.canyon;
+            let turn = if *var == super::canyon::SKULL_PILE {
+                small_rot(x, z)
+            } else {
+                // Great skulls look out towards you, give or take.
+                r.shadow(a.tex(a.disk), base, 0.42);
+                Mat4::from_rotation_y(((hash2(x, z, 9) % 100) as f32 / 100.0 - 0.5) * 0.9)
+            };
+            r.mesh(&a.bank, &c.skulls[*var as usize % 3], &(at * turn), &lit);
+        }
+        Obj::Cactus { var } => {
+            r.shadow(a.tex(a.disk), base, 0.3);
+            r.mesh(
+                &a.bank,
+                &a.canyon.cacti[*var as usize % 3],
+                &(at * small_rot(x, z)),
+                &lit,
+            );
+        }
+        Obj::Sarcophagus => {
+            r.mesh(&a.bank, &a.canyon.sarcophagus, &at, &lit);
+        }
+        Obj::Wyvern => {
+            // Round the middle of its six tiles.
+            use super::canyon::{WYVERN_H, WYVERN_W};
+            let mid = Vec3::new(
+                x as f32 + WYVERN_W as f32 * 0.5,
+                0.0,
+                z as f32 + WYVERN_H as f32 * 0.5,
+            );
+            r.mesh(
+                &a.bank,
+                &a.canyon.wyvern,
+                &Mat4::from_translation(mid),
+                &DrawOpts::at(mid),
+            );
+        }
+        Obj::GoldPile => {
+            r.mesh(&a.bank, &a.canyon.gold, &(at * small_rot(x, z)), &lit);
+            for k in 0..2 {
+                let seed = (x * 31 + z * 17 + k * 13) as u32;
+                let t = (env.time / (1.3 + (seed % 5) as f32 * 0.2) + (seed % 11) as f32 / 11.0)
+                    .fract();
+                if t < 0.4 {
+                    let h = hash2(seed as i32, (env.time * 0.8) as i32, 3);
+                    let (u, v) = ((h & 0xFF) as f32 / 255.0, ((h >> 8) & 0xFF) as f32 / 255.0);
+                    let q = base + Vec3::new(u * 0.5 - 0.25, 0.08 + v * 0.1, v * 0.4 - 0.2);
+                    r.sparkle(q, 1 + (t * 5.0) as i32 % 2, WHITE, GOLD);
+                }
+            }
+        }
+        Obj::Gateway => r.mesh(&a.bank, &a.canyon.gateway, &at, &lit),
         Obj::Nest => {
             r.shadow(a.tex(a.disk), base, 0.4);
             r.mesh(&a.bank, &a.labyrinth.nest, &at, &lit);

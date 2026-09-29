@@ -442,6 +442,9 @@ pub fn generate(seed: u64, depth: u32, biome: usize, via_waystone: bool) -> Leve
     if super::labyrinth::is_labyrinth(seed, depth, biome) {
         return super::labyrinth::generate(seed, depth, biome);
     }
+    if super::canyon::is_canyon(seed, depth, biome) {
+        return super::canyon::generate(seed, depth, biome);
+    }
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x9E37_79B9));
     let grow = depth.min(30) as i32;
     let (w, h) = (44 + grow, 36 + grow * 2 / 3);

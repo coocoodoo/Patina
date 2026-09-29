@@ -1,6 +1,7 @@
 //! Every texture, sprite, font and model the game uses, generated at start-up.
 
 pub mod beast_art;
+pub mod canyon_art;
 pub mod deep_art;
 pub mod delve_art;
 pub mod fish_art;
@@ -676,6 +677,8 @@ pub struct Assets {
     pub glowcave: glowcave_art::GlowcaveArt,
     /// The marble labyrinth: its walls, floors, columns, braziers, statues and arches.
     pub labyrinth: labyrinth_art::LabyrinthArt,
+    /// The sunscorch canyon: strata, sand, quicksand, tombs, skulls, cacti and bones.
+    pub canyon: canyon_art::CanyonArt,
     /// Drakelings and leaflings.
     pub beasts: beast_art::Beasts,
     /// Backpacks, worn and as icons, in every style and colourway.
@@ -843,6 +846,7 @@ impl Assets {
         let sewer = sewer_art::build(&mut bank);
         let glowcave = glowcave_art::build(&mut bank);
         let labyrinth = labyrinth_art::build(&mut bank);
+        let canyon = canyon_art::build(&mut bank, labyrinth.stone, &labyrinth.columns);
         let beasts = beast_art::build(&mut bank);
         Assets {
             foes,
@@ -898,6 +902,7 @@ impl Assets {
             sewer,
             glowcave,
             labyrinth,
+            canyon,
             beasts,
             packs,
         }

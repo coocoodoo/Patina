@@ -488,6 +488,18 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   until it sees you, then takes wing with a screech, **wheels round overhead** out of reach,
   and every so often hangs back in the air, screeches, and **dives at you talons first**
   before climbing away again. They drop **griffin feathers**.
+* **The Sunscorch Canyon.** Now and then (from floor 6, never on a guardian's floor, and
+  often in the Sunken Ruins) a floor is a deep **canyon of red sandstone**, its cliffs of
+  layered strata rising in terraces over **rippled sand**, in hot orange light. You come in
+  by an **ancient stone gateway**, and the torch-lit **Sandrift Halls** wind away into the
+  canyon: to the **Bone Warrens**, a tangle of low ridges strewn with bones, heaps of little
+  skulls, and great **horned and fanged skulls**; to the **Sunscorch Pit**, a sunken basin
+  where **sand pours off tall pillars** and patches of **quicksand** drag at your feet (you
+  wade through at half speed); to the **Wyvern's Maw**, where a great **wyvern's bones** lie
+  over its **hoard of gold** and a chest or two; and to the **Whispering Tombs**, four
+  chambers of carved blocks where **mummies' coffins** lie under their striped headdresses
+  and golden faces, among broken columns, canopic jars and grave goods, and where the
+  stairs lead down. Cacti grow in the sand, and sandstone can't be mined.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -666,6 +678,7 @@ hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and th
 hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
 hollowbloom --labyrinth-shots DIR # the marble labyrinth: maze, arches, courtyard, minotaur, griffin
+hollowbloom --canyon-shots DIR    # the sunscorch canyon: halls, pit, sandfalls, warrens, maw, tombs
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
