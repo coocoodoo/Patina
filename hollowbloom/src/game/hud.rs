@@ -499,19 +499,19 @@ impl Play {
                 );
             }
             Phase::Caught => {
-                // Under the hero, clear of the catch held up high.
-                let Some(s) = feet else { return };
+                // Up over the hero's head and the catch held up high, where the hotbar can't
+                // cover it however low on the screen the hero stands, kept on the screen.
+                let Some(s) = head else { return };
+                let p = &self.player;
+                let tip = fish::rod_tip(p.world_pos(), p.yaw, f.lift(self.time));
+                // (The catch hangs 0.62 under the tip and stands half a unit tall.)
+                let above = cam
+                    .project(tip - Vec3::Y * 0.12)
+                    .map_or(s.y, |q| q.y.min(s.y));
                 let Some(Hooked::Fish(item, size)) = f.hooked else {
                     return;
                 };
                 let rare = fish::fish_def(item).map_or(0, |d| d.rarity);
-                let (x, y) = (s.x as i32, s.y as i32 + 20);
-                let name = item.def().name;
-                let tw = c.text_width(name);
-                c.text_outline(x - tw / 2, y, name, fish::rarity_color(rare), INK);
-                let sub = format!("{size} cm  {}", fish::rarity_name(rare));
-                let sw = c.text_width(&sub);
-                c.text_outline(x - sw / 2, y + 11, &sub, CREAM, INK);
                 let tag = if f.record {
                     Some(("Record!", GOLD))
                 } else if f.new {
@@ -519,12 +519,22 @@ impl Play {
                 } else {
                     None
                 };
+                let name = item.def().name;
+                let sub = format!("{size} cm  {}", fish::rarity_name(rare));
+                let tw = c.text_width(name).max(c.text_width(&sub));
+                let x = (s.x as i32).clamp(tw / 2 + 2, w - tw / 2 - 2);
+                // The tag on top, then the name, then its size.
+                let y = (above as i32 - 36).clamp(26, h - 64);
                 if let Some((t, col)) = tag {
                     if (self.time * 6.0).fract() < 0.75 {
                         let bw = c.text_width(t);
-                        c.text_outline(x - bw / 2, y + 22, t, col, INK);
+                        c.text_outline(x - bw / 2, y, t, col, INK);
                     }
                 }
+                let nw = c.text_width(name);
+                c.text_outline(x - nw / 2, y + 11, name, fish::rarity_color(rare), INK);
+                let sw = c.text_width(&sub);
+                c.text_outline(x - sw / 2, y + 22, &sub, CREAM, INK);
             }
             _ => {}
         }

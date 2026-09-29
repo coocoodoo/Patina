@@ -28,6 +28,10 @@ use gear_art::GearArt;
 use models::{Critters, Humanoid, Props};
 
 pub const BIOMES: usize = 6;
+/// Creatures of the old sewers wear a look of their own after the six biomes' (in bones,
+/// mostly), and there's one more of each family's looks for it.
+pub const SEWER_LOOK: usize = BIOMES;
+pub const LOOKS: usize = BIOMES + 1;
 pub const ORES: usize = 6;
 
 pub struct BiomeTex {
@@ -134,8 +138,8 @@ pub const ORE_COLORS: [[u8; 3]; ORES] = [
 pub struct FoeSkins {
     pub slime: Vec<crate::render::Mesh>,
     pub slime_core: Vec<crate::render::Mesh>,
-    /// Each biome's slime colours (light, mid, dark), for bubbles and glints.
-    pub slime_cols: [[u8; 3]; BIOMES],
+    /// Each look's slime colours (light, mid, dark), for bubbles and glints.
+    pub slime_cols: [[u8; 3]; LOOKS],
     pub shroom: Vec<crate::render::Mesh>,
     pub bat_body: Vec<crate::render::Mesh>,
     pub bat_wing: Vec<crate::render::Mesh>,
@@ -164,6 +168,42 @@ fn recolor(
     m
 }
 
+/// Old bone: pale, in rows with a dark gap after every `rib` of them (which a lathe wraps
+/// round into a ribcage).
+fn bone_tex(w: u32, h: u32, rib: i32) -> Texture {
+    let mut t = Texture::new(w, h, SAND);
+    for y in 0..h as i32 {
+        for x in 0..w as i32 {
+            let c = match y % (rib + 1) {
+                k if k == rib => SHADOW,
+                0 => WHITE,
+                _ if (x * 5 + y * 3) % 11 == 0 => KHAKI,
+                _ => SAND,
+            };
+            t.set(x, y, c);
+        }
+    }
+    t
+}
+
+/// A bat's wing with nothing left of it but the bones: the arm along the top and the
+/// fingers spreading from it.
+fn bone_wing() -> Texture {
+    let mut t = Texture::clear(16, 8);
+    for x in 0..16 {
+        t.set(x, 0, WHITE);
+        t.set(x, 1, SAND);
+        if x % 5 <= 1 {
+            for y in 2..8 {
+                if !(y >= 5 && x % 5 > 7 - y) {
+                    t.set(x, y, if x % 5 == 0 { WHITE } else { KHAKI });
+                }
+            }
+        }
+    }
+    t
+}
+
 fn ramp(from: [u8; 3], to: [u8; 3]) -> impl Fn(u8) -> u8 {
     move |c| {
         if c == from[0] {
@@ -186,6 +226,8 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
         [GOLD, ORANGE, RUST],
         [WHITE, SKY, BLUE],
         [LAVENDER, PURPLE, GRAPE],
+        // The sewers' sludge.
+        [CLAY, RUST, MAROON],
     ];
     let caps = [RED, BLUE, PINK, ORANGE, SKY, GOLD];
     let furs = [
@@ -328,6 +370,50 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
             &ramp([CREAM, SAND, KHAKI], puffers[b]),
         ));
     }
+    // Down in the sewers: bats, frogs and puffers are nothing but bones, and the rest (who
+    // don't live there, but just in case) are bleached or gone brown.
+    let ribs = bank.add(bone_tex(4, 4, 2));
+    s.bat_body.push(c.bat_body.retexture(c.fur_tex, ribs));
+    let wing = bank.add(bone_wing());
+    s.bat_wing.push(c.bat_wing.retexture(c.wing_tex, wing));
+    let ribs = bank.add(bone_tex(16, 16, 2));
+    s.frog.push(c.frog.retexture(c.frog_tex, ribs));
+    s.frog_leg.push(c.frog_leg.retexture(c.frog_tex, ribs));
+    let cage = bank.add(bone_tex(16, 16, 2));
+    s.puffer.push(c.puffer.retexture(c.puffer_tex, cage));
+    let sludge = ramp([LIME, GREEN, TEAL], slime_cols[SEWER_LOOK]);
+    s.slime
+        .push(recolor(bank, &c.slime, &[c.slime_tex], &sludge));
+    s.slime_core
+        .push(recolor(bank, &c.slime_core, &[c.slime_core_tex], &sludge));
+    s.shroom.push(recolor(bank, &c.shroom, &[c.cap_tex], &|x| {
+        if x == RED { KHAKI } else { x }
+    }));
+    let bone = [WHITE, SAND, KHAKI];
+    s.crab.push(recolor(
+        bank,
+        &c.crab,
+        &[c.shell_tex],
+        &ramp([MINT, AQUA, TEAL], bone),
+    ));
+    s.wisp.push(recolor(
+        bank,
+        &c.wisp,
+        &[c.wisp_tex],
+        &ramp([WHITE, MINT, AQUA], [CREAM, LIME, GREEN]),
+    ));
+    s.beetle.push(recolor(
+        bank,
+        &c.beetle,
+        &[c.beetle_tex],
+        &ramp([LAVENDER, PURPLE, GRAPE], bone),
+    ));
+    s.golem.push(recolor(
+        bank,
+        &c.golem,
+        &[c.golem_tex],
+        &ramp([KHAKI, ROSEWOOD, SHADOW], bone),
+    ));
     s
 }
 

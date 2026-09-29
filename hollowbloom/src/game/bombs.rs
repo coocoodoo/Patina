@@ -177,7 +177,9 @@ impl Play {
                     continue;
                 }
                 match self.world().obj(x, z) {
-                    Some(Obj::Pot { .. } | Obj::Crate { .. }) => self.hit_soft(x, z, io),
+                    Some(Obj::Pot { .. } | Obj::Crate { .. } | Obj::Keg { .. }) => {
+                        self.hit_soft(x, z, io)
+                    }
                     Some(Obj::Crack) if d < 1.8 => self.open_crack(x, z, io),
                     _ => {}
                 }

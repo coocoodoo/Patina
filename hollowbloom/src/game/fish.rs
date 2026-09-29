@@ -30,9 +30,11 @@ pub enum Water {
     Lava,
     Frost,
     Ruins,
+    /// The channels of the old sewer floors, whatever the biome.
+    Sewer,
 }
 
-pub const WATERS: [Water; 8] = [
+pub const WATERS: [Water; 9] = [
     Water::Pond,
     Water::River,
     Water::Cave,
@@ -41,6 +43,7 @@ pub const WATERS: [Water; 8] = [
     Water::Lava,
     Water::Frost,
     Water::Ruins,
+    Water::Sewer,
 ];
 
 impl Water {
@@ -54,6 +57,7 @@ impl Water {
             "the Ember Depths' lava",
             "the Frost Caverns' pools",
             "the Sunken Ruins' pools",
+            "the old sewers",
         ][self as usize]
     }
 
@@ -68,6 +72,7 @@ impl Water {
             "Ember Depths",
             "Frost Caverns",
             "Sunken Ruins",
+            "Old sewers",
         ][self as usize]
     }
 }
@@ -95,6 +100,8 @@ pub enum Shape {
     Jelly,
     /// Claws and a tail.
     Cray,
+    /// Something the sewers made up: drawn by hand (see `fish_art::odd_fish`).
+    Odd,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -203,7 +210,7 @@ use Shape::*;
 use Water as W;
 use When::{Any, Day, Night, Rain};
 
-pub static FISH: [FishDef; 41] = [
+pub static FISH: [FishDef; 51] = [
     // The farm pond.
     f(
         Item::SunnyMinnow,
@@ -786,6 +793,148 @@ pub static FISH: [FishDef; 41] = [
         Wild,
         (100, 220),
     ),
+    // The old sewers. (Their colours only matter for the odd one out in a list: every one
+    // of them is drawn by hand.)
+    f(
+        Item::SockEel,
+        &[W::Sewer],
+        Odd,
+        [SKY, BLUE, RED],
+        RED,
+        Pt::Stripes,
+        WHITE,
+        Any,
+        0,
+        3,
+        Dart,
+        (25, 60),
+    ),
+    f(
+        Item::GooglyGuppy,
+        &[W::Sewer],
+        Odd,
+        [MINT, AQUA, PINK],
+        PINK,
+        Pt::Plain,
+        WHITE,
+        Any,
+        0,
+        2,
+        Dart,
+        (3, 8),
+    ),
+    f(
+        Item::TinCanTetra,
+        &[W::Sewer],
+        Odd,
+        [MINT, AQUA, TEAL],
+        TEAL,
+        Pt::Band,
+        RED,
+        Any,
+        0,
+        3,
+        Calm,
+        (4, 10),
+    ),
+    f(
+        Item::MustacheMinnow,
+        &[W::Sewer],
+        Odd,
+        [WHITE, SKY, SLATE],
+        SKY,
+        Pt::Belly,
+        CLAY,
+        Day,
+        0,
+        2,
+        Calm,
+        (5, 11),
+    ),
+    f(
+        Item::BootCarp,
+        &[W::Sewer],
+        Odd,
+        [GOLD, ORANGE, CLAY],
+        ORANGE,
+        Pt::Plain,
+        RUST,
+        Any,
+        1,
+        4,
+        Sink,
+        (20, 45),
+    ),
+    f(
+        Item::PicklePike,
+        &[W::Sewer],
+        Odd,
+        [LIME, GREEN, DEEP_TEAL],
+        GREEN,
+        Pt::Spots,
+        LIME,
+        Any,
+        1,
+        5,
+        Dart,
+        (35, 80),
+    ),
+    f(
+        Item::MopCatfish,
+        &[W::Sewer],
+        Odd,
+        [KHAKI, SLATE, SHADOW],
+        SAND,
+        Pt::Lines,
+        CREAM,
+        Night,
+        1,
+        5,
+        Sink,
+        (40, 90),
+    ),
+    f(
+        Item::BubblegumBlobfish,
+        &[W::Sewer],
+        Odd,
+        [BLUSH, PINK, CRIMSON],
+        BLUSH,
+        Pt::Plain,
+        SALMON,
+        Any,
+        2,
+        6,
+        Float,
+        (20, 45),
+    ),
+    f(
+        Item::TwoHeadedGoby,
+        &[W::Sewer],
+        Odd,
+        [BLUSH, LAVENDER, PURPLE],
+        PURPLE,
+        Pt::Spots,
+        GRAPE,
+        Night,
+        2,
+        7,
+        Wild,
+        (10, 24),
+    ),
+    f(
+        Item::SewerKing,
+        &[W::Sewer],
+        Odd,
+        [GREEN, TEAL, DEEP_TEAL],
+        GOLD,
+        Pt::Speckle,
+        LIME,
+        Any,
+        3,
+        9,
+        Wild,
+        (90, 200),
+    ),
 ];
 
 /// A fish's details, if the item is a fish.
@@ -967,6 +1116,7 @@ impl Play {
         match (self.area, f) {
             (Area::Farm, Floor::Water) => Some(Water::Pond),
             (Area::Town, Floor::Water) => Some(Water::River),
+            (Area::Hollow { .. }, Floor::Water) if self.world().sewer => Some(Water::Sewer),
             (Area::Hollow { depth }, Floor::Water) => Some(match biome_for(depth) {
                 0 => Water::Cave,
                 1 => Water::Grotto,
@@ -1291,7 +1441,9 @@ impl Play {
         if self.rng.chance(0.03 + treasure * 0.8 + luck * 0.02) {
             return Hooked::Treasure;
         }
-        if water != Water::Lava && self.rng.chance(0.07) {
+        // The sewers are full of rubbish: twice the boots and cans.
+        let junk_chance = if water == Water::Sewer { 0.14 } else { 0.07 };
+        if water != Water::Lava && self.rng.chance(junk_chance) {
             let junk = [Item::Seaweed, Item::Seaweed, Item::SoggyBoot, Item::TinCan];
             return Hooked::Junk(junk[self.rng.below(junk.len())]);
         }

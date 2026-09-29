@@ -694,6 +694,9 @@ impl Play {
                 s.boss,
                 hash2(depth as i32, i as i32, self.seed as u32),
             );
+            if level.world.sewer {
+                f = f.in_the_sewers();
+            }
             f.feel_the_moon(moon);
             self.foes.push(f);
         }
@@ -1479,6 +1482,7 @@ impl Play {
                                 | Obj::Chest { .. }
                                 | Obj::Pot { .. }
                                 | Obj::Crate { .. }
+                                | Obj::Keg { .. }
                                 | Obj::EnchantTable
                         )
                     }) || matches!(w.floor(x, z), Floor::Planks | Floor::Cobble)
@@ -1496,10 +1500,14 @@ impl Play {
                                 | Obj::Workbench
                                 | Obj::Chest { .. }
                                 | Obj::Crate { .. }
+                                | Obj::Keg { .. }
                                 | Obj::Weed { .. }
                                 | Obj::Shrub { .. }
                         )
                     }) || w.wall(x, z) == Wall::Timber
+                        // Broken planks on a sewer walkway (not the ones out in the water).
+                        || (matches!(w.obj(x, z), Some(Obj::Debris { .. }))
+                            && w.floor(x, z) != Floor::Water)
                 }
                 _ => false,
             },
@@ -2486,13 +2494,13 @@ impl Play {
                 }
             }
             Obj::Shrub { .. } => self.cut_shrub(x, z, 1, io),
-            Obj::Pot { .. } | Obj::Crate { .. } => {
+            Obj::Pot { .. } | Obj::Crate { .. } | Obj::Keg { .. } => {
                 self.world_mut().set_obj(x, z, None);
                 io.audio.play(Sfx::Break);
-                let col = if matches!(o, Obj::Pot { .. }) {
-                    [CLAY, GOLD, RUST]
-                } else {
-                    [CLAY, RUST, SAND]
+                let col = match o {
+                    Obj::Pot { .. } => [CLAY, GOLD, RUST],
+                    Obj::Keg { .. } => [RUST, CLAY, SLATE],
+                    _ => [CLAY, RUST, SAND],
                 };
                 self.fx.burst(at + Vec3::Y * 0.3, 12, &col, 2.5, 2.0);
                 let depth = self.depth().max(1);
@@ -2823,7 +2831,7 @@ impl Play {
                 self.drops
                     .push(Drop::item(Item::Stone, 1, at, &mut self.rng));
             }
-            Obj::Pot { .. } | Obj::Crate { .. } => self.hit_soft(x, z, io),
+            Obj::Pot { .. } | Obj::Crate { .. } | Obj::Keg { .. } => self.hit_soft(x, z, io),
             Obj::Lamp
             | Obj::Sprinkler { .. }
             | Obj::FlowerPot { .. }
@@ -2914,7 +2922,16 @@ impl Play {
             }
             Obj::Weed { .. } => self.hit_soft(x, z, io),
             Obj::Shrub { .. } => self.cut_shrub(x, z, power * 2, io),
-            Obj::Crate { .. } => self.hit_soft(x, z, io),
+            Obj::Crate { .. } | Obj::Keg { .. } => self.hit_soft(x, z, io),
+            // Old planks split into something you can still use.
+            Obj::Debris { .. } if self.world().floor(x, z) != Floor::Water => {
+                self.world_mut().set_obj(x, z, None);
+                io.audio.play(Sfx::Chop);
+                self.fx
+                    .burst(at + Vec3::Y * 0.15, 8, &[CLAY, RUST, SAND], 1.8, 1.5);
+                self.drops
+                    .push(Drop::item(Item::Wood, 1, at, &mut self.rng));
+            }
             Obj::Fence | Obj::Bench | Obj::Workbench | Obj::Chest { .. } => {
                 self.pick_up(x, z, o, io)
             }

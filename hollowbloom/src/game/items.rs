@@ -781,6 +781,17 @@ items! {
     BoneFish = "bone_fish", "Bone Fish", "bone_fish", 99, 310, Kind::Fish, "All bones and no manners.";
     Coelacanth = "coelacanth", "Ancient Coelacanth", "coelacanth", 99, 920, Kind::Fish, "It was old when the ruins were new.";
     StarSturgeon = "star_sturgeon", "Star Sturgeon", "star_sturgeon", 99, 2300, Kind::Fish, "Its scales map the stars of a forgotten sky.";
+    // The old sewers' odd little residents.
+    SockEel = "sock_eel", "Sock Eel", "sock_eel", 99, 45, Kind::Fish, "Every sock that ever went missing ended up down here. Some of them learned to swim.";
+    BootCarp = "boot_carp", "Boot Carp", "boot_carp", 99, 95, Kind::Fish, "Moved into an old boot and won't come out. Very cosy, it says.";
+    GooglyGuppy = "googly_guppy", "Googly Guppy", "googly_guppy", 99, 30, Kind::Fish, "Its eyes wobble when it swims. Its eyes wobble when it doesn't.";
+    MustacheMinnow = "mustache_minnow", "Mustache Minnow", "mustache_minnow", 99, 35, Kind::Fish, "A gentleman of the drains. Twirls its moustache at passing snails.";
+    PicklePike = "pickle_pike", "Pickle Pike", "pickle_pike", 99, 140, Kind::Fish, "Green, warty and a little sour. Nobody knows which came first.";
+    MopCatfish = "mop_catfish", "Mop Catfish", "mop_catfish", 99, 170, Kind::Fish, "Can't see a thing past its whiskers. Mops the pipes as it goes.";
+    BubblegumBlobfish = "bubblegum_blobfish", "Bubblegum Blobfish", "bubblegum_blobfish", 99, 420, Kind::Fish, "Chewing the same gum since the sewers were dug. Don't ask for a bit.";
+    TinCanTetra = "tin_can_tetra", "Tin Can Tetra", "tin_can_tetra", 99, 40, Kind::Fish, "Lives in a can of beans. The beans moved out long ago.";
+    TwoHeadedGoby = "two_headed_goby", "Two-Headed Goby", "two_headed_goby", 99, 480, Kind::Fish, "Two heads, one fish, and no agreement about which way is forward.";
+    SewerKing = "sewer_king", "The Sewer King", "sewer_king", 99, 1800, Kind::Fish, "Ruler of all that drains. Wears a bottle cap and expects a bow.";
 }
 
 impl Serialize for Item {

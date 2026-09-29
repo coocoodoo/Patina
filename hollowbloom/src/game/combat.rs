@@ -317,6 +317,11 @@ impl Play {
                     &mut self.rng,
                 ));
             }
+            // The sewers' bony folk leave a bone or two behind.
+            if f.sewer && f.foe != super::dungeon::Foe::Slime && self.rng.chance(0.45) {
+                let n = 1 + self.rng.below(2) as u16;
+                loot.push(super::items::Stack::new(super::items::Item::Bone, n));
+            }
             let mut rare = false;
             for s in loot {
                 rare |= s.rarity().is_some_and(|r| r >= super::gear::Rarity::Rare);
@@ -528,7 +533,9 @@ impl Play {
                 if self.world().obj(x, z).is_some_and(|o| {
                     matches!(
                         o,
-                        super::world::Obj::Pot { .. } | super::world::Obj::Crate { .. }
+                        super::world::Obj::Pot { .. }
+                            | super::world::Obj::Crate { .. }
+                            | super::world::Obj::Keg { .. }
                     )
                 }) {
                     self.hit_soft(x, z, io);

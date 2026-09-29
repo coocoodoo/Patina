@@ -54,6 +54,16 @@ impl Play {
             .filter(|&(x, z)| matches!(level.world.obj(x, z), Some(Obj::Crack)))
     }
 
+    /// Whose ink it is on this floor: the biome's book-worms', or (in the old sewers) the
+    /// bone worms' green.
+    fn ink_look(&self, depth: u32) -> usize {
+        if self.world().sewer {
+            crate::assets::SEWER_LOOK
+        } else {
+            biome_for(depth) % crate::assets::BIOMES
+        }
+    }
+
     /// Ink splashes down at `at` and dries into a rune pointing the way on.
     pub fn splash_ink(&mut self, at: Vec2) {
         let depth = self.depth();
@@ -61,7 +71,7 @@ impl Play {
         let Some(level) = &self.level else { return };
         let goal = secret.unwrap_or(level.stairs);
         let dir = way(&level.world, at, goal);
-        let biome = biome_for(depth) % 6;
+        let biome = self.ink_look(depth);
         let [light, main] = INK_COLORS[biome];
         self.fx.burst(
             Vec3::new(at.x, 0.1, at.y),
@@ -97,7 +107,7 @@ impl Play {
         let sel = self.player.sel;
         self.player.inv.take_one(sel);
         let depth = self.depth();
-        let biome = biome_for(depth) % 6;
+        let biome = self.ink_look(depth);
         let from = self.player.pos;
         let secret = self.hidden_secret();
         let Some(level) = &self.level else { return };
@@ -169,15 +179,16 @@ pub fn draw_rune(r: &mut Renderer, a: &Assets, rune: &Rune, time: f32) {
     if rune.age < 0.0 || (left < 2.5 && (time * 14.0 + rune.pos.x).sin() > left / 2.5 * 2.0 - 1.0) {
         return;
     }
+    let look = rune.biome.min(INK_COLORS.len() - 1);
     let [light, main] = if rune.secret {
         [CREAM, GOLD]
     } else {
-        INK_COLORS[rune.biome % 6]
+        INK_COLORS[look]
     };
     let tex = a.deep.runes[if rune.secret {
         a.deep.runes.len() - 1
     } else {
-        rune.biome % 6
+        look
     }];
     let grow = (rune.age * 5.0).clamp(0.2, 1.0);
     let s = 0.44 * grow;

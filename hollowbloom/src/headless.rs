@@ -4000,7 +4000,7 @@ pub fn sewer_shots(dir: &str) {
         std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
     }
     let audio = Audio::silent();
-    let input = Input::default();
+    let mut input = Input::default();
     let mut r = Renderer::new(W, H);
     let mut game = Game::new();
     game.new_game(20261201);
@@ -4103,6 +4103,43 @@ pub fn sewer_shots(dir: &str) {
                 let at = Vec3::new(x as f32 + 0.5, 0.3, z as f32 + 0.5);
                 close(&mut game, &mut r, &input, dir, "w05_drain", at, 5.0);
             }
+            // The most cluttered corner: barrels, crates, old bones, broken planks on the
+            // walkway and more of them drifting in the water.
+            let busy = {
+                use crate::game::world::Obj;
+                let p = play(&mut game);
+                let w = &p.level.as_ref().unwrap().world;
+                let mut best = (0, None);
+                for z in 3..w.h - 3 {
+                    for x in 3..w.w - 3 {
+                        let mut kinds = [0; 4];
+                        for dz in -2..=2 {
+                            for dx in -2..=2 {
+                                let (tx, tz) = (x + dx, z + dz);
+                                match w.obj(tx, tz) {
+                                    Some(Obj::Keg { .. } | Obj::Crate { .. }) => kinds[0] += 1,
+                                    Some(Obj::Bones) => kinds[1] += 1,
+                                    Some(Obj::Debris { .. }) if w.floor(tx, tz) == Floor::Water => {
+                                        kinds[2] += 1
+                                    }
+                                    Some(Obj::Debris { .. }) => kinds[3] += 1,
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let score = kinds.iter().filter(|&&k| k > 0).count() * 10
+                            + kinds.iter().sum::<usize>();
+                        if score > best.0 {
+                            best = (score, Some((x, z)));
+                        }
+                    }
+                }
+                best.1
+            };
+            if let Some((x, z)) = busy {
+                let at = Vec3::new(x as f32 + 0.5, 0.2, z as f32 + 0.5);
+                close(&mut game, &mut r, &input, dir, "w07_clutter", at, 7.5);
+            }
             // A crossroads of channels, a lantern snail lighting it and a book-worm reading
             // on the walkway.
             let cross = {
@@ -4158,6 +4195,174 @@ pub fn sewer_shots(dir: &str) {
                 close(&mut game, &mut r, &input, dir, "w06_junction", at, 11.0);
                 play(&mut game).foes.clear();
             }
+            // Fishing the channel: something odd on the line.
+            let bank = {
+                let p = play(&mut game);
+                let w = &p.level.as_ref().unwrap().world;
+                (2..w.h - 2)
+                    .flat_map(|z| (2..w.w - 2).map(move |x| (x, z)))
+                    .find(|&(x, z)| {
+                        w.floor(x, z) == Floor::Walkway
+                            && w.obj(x, z).is_none()
+                            && w.floor(x, z - 1) == Floor::Walkway
+                            && w.obj(x, z - 1).is_none()
+                            && w.floor(x, z - 2) == Floor::Water
+                            && w.floor(x, z - 3) == Floor::Water
+                    })
+            };
+            if let Some((x, z)) = bank {
+                use crate::game::fish::{Hooked, Phase};
+                use crate::input::KeyCode;
+                {
+                    let p = play(&mut game);
+                    p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+                    p.player.facing = Vec2::new(0.0, -1.0);
+                    p.player.inv.slots[0] = Some(Stack::new(Item::BambooRod, 1));
+                    p.player.sel = 0;
+                    p.toasts.clear();
+                }
+                input.key_event(KeyCode::KeyJ, true, false);
+                step(&mut game, &mut input, &audio, 22);
+                input.key_event(KeyCode::KeyJ, false, false);
+                step(&mut game, &mut input, &audio, 50);
+                if let Some(f) = play(&mut game).fishing.as_mut() {
+                    f.bite_in = 0.0;
+                }
+                step(&mut game, &mut input, &audio, 3);
+                if let Some(f) = play(&mut game).fishing.as_mut() {
+                    f.hooked = Some(Hooked::Fish(Item::SockEel, 51));
+                }
+                input.key_event(KeyCode::KeyJ, true, false);
+                step(&mut game, &mut input, &audio, 1);
+                input.key_event(KeyCode::KeyJ, false, false);
+                step(&mut game, &mut input, &audio, 1);
+                input.key_event(KeyCode::KeyJ, true, false);
+                for _ in 0..600 {
+                    match play(&mut game).fishing.as_mut() {
+                        Some(f) if f.phase == Phase::Reel => {
+                            f.fish_y = (f.zone + f.zone_h * 0.5).min(1.0);
+                            f.fish_to = f.fish_y;
+                        }
+                        _ => break,
+                    }
+                    step(&mut game, &mut input, &audio, 1);
+                }
+                input.key_event(KeyCode::KeyJ, false, false);
+                step(&mut game, &mut input, &audio, 14);
+                let at = Vec3::new(x as f32 + 0.5, 0.4, z as f32 - 0.5);
+                close(
+                    &mut game,
+                    &mut r,
+                    &input,
+                    dir,
+                    "w08_caught_a_sock_eel",
+                    at,
+                    7.0,
+                );
+                step(&mut game, &mut input, &audio, 150);
+            }
+            // Everyone who lives down here, lined up along a walkway: the sludge slime and
+            // the bony folk.
+            let lanes = {
+                let p = play(&mut game);
+                let w = &p.level.as_ref().unwrap().world;
+                let open = |x: i32, z: i32| {
+                    w.floor(x, z) == Floor::Walkway && !w.blocked(x, z) && w.obj(x, z).is_none()
+                };
+                (3..w.h - 4)
+                    .flat_map(|z| (3..w.w - 10).map(move |x| (x, z)))
+                    .find(|&(x, z)| {
+                        (x..x + 7).all(|tx| {
+                            open(tx, z) && open(tx, z + 1) && w.floor(tx, z + 2) == Floor::Water
+                        })
+                    })
+            };
+            if let Some((x, z)) = lanes {
+                use crate::game::dungeon::Foe;
+                use crate::game::foes::Enemy;
+                let p = play(&mut game);
+                p.foes.clear();
+                p.drops.clear();
+                let biome = crate::game::dungeon::biome_for(depth);
+                let folk = [
+                    [
+                        Foe::Zombie,
+                        Foe::Brute,
+                        Foe::Sneak,
+                        Foe::Skeleton,
+                        Foe::Ghost,
+                        Foe::Bookworm,
+                    ],
+                    [
+                        Foe::Slime,
+                        Foe::Bug,
+                        Foe::Bat,
+                        Foe::Frog,
+                        Foe::Puffer,
+                        Foe::Snail,
+                    ],
+                ];
+                for (row, kinds) in folk.iter().enumerate() {
+                    for (i, &foe) in kinds.iter().enumerate() {
+                        let fx = x as f32 + 0.5 + i as f32 * 1.1;
+                        let fz = z as f32 + 0.5 + row as f32;
+                        let mut f =
+                            Enemy::new(foe, fx, fz, depth.max(12), biome, false, 11 + i as u32)
+                                .in_the_sewers();
+                        f.yaw = 0.25;
+                        p.foes.push(f);
+                    }
+                }
+                p.player.pos = Vec2::new(x as f32 + 3.5, z as f32 - 1.5);
+            }
+            if let Some((x, z)) = lanes {
+                tick(&mut game, &input, &audio, 2);
+                {
+                    // Facing the camera, not the hero behind them.
+                    let p = play(&mut game);
+                    for f in p.foes.iter_mut() {
+                        f.alert = false;
+                        f.dir = Vec2::ZERO;
+                        f.yaw = 0.25;
+                    }
+                }
+                let at = Vec3::new(x as f32 + 3.8, 0.3, z as f32 + 1.0);
+                close(&mut game, &mut r, &input, dir, "w10_sewer_folk", at, 8.5);
+                // And the sludge slime up close.
+                let slime = Vec3::new(x as f32 + 0.5, 0.25, z as f32 + 1.5);
+                close(
+                    &mut game,
+                    &mut r,
+                    &input,
+                    dir,
+                    "w10b_sludge_slime",
+                    slime,
+                    3.6,
+                );
+                play(&mut game).foes.clear();
+            }
+            // Every odd fish of the sewers in the Fishdex, the king picked out.
+            {
+                use crate::game::fish::{FISH, Water};
+                let p = play(&mut game);
+                for (k, d) in FISH
+                    .iter()
+                    .filter(|d| d.water.contains(&Water::Sewer))
+                    .enumerate()
+                {
+                    if !p.journal.fish.contains(&d.item) {
+                        p.journal.fish.push(d.item);
+                        p.journal.records.push((d.item, d.size.1 - k as u16));
+                    }
+                }
+                let sel = FISH
+                    .iter()
+                    .position(|d| d.item == Item::SewerKing)
+                    .unwrap_or(0);
+                p.menu = Menu::Journal { tab: 3, sel };
+            }
+            snap(&mut game, &mut r, &input, dir, "w09_fishdex_sewer_king");
+            play(&mut game).menu = Menu::None;
         } else {
             let name = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"]
                 [crate::game::dungeon::biome_for(depth)];

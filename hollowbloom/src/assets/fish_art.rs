@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use super::sprites::{BOWL, NO, TART, art};
 use crate::game::fish::{FISH, FishDef, Pattern, Shape};
+use crate::game::items::Item;
 use crate::palette::*;
 use crate::render::{TexBank, TexId, Texture};
 use crate::util::hash2;
@@ -174,6 +175,8 @@ fn silhouette(shape: Shape) -> Canvas16 {
                 }
             }
         }
+        // Drawn by hand instead (see `odd_fish`).
+        Shape::Odd => {}
         Shape::Cray => {
             c.fill(Px::Body, ellipse(7.4, 9.0, 4.6, 2.0));
             c.fill(Px::Body, ellipse(12.0, 9.0, 1.8, 1.6));
@@ -197,7 +200,11 @@ fn silhouette(shape: Shape) -> Canvas16 {
 }
 
 /// Paints a fish: dark back, lighter belly, the pattern, fins, an eye and an ink outline.
+/// (The sewers' odd ones are drawn by hand.)
 pub fn fish_icon(d: &FishDef) -> Texture {
+    if d.shape == Shape::Odd {
+        return art(odd_fish(d.item), NO);
+    }
     let c = silhouette(d.shape);
     let mut t = Texture::clear(16, 16);
     let seed = d.item as u32;
@@ -376,6 +383,199 @@ const TIN: &[&str] = &[
     "................",
 ];
 
+/// A striped sock with a red toe, and an eye on the toe.
+const SOCK_EEL: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "................",
+    ".KKKKKKKKKKKKK..",
+    "KwwwBBSSBBSSrrrK",
+    "KSSSBBSSBBSrwwrK",
+    "KwwwBBSSBBSrwKrK",
+    "KSSSBBSSBBSrrrrK",
+    "KwwwBBSSBBSSrrrK",
+    ".KKKKKKKKrrrKK..",
+    ".........KKK....",
+];
+
+/// A carp peering out of an old boot, its tail poking out of the toe.
+const BOOT_CARP: &[&str] = &[
+    "...KKoKK........",
+    "..KYYooYK.......",
+    "..KYwYYwK.......",
+    "..KYKYYKK.......",
+    "..KYYPPYK.......",
+    ".KuuuYuuuK......",
+    ".KCCCCCCuK.....K",
+    ".KCCCCCCuK...KKo",
+    ".KCCCCCCuKKKKooo",
+    ".KCCCCCCCCCCCKoo",
+    ".KCCCCCCCCCCCCKo",
+    ".KCCCCCCCCCCCCKK",
+    ".KmmmmmmmmmmmmK.",
+    "..KKKKKKKKKKKK..",
+    "................",
+    ".....S....S.....",
+];
+
+/// A tiny fish with enormous wobbly eyes and a fan of a tail.
+const GOOGLY_GUPPY: &[&str] = &[
+    "................",
+    "................",
+    "........KKK.KKK.",
+    ".......KwwwKwwwK",
+    ".......KKwwKwwwK",
+    ".KK....KwwwKwwKK",
+    "KPPK...KKKKKKKK.",
+    "KPsPKKKaaaaaaaK.",
+    "KsPPsPaaaaaaaaaK",
+    "KPPsPPaaaaaaaaaK",
+    "KPsPPsMMMMMMMMKK",
+    "KsPPsKKMMMMMMMK.",
+    "KPPKK..KKKKKKK..",
+    "KPK.............",
+    ".K..............",
+];
+
+/// A silver minnow with a ginger handlebar moustache.
+const MUSTACHE_MINNOW: &[&str] = &[
+    "................",
+    "...KKKKKKKK.....",
+    "KKKKKKKKKKKKK...",
+    "KKKDDDDDDDDKKK..",
+    "DDDDDDDDDwKDDKKK",
+    "SSSSSSSSCSSSSKKC",
+    "wwwwwwwwCuwwCKuC",
+    "KKwwwwwwwCCuCuCK",
+    "KKKKKKKKKKmmmmK.",
+    "..KKKKKKKKKKKK..",
+];
+
+/// A warty green pickle with a pike's toothy snout.
+const PICKLE_PIKE: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "................",
+    ".....KKKKK......",
+    "K.KKKTTTTTKKK...",
+    "TKTTTTlTTTTTKKKK",
+    "gTglggggglggwTTT",
+    "glgglgggggglglll",
+    "lKlllllllllllwKw",
+    "K.KKKlllllKKKKKK",
+    ".....KKKKK......",
+];
+
+/// A grey catfish whose whiskers hang over its face like an old mop.
+const MOP_CATFISH: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "................",
+    "....KKKKKKKKKK..",
+    "K.KKkkkkkynynyK.",
+    "kKkkkkkkhynynyhK",
+    "DkDDDDDDhynDDyhn",
+    "DhDDDDDDhynwKyhn",
+    "hKhhhhhhhynDDyhn",
+    "K.KKhhhhhynynyhn",
+    "....KKKKKynynyhn",
+    "........KyKyKyKn",
+    "........KyKyKyKn",
+    ".........KKyKyKK",
+    "...........K.K..",
+];
+
+/// A sad pink blob with a droopy nose, blowing a bubble.
+const BUBBLEGUM_BLOBFISH: &[&str] = &[
+    "................",
+    "................",
+    "............KKK.",
+    "...........KbbbK",
+    "......KK..Kbbwbb",
+    "...KKKbbKKKbwbbb",
+    ".KKcbbbbcbbKbbbK",
+    "KbbbwbPwbbbbbKK.",
+    "KPbPKPPKPPsbPK..",
+    "KPPPPPPPPsssPK..",
+    "KPPPPPPPPsssPK..",
+    "KccccPPPPssscK..",
+    ".KccccccccscK...",
+    "..KKKcccccccK...",
+    ".....KKKKKKK....",
+];
+
+/// A little fish peeking out of a tin can.
+const TIN_CAN_TETRA: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "........DD......",
+    ".KKKKKKKKKK.....",
+    "KwhhhhhhhhKKKK..",
+    "KwhhhhhhhhttttK.",
+    "KwrrrrrrrratwKtK",
+    "KwyyyyyyyyaaaaaK",
+    "KwrrrrrrrrMMMMMK",
+    "KwhhhhhhhhKMMKKK",
+    "KwDDDDDDDDKKK...",
+    ".KKKKKKKKK......",
+];
+
+/// A head at each end: one frowning, one grinning.
+const TWO_HEADED_GOBY: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "................",
+    ".....KKKKKK.....",
+    "..KKKVVVVVVKKK..",
+    ".KVVvVVVvVVvVVK.",
+    "KVKwvLvLLLvvwKVK",
+    "KLLLvLLLLvLvLLLK",
+    "KbKbbbbvbbbbbKbK",
+    "KKKbbPbbbbPbbKKK",
+    ".K.KKKKKKKKKK.K.",
+];
+
+/// Fat and grumpy, crowned with a bottle cap.
+const SEWER_KING: &[&str] = &[
+    ".......K.K.K....",
+    "......KYKYKYK...",
+    "......KYYYYYYK..",
+    "......KYyYyYYK..",
+    "......KooooooK..",
+    "....KKKKKKKKK...",
+    "K.KKTTTTTKKKK...",
+    "TKTTTTTTTTTKKK..",
+    "TKTTTTTTTTwwTK..",
+    "tTtttlttttwKTTK.",
+    "tttttttttttttgK.",
+    "gggtltttttttgKh.",
+    "gKgggglggggKKK.h",
+    "K.KgggggggKgKKKh",
+    "...KKKgggKKK.K..",
+    "......KKK.......",
+];
+
+/// The drawing of one of the sewers' odd fish.
+fn odd_fish(item: Item) -> &'static [&'static str] {
+    match item {
+        Item::SockEel => SOCK_EEL,
+        Item::BootCarp => BOOT_CARP,
+        Item::GooglyGuppy => GOOGLY_GUPPY,
+        Item::MustacheMinnow => MUSTACHE_MINNOW,
+        Item::PicklePike => PICKLE_PIKE,
+        Item::MopCatfish => MOP_CATFISH,
+        Item::BubblegumBlobfish => BUBBLEGUM_BLOBFISH,
+        Item::TinCanTetra => TIN_CAN_TETRA,
+        Item::TwoHeadedGoby => TWO_HEADED_GOBY,
+        _ => SEWER_KING,
+    }
+}
+
 /// A fish on a plate: 0-2 the fish, 3 what's alongside.
 const FISH_PLATE: &[&str] = &[
     "................",
@@ -523,6 +723,16 @@ mod tests {
             SUSHI,
             TACO,
             FISH_SKEWER,
+            SOCK_EEL,
+            BOOT_CARP,
+            GOOGLY_GUPPY,
+            MUSTACHE_MINNOW,
+            PICKLE_PIKE,
+            MOP_CATFISH,
+            BUBBLEGUM_BLOBFISH,
+            TIN_CAN_TETRA,
+            TWO_HEADED_GOBY,
+            SEWER_KING,
         ] {
             assert!(rows.len() <= 16);
             assert!(rows.iter().all(|r| r.chars().count() <= 16), "{rows:?}");

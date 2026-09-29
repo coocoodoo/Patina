@@ -8,7 +8,7 @@ use super::draw::{Outfit, Pose, draw_humanoid};
 use super::dungeon::Foe;
 use super::fx::{Fx, Shot};
 use super::world::World;
-use crate::assets::Assets;
+use crate::assets::{Assets, BIOMES, LOOKS, SEWER_LOOK};
 use crate::palette::*;
 use crate::render::{DrawOpts, Light, Mode, PointLight, Renderer, Warp};
 use crate::util::{Rng, approach};
@@ -67,6 +67,9 @@ pub struct Enemy {
     pub hide: f32,
     /// A lantern snail's glowing slime: where it has been, and how long ago.
     pub trail: Vec<(Vec2, f32)>,
+    /// Living in the old sewers, where everyone is down to their bones (and the slimes are
+    /// sludge): the look and the name that go with it.
+    pub sewer: bool,
 }
 
 /// How long a lantern snail hides in its shell once struck, and how much of a blow the
@@ -80,17 +83,19 @@ pub const TRAIL_SECS: f32 = 5.0;
 pub const MOONLIT_TAG: u8 = 6;
 
 /// Goblin colours by biome (light, mid, dark): their skin, and the dust their clubs raise.
-const GOBLIN_DUST: [[u8; 3]; 6] = [
+/// (In the sewers, bone.)
+const GOBLIN_DUST: [[u8; 3]; LOOKS] = [
     [LIME, GREEN, TEAL],
     [MINT, AQUA, TEAL],
     [BLUSH, PINK, PLUM],
     [ORANGE, RED, MAROON],
     [WHITE, SKY, BLUE],
     [GOLD, CLAY, RUST],
+    [WHITE, SAND, KHAKI],
 ];
 
-/// The glint of a thrown goblin dagger, by biome.
-const DAGGERS: [u8; 6] = [WHITE, AQUA, BLUSH, ORANGE, SKY, GOLD];
+/// The glint of a thrown goblin dagger, by biome (a rusty one, in the sewers).
+const DAGGERS: [u8; LOOKS] = [WHITE, AQUA, BLUSH, ORANGE, SKY, GOLD, RUST];
 
 pub struct Base {
     pub hp: i32,
@@ -224,6 +229,25 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
     }
 }
 
+/// What a creature is called in the old sewers.
+pub fn sewer_name(f: Foe, biome: usize) -> &'static str {
+    match f {
+        Foe::Slime => "Sludge Slime",
+        Foe::Bat => "Bone Bat",
+        Foe::Zombie => "Bone Shambler",
+        Foe::Brute => "Bone Brute",
+        Foe::Sneak => "Bone Sneak",
+        Foe::Bug => "Bone Spider",
+        Foe::Skeleton => "Sewer Skeleton",
+        Foe::Ghost => "Skull Ghost",
+        Foe::Frog => "Bone Frog",
+        Foe::Puffer => "Bone Puffer",
+        Foe::Snail => "Bone Snail",
+        Foe::Bookworm => "Bone Bibliomancer",
+        _ => kind_name(f, biome),
+    }
+}
+
 pub fn boss_name(f: Foe) -> &'static str {
     match f {
         Foe::Slime => "King Slime",
@@ -318,6 +342,31 @@ impl Enemy {
             summon: 6.0,
             hide: 0.0,
             trail: Vec::new(),
+            sewer: false,
+        }
+    }
+
+    /// Dressed for the old sewers (see `sewer`). Their spiders walk, whatever the biome's
+    /// bugs do.
+    pub fn in_the_sewers(mut self) -> Enemy {
+        self.sewer = true;
+        if !self.flying() {
+            self.y = 0.0;
+        }
+        self
+    }
+
+    /// One of its own kind, called up or split off: dressed as it is.
+    fn kin(&self, e: Enemy) -> Enemy {
+        if self.sewer { e.in_the_sewers() } else { e }
+    }
+
+    /// Which of its family's looks it wears: its biome's, or the sewers'.
+    pub fn look(&self) -> usize {
+        if self.sewer {
+            SEWER_LOOK
+        } else {
+            self.biome % BIOMES
         }
     }
 
@@ -325,6 +374,8 @@ impl Enemy {
     pub fn name(&self) -> &'static str {
         if self.boss {
             guardian_name(self.foe, self.biome)
+        } else if self.sewer {
+            sewer_name(self.foe, self.biome)
         } else {
             kind_name(self.foe, self.biome)
         }
@@ -332,7 +383,7 @@ impl Enemy {
 
     /// Floats or flies rather than walks.
     pub fn flying(&self) -> bool {
-        flies(self.foe, self.biome)
+        flies(self.foe, self.biome) && !(self.sewer && self.foe == Foe::Bug)
     }
 
     /// Tonight's moon stirs them up (or calms them down). A full moon makes them glow red,
@@ -362,9 +413,10 @@ impl Enemy {
         Vec3::new(self.pos.x, self.y, self.pos.y)
     }
 
-    /// Jelly and ghosts are see-through, so they are drawn after everything else.
+    /// Jelly and ghosts are see-through, so they are drawn after everything else. (Sludge
+    /// isn't.)
     pub fn translucent(&self) -> bool {
-        matches!(self.foe, Foe::Slime | Foe::Ghost | Foe::Jelly)
+        matches!(self.foe, Foe::Ghost | Foe::Jelly) || (self.foe == Foe::Slime && !self.sewer)
     }
 
     /// Hard shells and bones strike sparks (a lantern snail's, while it hides in it).
@@ -372,7 +424,7 @@ impl Enemy {
         matches!(
             self.foe,
             Foe::Crab | Foe::Beetle | Foe::Golem | Foe::Skeleton
-        ) || (self.foe == Foe::Bug && self.biome % 6 != MOTHS)
+        ) || (self.foe == Foe::Bug && (self.sewer || self.biome % 6 != MOTHS))
             || self.shelled()
     }
 
@@ -472,8 +524,15 @@ impl Enemy {
                     let a = k as f32 * std::f32::consts::PI + self.anim;
                     let p = self.pos + Vec2::new(a.cos(), a.sin()) * 1.6;
                     if !world.blocked(p.x as i32, p.y as i32) {
-                        let mut e =
-                            Enemy::new(help, p.x, p.y, depth, self.biome, false, self.seed + k);
+                        let mut e = self.kin(Enemy::new(
+                            help,
+                            p.x,
+                            p.y,
+                            depth,
+                            self.biome,
+                            false,
+                            self.seed + k,
+                        ));
                         e.alert = true;
                         spawns.push(e);
                     }
@@ -550,7 +609,7 @@ impl Enemy {
                             for k in 0..2 {
                                 let a = k as f32 * 3.0 + self.anim;
                                 let p = self.pos + Vec2::new(a.cos(), a.sin()) * 1.2;
-                                spawns.push(Enemy::new(
+                                spawns.push(self.kin(Enemy::new(
                                     self.foe,
                                     p.x,
                                     p.y,
@@ -558,7 +617,7 @@ impl Enemy {
                                     self.biome,
                                     false,
                                     self.seed + k,
-                                ));
+                                )));
                             }
                         }
                     }
@@ -651,7 +710,7 @@ impl Enemy {
         match self.st {
             St::Windup => {
                 if self.t <= 0.0 {
-                    let color = crate::assets::deep_art::INK_COLORS[self.biome % 6][1];
+                    let color = crate::assets::deep_art::INK_COLORS[self.look()][1];
                     let spread: &[f32] = if self.boss {
                         &[-0.4, -0.2, 0.0, 0.2, 0.4]
                     } else {
@@ -748,7 +807,7 @@ impl Enemy {
                             let a = rng.f32() * std::f32::consts::TAU;
                             let p = self.pos + Vec2::new(a.cos(), a.sin()) * 1.4;
                             if !world.blocked(p.x as i32, p.y as i32) {
-                                spawns.push(Enemy::new(
+                                spawns.push(self.kin(Enemy::new(
                                     Foe::Slime,
                                     p.x,
                                     p.y,
@@ -756,7 +815,7 @@ impl Enemy {
                                     self.biome,
                                     false,
                                     self.seed + k,
-                                ));
+                                )));
                             }
                         }
                     }
@@ -1047,7 +1106,7 @@ impl Enemy {
             St::Windup => {
                 if self.t <= 0.0 {
                     let hit = self.pos + self.dir * 0.7 * self.scale();
-                    let skin = GOBLIN_DUST[self.biome % 6];
+                    let skin = GOBLIN_DUST[self.look()];
                     fx.burst(Vec3::new(hit.x, 0.05, hit.y), 16, &skin, 3.5, 2.0);
                     let fan: Vec<f32> = if self.boss {
                         (0..14)
@@ -1151,7 +1210,7 @@ impl Enemy {
                                 vel: d * 6.0,
                                 dmg: (self.dmg * 4 / 5).max(1),
                                 life: 1.6,
-                                color: DAGGERS[self.biome % 6],
+                                color: DAGGERS[self.look()],
                                 radius: 0.12,
                                 ink: false,
                             });
@@ -1245,6 +1304,16 @@ impl Enemy {
     }
 
     pub fn color(&self) -> u8 {
+        if self.sewer {
+            // Bone, mostly.
+            return match self.foe {
+                Foe::Slime => CLAY,
+                Foe::Ghost => LIME,
+                Foe::Snail => crate::assets::deep_art::GLASS[SEWER_LOOK][1],
+                Foe::Bookworm => crate::assets::deep_art::INK_COLORS[SEWER_LOOK][1],
+                _ => SAND,
+            };
+        }
         match (self.foe, self.biome) {
             (Foe::Slime, 0) => GREEN,
             (Foe::Slime, 1) => BLUE,
@@ -1302,7 +1371,7 @@ impl Enemy {
                 warmth: 2.2,
             }),
             // Fire ants' tails glow like coals.
-            Foe::Bug if self.biome % 6 == 3 => Some(PointLight {
+            Foe::Bug if self.biome % 6 == 3 && !self.sewer => Some(PointLight {
                 pos: self.world_pos() + Vec3::Y * 0.2,
                 radius: 1.8 * self.scale(),
                 power: 0.3,
@@ -1313,7 +1382,7 @@ impl Enemy {
                 pos: self.world_pos() + Vec3::Y * 0.35,
                 radius: 3.8 * self.scale(),
                 power: if self.shelled() { 0.75 } else { 0.55 },
-                warmth: [3.5, 2.0, 4.5, 7.5, 1.0, 6.5][self.biome % 6],
+                warmth: [3.5, 2.0, 4.5, 7.5, 1.0, 6.5, 2.5][self.look()],
             }),
             // A book-worm's pages glow as it gathers its ink.
             Foe::Bookworm if self.st == St::Windup => Some(PointLight {
@@ -1360,11 +1429,46 @@ impl Enemy {
         } else if self.burn > 0.0 {
             o.glow = 0.9 + (self.anim * 12.0).sin() * 0.15;
         }
-        let b = self.biome.min(a.foes.slime.len() - 1);
+        let b = self.look();
         let rot = Mat4::from_rotation_y(self.yaw);
         let at = |y: f32| Mat4::from_translation(Vec3::new(self.pos.x, y, self.pos.y));
         let sc = |x: f32, y: f32| Mat4::from_scale(Vec3::new(x * s, y * s, x * s));
         match self.foe {
+            Foe::Slime if self.sewer => {
+                // A swirl of sludge: it squashes and stretches as it hops, its curl wags, and
+                // flies buzz round it.
+                let breathe = (self.anim * 4.0).sin() * 0.03;
+                let (sx, sy) = if self.st == St::Hop {
+                    (0.9, 1.15)
+                } else {
+                    (
+                        1.0 + self.squash * 0.25 + breathe,
+                        1.0 - self.squash * 0.3 - breathe,
+                    )
+                };
+                let wag = Vec2::new((self.anim * 3.0).sin(), (self.anim * 2.3).cos()) * 0.04;
+                let warp = Warp::Bend {
+                    base: self.y,
+                    h: 0.5 * s * sy,
+                    lean: (-self.vel * 0.03 + wag) * s,
+                };
+                let body = at(self.y) * rot * sc(sx, sy * 1.2);
+                r.mesh(&a.bank, &a.sewer.swirl, &body, &o.with_warp(warp));
+                // Flies: dark specks with a flicker of wing, so they show on a dark floor.
+                for i in 0..3 {
+                    let t = self.anim * (4.0 + i as f32 * 1.3) + i as f32 * 2.1 + self.seed as f32;
+                    let rad = (0.32 + 0.07 * (t * 0.7).sin()) * s;
+                    let p = Vec3::new(
+                        self.pos.x + t.cos() * rad,
+                        self.y + (0.66 + 0.08 * (t * 1.9).sin()) * s * sy,
+                        self.pos.y + t.sin() * rad,
+                    );
+                    r.point(p, 2, INK);
+                    if (t * 5.0).sin() > 0.0 {
+                        r.point(p + Vec3::Y * 0.03, 1, WHITE);
+                    }
+                }
+            }
             Foe::Slime => {
                 let breathe = (self.anim * 4.0).sin() * 0.04;
                 let (sx, sy) = if self.st == St::Hop {
@@ -1535,7 +1639,10 @@ impl Enemy {
                     lean: tail * s,
                 };
                 let looks = &a.monsters;
-                r.mesh(&a.bank, &looks.ghost_face, &m, &o);
+                // (A skull ghost's face is its skull.)
+                if !self.sewer {
+                    r.mesh(&a.bank, &looks.ghost_face, &m, &o);
+                }
                 r.mesh(&a.bank, &looks.ghost_hat[b], &m, &o);
                 let sheet = if self.flash > 0.0 {
                     o

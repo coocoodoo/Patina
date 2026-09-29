@@ -14,6 +14,7 @@ use glam::{Mat4, Vec3};
 
 use super::models::{lathe, skin_box};
 use super::tiles;
+use super::{LOOKS, SEWER_LOOK};
 use crate::palette::*;
 use crate::render::{Mesh, TexBank, TexId, Texture, UvRect};
 
@@ -58,53 +59,58 @@ pub struct Worm {
 pub struct DeepArt {
     pub snails: Vec<Snail>,
     pub worms: Vec<Worm>,
-    /// Ink runes on the floor, arrows pointing up the texture, by biome; the last is the
-    /// gold one pointing to a secret.
+    /// Ink runes on the floor, arrows pointing up the texture, by biome (then the sewers');
+    /// the last is the gold one pointing to a secret.
     pub runes: Vec<TexId>,
 }
 
-/// A snail's glass by biome: three panes' colours, lightest first.
-pub const GLASS: [[u8; 3]; 6] = [
+/// A snail's glass by biome (and then the sewers'): three panes' colours, lightest first.
+pub const GLASS: [[u8; 3]; LOOKS] = [
     [LIME, GOLD, AQUA],
     [MINT, AQUA, LAVENDER],
     [BLUSH, PINK, LAVENDER],
     [GOLD, ORANGE, RED],
     [WHITE, SKY, MINT],
     [CREAM, GOLD, SALMON],
+    [LIME, MINT, GREEN],
 ];
 
-/// Snail bodies by biome (light, mid, dark).
-const SNAIL_SKIN: [[u8; 3]; 6] = [
+/// Snail bodies by biome (light, mid, dark); the sewers' are bone.
+const SNAIL_SKIN: [[u8; 3]; LOOKS] = [
     [PEACH, SALMON, ROSEWOOD],
     [WHITE, SKY, BLUE],
     [BLUSH, PINK, PLUM],
     [SAND, KHAKI, ROSEWOOD],
     [WHITE, SKY, SLATE],
     [SAND, CLAY, RUST],
+    [WHITE, SAND, KHAKI],
 ];
 
 /// Book-worms by biome: the two segment colours, the spots on them, and spectacle rims.
-const WORM_SKIN: [[u8; 4]; 6] = [
+/// The sewers' are strings of old vertebrae.
+const WORM_SKIN: [[u8; 4]; LOOKS] = [
     [LIME, GREEN, GOLD, GOLD],
     [AQUA, TEAL, WHITE, GOLD],
     [LAVENDER, PURPLE, PINK, GOLD],
     [ORANGE, RED, GOLD, INK],
     [WHITE, SKY, BLUE, GOLD],
     [SAND, KHAKI, CREAM, INK],
+    [WHITE, SAND, KHAKI, RUST],
 ];
 
 /// The glowing ink each biome's book-worms spit (light, main).
-pub const INK_COLORS: [[u8; 2]; 6] = [
+pub const INK_COLORS: [[u8; 2]; LOOKS] = [
     [WHITE, MINT],
     [WHITE, AQUA],
     [WHITE, PINK],
     [CREAM, GOLD],
     [WHITE, SKY],
     [WHITE, LAVENDER],
+    [CREAM, LIME],
 ];
 
-/// Book covers by biome.
-const COVERS: [u8; 6] = [RED, INDIGO, GRAPE, MAROON, BLUE, RUST];
+/// Book covers by biome (the sewers' has gone green).
+const COVERS: [u8; LOOKS] = [RED, INDIGO, GRAPE, MAROON, BLUE, RUST, DEEP_TEAL];
 
 struct Kit {
     solid: HashMap<u8, TexId>,
@@ -224,10 +230,10 @@ pub fn stained_glass(glass: [u8; 3], lead: u8) -> Texture {
     t
 }
 
-/// The shell: a plump wheel of stained glass standing on edge, its round windows facing
-/// left and right, centred on its middle.
-pub fn shell_mesh(bank: &mut TexBank, glass: [u8; 3]) -> Mesh {
-    let tex = bank.add(stained_glass(glass, INK));
+/// The shell: a plump wheel of stained glass leaded with `lead`, standing on edge, its
+/// round windows facing left and right, centred on its middle.
+pub fn shell_mesh(bank: &mut TexBank, glass: [u8; 3], lead: u8) -> Mesh {
+    let tex = bank.add(stained_glass(glass, lead));
     let r = SHELL_R;
     let w = r * 0.5;
     // The rim, round-shouldered, textured with the rows of panes (v 32..64).
@@ -262,11 +268,24 @@ pub fn shell_mesh(bank: &mut TexBank, glass: [u8; 3]) -> Mesh {
 fn snail(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Snail {
     let [light, mid, dark] = SNAIL_SKIN[biome];
     let glass = GLASS[biome];
-    // Soft skin with pale freckles.
+    // A bone snail: all vertebrae, its shell a lattice of bone round green glass, and its
+    // eyes lit like lamps.
+    let bones = biome == SEWER_LOOK;
+    // Soft skin with pale freckles (or bones with dark joints between them).
     let mut skin = Texture::new(16, 16, mid);
     for y in 0..16 {
         for x in 0..16 {
-            if (x * 5 + y * 3) % 13 == 0 {
+            if bones {
+                skin.set(
+                    x,
+                    y,
+                    match x % 4 {
+                        3 => SHADOW,
+                        0 => light,
+                        _ => mid,
+                    },
+                );
+            } else if (x * 5 + y * 3) % 13 == 0 {
                 skin.set(x, y, light);
             } else if (x * 3 + y * 7) % 19 == 0 {
                 skin.set(x, y, dark);
@@ -320,10 +339,12 @@ fn snail(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Snail {
             &mut body,
             v(s * 0.043, 0.13, 0.236),
             v(s * 0.068, 0.145, 0.246),
-            PINK,
+            if bones { dark } else { PINK },
         );
     }
-    // A stalk and its eye: white with a big dark pupil and a sparkle.
+    // A stalk and its eye: white with a big dark pupil and a sparkle (a dark socket with a
+    // glow in it, on a bone snail).
+    let (white, pupil) = if bones { (INK, LIME) } else { (WHITE, INK) };
     let mut stalk = Mesh::new();
     k.bx(
         bank,
@@ -337,14 +358,14 @@ fn snail(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Snail {
         &mut stalk,
         v(-0.03, STALK_LEN - 0.01, -0.028),
         v(0.03, STALK_LEN + 0.05, 0.03),
-        WHITE,
+        white,
     );
     k.bx(
         bank,
         &mut stalk,
         v(-0.018, STALK_LEN + 0.002, 0.024),
         v(0.018, STALK_LEN + 0.042, 0.034),
-        INK,
+        pupil,
     );
     k.bx(
         bank,
@@ -356,7 +377,7 @@ fn snail(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Snail {
     Snail {
         body,
         stalk,
-        shell: shell_mesh(bank, glass),
+        shell: shell_mesh(bank, glass, if bones { SAND } else { INK }),
         glass,
     }
 }
@@ -411,10 +432,20 @@ fn rim(m: &mut Mesh, tex: TexId, at: Vec3, r: f32) {
 
 fn worm(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Worm {
     let [a, b, spot, specs] = WORM_SKIN[biome];
-    let coats = [
-        bank.add(worm_coat(a, b, spot)),
-        bank.add(worm_coat(b, a, spot)),
-    ];
+    // A bone worm: vertebrae with dark joints between, and a skull for a head.
+    let bones = biome == SEWER_LOOK;
+    let coats = if bones {
+        [
+            bank.add(worm_coat(a, SHADOW, spot)),
+            bank.add(worm_coat(b, SHADOW, spot)),
+        ]
+    } else {
+        [
+            bank.add(worm_coat(a, b, spot)),
+            bank.add(worm_coat(b, a, spot)),
+        ]
+    };
+    let (white, pupil) = if bones { (INK, LIME) } else { (WHITE, INK) };
     let segs = [0, 1].map(|i| {
         let mut m = Mesh::new();
         blob(&mut m, v(0.0, -SEG_R, 0.0), SEG_R, SEG_R * 2.0, coats[i]);
@@ -444,14 +475,14 @@ fn worm(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Worm {
             &mut head,
             c + v(-0.03, -0.028, -0.03),
             c + v(0.03, 0.03, -0.006),
-            WHITE,
+            white,
         );
         k.bx(
             bank,
             &mut head,
             c + v(-0.016, -0.018, -0.01),
             c + v(0.016, 0.018, -0.002),
-            INK,
+            pupil,
         );
         k.bx(
             bank,
@@ -491,13 +522,13 @@ fn worm(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Worm {
             v(s * 0.062, hr * 1.35 + 0.04, 0.016),
             spot,
         );
-        // Rosy cheeks.
+        // Rosy cheeks (just bone, on a skull).
         k.bx(
             bank,
             &mut head,
             v(s * 0.06, -0.045, hr * 0.8),
             v(s * 0.085, -0.03, hr * 0.84),
-            PINK,
+            if bones { b } else { PINK },
         );
     }
     k.bx(
@@ -507,7 +538,7 @@ fn worm(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Worm {
         v(0.008, 0.028, hr * 0.92),
         specs,
     );
-    // A small, clever smile.
+    // A small, clever smile (a skull's grin of teeth).
     k.bx(
         bank,
         &mut head,
@@ -515,6 +546,17 @@ fn worm(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Worm {
         v(0.02, -0.048, hr * 0.9),
         INK,
     );
+    if bones {
+        for x in [-0.014f32, 0.0, 0.014] {
+            k.bx(
+                bank,
+                &mut head,
+                v(x - 0.004, -0.058, hr * 0.89),
+                v(x + 0.004, -0.05, hr * 0.92),
+                WHITE,
+            );
+        }
+    }
 
     // The book: two covers open in a shallow V, pages fanned on top.
     let cover = COVERS[biome];
@@ -701,8 +743,8 @@ pub fn build(bank: &mut TexBank) -> DeepArt {
         solid: HashMap::new(),
         w4: Texture::new(4, 4, 0),
     };
-    let snails = (0..6).map(|b| snail(bank, &mut k, b)).collect();
-    let worms = (0..6).map(|b| worm(bank, &mut k, b)).collect();
+    let snails = (0..LOOKS).map(|b| snail(bank, &mut k, b)).collect();
+    let worms = (0..LOOKS).map(|b| worm(bank, &mut k, b)).collect();
     let mut runes: Vec<TexId> = INK_COLORS
         .iter()
         .map(|&[l, m]| bank.add(rune(l, m, false)))

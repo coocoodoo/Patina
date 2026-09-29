@@ -1941,6 +1941,152 @@ fn fishing_casts_hooks_and_lands_a_fish() {
 }
 
 #[test]
+fn the_sewers_have_their_own_fish() {
+    use super::fish::FISH;
+    let mut s = Sim::new();
+    let depth = (3..80)
+        .find(|&d| super::sewer::is_sewer(s.play.seed, d))
+        .expect("a sewer floor");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert_eq!(s.play.area, Area::Hollow { depth });
+    s.play.foes.clear();
+    // A walkway with the channel just north of it.
+    let (x, z) = {
+        let w = s.play.world();
+        assert!(w.sewer);
+        (2..w.h - 2)
+            .flat_map(|z| (2..w.w - 2).map(move |x| (x, z)))
+            .find(|&(x, z)| {
+                w.floor(x, z) == Floor::Walkway
+                    && !w.blocked(x, z)
+                    && w.floor(x, z - 1) == Floor::Walkway
+                    && w.floor(x, z - 2) == Floor::Water
+            })
+            .expect("a walkway by the water")
+    };
+    assert_eq!(s.play.water_at(x, z - 2), Some(Water::Sewer));
+    s.stand(x, z, Vec2::new(0.0, -1.0));
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::BambooRod, 1));
+    s.select(5);
+    s.input.key_event(KeyCode::KeyJ, true, false);
+    s.frames(20);
+    s.input.key_event(KeyCode::KeyJ, false, false);
+    s.frames(40);
+    let f = s.play.fishing.as_ref().expect("the line is out");
+    assert_eq!(f.water, Some(Water::Sewer));
+    // Ten odd fish live down there, and nowhere else.
+    let sewer: Vec<_> = FISH
+        .iter()
+        .filter(|d| d.water.contains(&Water::Sewer))
+        .collect();
+    assert_eq!(sewer.len(), 10);
+    assert!(sewer.iter().all(|d| d.water == [Water::Sewer]));
+    assert!(
+        sewer
+            .iter()
+            .any(|d| d.item == Item::SewerKing && d.rarity == 3)
+    );
+}
+
+#[test]
+fn the_sewers_folk_are_bones_and_sludge() {
+    use super::dungeon::Foe;
+    use super::foes::Enemy;
+    use crate::assets::SEWER_LOOK;
+    use crate::render::Renderer;
+    let mut game = super::Game::new();
+    game.new_game(5);
+    let (audio, input) = (Audio::silent(), Input::default());
+    let mut settings = Settings::default();
+    let p = game.play_mut().unwrap();
+    let depth = (12..90)
+        .find(|&d| super::sewer::is_sewer(p.seed, d))
+        .expect("a sewer floor");
+    p.menu = Menu::None;
+    p.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    for _ in 0..70 {
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &input,
+            audio: &audio,
+            view: (320, 180),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        p.update(&mut io, &mut settings);
+    }
+    assert!(p.world().sewer);
+    assert!(!p.foes.is_empty());
+    for f in &p.foes {
+        assert!(f.sewer, "{:?}", f.foe);
+        assert_eq!(f.look(), SEWER_LOOK);
+        let name = f.name();
+        assert!(
+            ["Bone ", "Sludge ", "Sewer ", "Skull "]
+                .iter()
+                .any(|w| name.starts_with(w)),
+            "{name}"
+        );
+        // None of the biomes' own folk (shroomlings, crabs and the like) live down here.
+        assert!(!matches!(
+            f.foe,
+            Foe::Shroom | Foe::Crab | Foe::Wisp | Foe::Beetle | Foe::Imp | Foe::Golem | Foe::Jelly
+        ));
+    }
+    // Every family the sewers hold, drawn in its sewer look (bone spiders walking).
+    let biome = super::dungeon::biome_for(depth);
+    let at = p.player.pos;
+    p.foes.clear();
+    for (i, foe) in [
+        Foe::Slime,
+        Foe::Bat,
+        Foe::Zombie,
+        Foe::Brute,
+        Foe::Sneak,
+        Foe::Bug,
+        Foe::Skeleton,
+        Foe::Ghost,
+        Foe::Frog,
+        Foe::Puffer,
+        Foe::Snail,
+        Foe::Bookworm,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let a = i as f32 * 0.52;
+        let f = Enemy::new(
+            foe,
+            at.x + a.cos() * 1.5,
+            at.y + a.sin() * 1.5,
+            depth,
+            biome,
+            false,
+            3,
+        )
+        .in_the_sewers();
+        if foe == Foe::Bug {
+            assert!(!f.flying() && f.y == 0.0, "bone spiders walk");
+        }
+        p.foes.push(f);
+    }
+    let mut r = Renderer::new(320, 180);
+    game.draw(&mut r, &input);
+    assert!(r.fb.color.iter().all(|&c| c < 32));
+    // Up top, the same families wear their biome's look.
+    let f = Enemy::new(Foe::Zombie, 0.0, 0.0, 3, 1, false, 1);
+    assert!(!f.sewer && f.look() == 1 && f.name() == "Crystal Zombie");
+}
+
+#[test]
 fn a_dry_cast_catches_nothing_and_a_fish_gets_away() {
     let mut s = Sim::new();
     by_a_pond(&mut s);

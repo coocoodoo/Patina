@@ -7,7 +7,7 @@ use glam::{Mat4, Vec2, Vec3};
 use super::home::{self, Furn};
 use super::items::{Item, Stack};
 use super::play::Season;
-use super::world::{Floor, Obj, World};
+use super::world::{Floor, Obj, SEWER_GLOW, WATER_Y, World};
 use crate::assets::Assets;
 use crate::assets::models::{ARM_L, ARM_R, BODY, HEAD, Humanoid, LEG_L, LEG_R};
 use crate::palette::*;
@@ -211,6 +211,13 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     let opts = DrawOpts::default();
     for chunk in w.visible_chunks(rect) {
         r.mesh(&a.bank, chunk, &Mat4::IDENTITY, &opts);
+    }
+    let glow = DrawOpts {
+        glow: SEWER_GLOW,
+        ..opts
+    };
+    for chunk in w.visible_glow(rect) {
+        r.mesh(&a.bank, chunk, &Mat4::IDENTITY, &glow);
     }
     let (x0, z0, x1, z1) = rect;
     for z in z0.max(0)..=z1.min(w.h - 1) {
@@ -465,6 +472,42 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             }
         }
         Obj::Grate => r.mesh(&a.bank, &a.sewer.grate, &at, &lit),
+        Obj::Keg { .. } => {
+            // Now and then one brimming with glowing green goo.
+            let goo = hash2(x, z, 5) % 3 == 0;
+            let mesh = if goo {
+                &a.sewer.barrel_goo
+            } else {
+                &a.sewer.barrel
+            };
+            r.mesh(&a.bank, mesh, &(at * small_rot(x, z)), &lit);
+            if goo {
+                let pulse = (env.time * 2.0 + x as f32).sin() * 0.5 + 0.5;
+                r.halo(base + Vec3::Y * 0.68, 0.24, LIME, 0.18 + pulse * 0.1);
+            }
+        }
+        Obj::Debris { var } => {
+            let mesh = &a.sewer.debris[*var as usize % 3];
+            if w.floor(x, z) == Floor::Water {
+                // Afloat: bobbing and turning slowly on the current.
+                let t = env.time + (x * 3 + z) as f32;
+                let at = Vec3::new(
+                    base.x + (t * 0.4).sin() * 0.08,
+                    WATER_Y + 0.02 + (t * 1.7).sin() * 0.012,
+                    base.z + (t * 0.3).cos() * 0.06,
+                );
+                r.mesh(
+                    &a.bank,
+                    mesh,
+                    &(Mat4::from_translation(at)
+                        * small_rot(x, z)
+                        * Mat4::from_rotation_y((t * 0.25).sin() * 0.3)),
+                    &lit,
+                );
+            } else {
+                r.mesh(&a.bank, mesh, &(at * small_rot(x, z)), &lit);
+            }
+        }
         Obj::House => {
             r.mesh(&a.bank, &p.house, &at, &DrawOpts::default());
             let mode = if env.night > 0.3 {

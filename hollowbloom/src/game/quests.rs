@@ -3656,10 +3656,11 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
         let reach: Vec<super::fish::Water> = {
             use super::fish::Water as W;
             let mut v = vec![W::Pond, W::River];
-            // The Hollow's waters, one for each biome going down.
+            // The Hollow's waters, one for each biome going down. (Not the sewers: they come
+            // and go, so nobody counts on them.)
             for (b, w) in super::fish::WATERS[2..].iter().enumerate() {
                 // Lava fish need a heat-proof rod: nobody asks for those on the board.
-                if b as u8 <= biome && deepest > b as u32 * 10 && *w != W::Lava {
+                if b as u8 <= biome && deepest > b as u32 * 10 && !matches!(w, W::Lava | W::Sewer) {
                     v.push(*w);
                 }
             }

@@ -10,7 +10,7 @@ guardian watches over a waystone that can take you home. Down the road, a bus ru
 **Bramblewick**, where twenty villagers have shops to keep, stories to tell and more than a
 hundred things they would love a hand with. Learn **spells** from the town's spellwright,
 **brew potions** in three sizes, and watch the grass ripple in the breeze. Cast a line for
-**41 kinds of fish**, cook them on the stove in your **farmhouse**, and fill it with furniture:
+**51 kinds of fish**, cook them on the stove in your **farmhouse**, and fill it with furniture:
 a charming home gets you better prices, warmer friends and some very special quests.
 The **sun** throws real shadows that swing round through the day, the **moon** waxes and
 wanes (and a full moon drives the Hollow wild), every biome has its own **zombies, goblins,
@@ -329,11 +329,18 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   hook the fish, then **hold J to raise the green bar and let go to sink it**, keeping the
   fish inside until the catch meter fills. Stay with it the whole way for a **perfect** catch
   (and a bigger fish). Walk off, or get hit, and it's gone.
-* **41 fish** in eight waters, each with its own shape, colours and markings: the farm pond,
+* **51 fish** in nine waters, each with its own shape, colours and markings: the farm pond,
   Bramblewick's stream, and pools in every biome of the Hollow (ponds turn up in bigger cave
   rooms now), even the **lava** of the Ember Depths if your rod can take the heat. Some only
   bite by day, at night or in the rain; rarer fish fight harder, darting, sinking, floating or
   thrashing about. Now and then you'll hook junk, or a **sunken treasure chest**.
+* The **old sewers' channels** have ten odd fish of their own, each drawn by hand: the
+  **Sock Eel** (a striped sock with an eye on its toe), the **Boot Carp** peering out of an
+  old boot, the **Googly Guppy**, the **Mustache Minnow** and its ginger handlebar, the warty
+  **Pickle Pike**, the **Mop Catfish** that can't see past its whiskers, the **Tin Can
+  Tetra**, the sad pink **Bubblegum Blobfish**, the **Two-Headed Goby** (one head grinning,
+  one frowning) and, rarest of all, **the Sewer King** in his bottle-cap crown. There's twice
+  the junk down there, too.
 * **Rods are gear**, with Reel Power and their own stats: **Bite Speed**, **Line Strength**,
   **Treasure Find** and **Rare Fish**, besides haste, luck and coin find, and tool scrolls
   enchant them. The smithy only sells plain ones. The other nine, up to the Leviathan Rod,
@@ -406,11 +413,21 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
 * **The old sewers.** Now and then (from floor 3, never on a guardian's floor) a floor is a
   stretch of sewer instead of caves: murky green channels, misty and bubbling, run between
   **stone walkways two lanes wide on each side**, curbed along the water, meeting at
-  junctions and ending in rounded chambers, all standing alone in the dark. Every stretch
-  of channel has a **bridge** across it, of weathered **planks** or of **copper plate gone
-  green with rust**, railed on both sides. Drain pipes trickle onto the walkways, grates
-  sit in the floor, torches line the walls, frogs and jellies live along the water, and
-  the dead ends hide chests. The old brickwork can be mined like rock.
+  junctions and ending in rounded chambers, all standing alone in the dark. The water glows
+  a faint, murky **green**. Every stretch of channel has a **bridge** across it, of
+  weathered **planks** or of **copper plate gone green with rust**, railed on both sides.
+  Drain pipes trickle onto the walkways, grates sit in the floor, torches line the walls,
+  **barrels** (some brimming with glowing goo), crates and pots stand along them to smash,
+  **old bones** lie about, **broken planks** litter the walkways (chop them for wood) and
+  float in the channels, and the dead ends hide chests. The old brickwork can be mined like
+  rock.
+* **Who lives in the sewers**, whatever the biome above: **sludge slimes**, brown swirls
+  with googly eyes and flies buzzing round them, and everyone else **down to their bones**:
+  bone bats with skeletal wings, bone shamblers in rags, bone brutes swinging thigh-bone
+  clubs, hooded bone sneaks with rusty daggers, pale bone spiders, slimy sewer skeletons,
+  skull ghosts, bone frogs and puffers along the water, and from floor 11 bone snails in
+  shells of bone and green glass, and bone bibliomancers spitting green ink. The bony ones
+  often leave an old bone behind.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -569,7 +586,7 @@ hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs a
 hollowbloom --pet-shots DIR       # the cat, the jumping spider, its egg, autumn and candy rocks
 hollowbloom --season-shots DIR    # the farm and town in every season, day and night
 hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and the snail lamp
-hollowbloom --sewer-shots DIR     # sewer floors: walkways, channels, plank and copper bridges
+hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)

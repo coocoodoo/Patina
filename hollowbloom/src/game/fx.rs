@@ -455,7 +455,7 @@ pub struct Rune {
     /// Seconds since it landed (below zero, it's still to come), and how long it lasts.
     pub age: f32,
     pub life: f32,
-    /// Whose ink: the biome's colour (see `deep_art::INK_COLORS`).
+    /// Whose ink: the biome's colour, or the sewers' (see `deep_art::INK_COLORS`).
     pub biome: usize,
     /// Points to a secret rather than the stairs.
     pub secret: bool,

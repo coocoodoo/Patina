@@ -1,5 +1,6 @@
 //! The Hollow's walking dead, goblins (fat and skinny), bugs, bones and ghosts. Every family
-//! comes in six looks, one for each biome: mossy, crystal, fungal, ember, frost and ruins.
+//! comes in six looks, one for each biome: mossy, crystal, fungal, ember, frost and ruins;
+//! and a seventh for the old sewers, where they're all down to their bones.
 
 use std::f32::consts::PI;
 
@@ -10,11 +11,9 @@ use super::models::{
     tiled_box,
 };
 use super::tiles;
+use super::{LOOKS, SEWER_LOOK};
 use crate::palette::*;
 use crate::render::{BoxUv, Mesh, TexBank, TexId, Texture, UvRect};
-
-/// Looks per family: one for each biome.
-pub const KINDS: usize = 6;
 
 /// A bug: a body, jointed legs (a thigh rising from the hip to a knee, a shin reaching down
 /// to the floor), and wings or claws for some.
@@ -227,6 +226,30 @@ fn assemble(
 // ------------------------------------------------------------------------------------------
 // Biome trimmings
 // ------------------------------------------------------------------------------------------
+
+/// Sewer grime: a splat of green slime on top of something, dripping down its front.
+fn grime(bank: &mut TexBank, k: &mut Kit, m: &mut Mesh, at: Vec3, w: f32, d: f32) {
+    k.bx(
+        bank,
+        m,
+        at + v(-w * 0.65, -0.01, d * 0.2),
+        at + v(w * 0.1, 0.02, d + 0.015),
+        GREEN,
+    );
+    for (x, len, c) in [
+        (-0.6f32, 0.12f32, LIME),
+        (-0.1, 0.07, GREEN),
+        (0.3, 0.16, GREEN),
+    ] {
+        k.bx(
+            bank,
+            m,
+            at + v(x * w - 0.018, -len, d - 0.01),
+            at + v(x * w + 0.018, 0.0, d + 0.015),
+            c,
+        );
+    }
+}
 
 /// Tufts of moss.
 fn moss(bank: &mut TexBank, k: &mut Kit, m: &mut Mesh, at: Vec3, s: f32) {
@@ -456,6 +479,11 @@ fn trim(
                 WHITE,
             );
         }
+        SEWER_LOOK => {
+            grime(bank, k, head, v(0.0, top, 0.0), hx, hx * 0.9);
+            moss(bank, k, body, v(-bx * 0.6, by, -0.03), 0.7);
+            grime(bank, k, body, v(bx * 0.4, by, 0.0), bx * 0.5, bx * 0.55);
+        }
         _ => {}
     }
 }
@@ -472,6 +500,8 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
         [SHADOW, INK, INK],
         [WHITE, SKY, BLUE],
         [CREAM, SAND, KHAKI],
+        // A bone shambler: nothing left but bones, and rags.
+        [WHITE, SAND, KHAKI],
     ];
     let shirts = [
         [SAND, KHAKI, ROSEWOOD],
@@ -480,12 +510,14 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
         [RUST, MAROON, INK],
         [SLATE, INDIGO, INK],
         [CREAM, SAND, KHAKI],
+        [TEAL, DEEP_TEAL, INK],
     ];
-    let glows = [GOLD, MINT, PINK, ORANGE, BLUE, GOLD];
+    let glows = [GOLD, MINT, PINK, ORANGE, BLUE, GOLD, LIME];
     let [sl, sm, sd] = skins[biome];
     let [cl, cm, cd] = shirts[biome];
     let g = glows[biome];
     let mummy = biome == 5;
+    let bones = biome == SEWER_LOOK;
     let legend = [
         ('s', sm),
         ('l', sl),
@@ -498,6 +530,11 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
     let face: &[&str] = if mummy {
         &[
             "llllllll", "sdssssds", "lkglllgk", "ssssssss", "llllllll", "ssdkkdss", "llllllll",
+        ]
+    } else if bones {
+        // A cracked skull, one eye still lit, its jaw hanging open.
+        &[
+            "lllldlll", "slllllls", "skksskks", "skgsskks", "ssskksss", "skwkwkws", "dkkkkkkd",
         ]
     } else {
         &[
@@ -514,6 +551,9 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
     );
     let body_front: &[&str] = if mummy {
         &["llllll", "ssssss", "llllll", "ssssss", "llllll"]
+    } else if bones {
+        // Ribs, and a rag slung over one shoulder.
+        &["lskscm", "kssksc", "lskscm", "kkkkcm", "mdmdmd"]
     } else {
         &["cmcccm", "csmcmm", "cmssmc", "kkkkkk", "mdmdmd"]
     };
@@ -524,7 +564,16 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
             ('m', cm),
             ('d', cd),
             ('s', sm),
-            ('k', if mummy { sd } else { RUST }),
+            (
+                'k',
+                if mummy {
+                    sd
+                } else if bones {
+                    INK
+                } else {
+                    RUST
+                },
+            ),
             ('l', sl),
         ],
         cm,
@@ -533,19 +582,25 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
     );
     let arm = if mummy {
         limb(sl, sd, sm)
+    } else if bones {
+        limb(sm, sd, sl)
     } else {
         limb(sm, sd, sd)
     };
     let leg = if mummy {
         limb(sl, sd, sm)
+    } else if bones {
+        limb(cm, cd, sm)
     } else {
         limb(if biome == 4 { SLATE } else { INDIGO }, INK, sd)
     };
+    // Bones are thinner than the flesh that was on them.
+    let thin = if bones { 0.7 } else { 1.0 };
     let b = Build {
         head: v(0.25, 0.44, 0.22),
         body: v(0.17, 0.3, 0.12),
-        arm: Vec2::new(0.05, 0.27),
-        leg: Vec2::new(0.055, 0.2),
+        arm: Vec2::new(0.05 * thin, 0.27),
+        leg: Vec2::new(0.055 * thin, 0.2),
     };
     assemble(bank, [head, body, arm, leg], &b, &mut |bank, parts| {
         trim(bank, k, parts, biome, (0.44, 0.25), (0.17, 0.3));
@@ -573,14 +628,39 @@ fn zombie(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
 // Goblins
 // ------------------------------------------------------------------------------------------
 
-const GOBLIN_SKINS: [[u8; 3]; KINDS] = [
+const GOBLIN_SKINS: [[u8; 3]; LOOKS] = [
     [LIME, GREEN, TEAL],
     [MINT, AQUA, TEAL],
     [BLUSH, PINK, PLUM],
     [ORANGE, RED, MAROON],
     [WHITE, SKY, BLUE],
     [GOLD, CLAY, RUST],
+    // Bone.
+    [WHITE, SAND, KHAKI],
 ];
+
+/// A goblin's skull: sockets with a light still in them, a hole for the nose and a grin of
+/// teeth over the jaw.
+fn goblin_skull(skin: [u8; 3], eye: u8) -> Texture {
+    let [sl, sm, sd] = skin;
+    head_tex(
+        &[
+            "ssllllss", "sdssssds", "kkksskkk", "keksskek", "ssskksss", "kwkwwkwk", "sdkkkkds",
+        ],
+        &[
+            ('s', sm),
+            ('l', sl),
+            ('d', sd),
+            ('k', INK),
+            ('e', eye),
+            ('w', WHITE),
+        ],
+        sm,
+        sd,
+        sm,
+        sd,
+    )
+}
 
 fn goblin_face(skin: [u8; 3], eye: u8) -> Texture {
     let [sl, sm, sd] = skin;
@@ -672,15 +752,28 @@ fn brute(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
         [SHADOW, INK, INK],
         [WHITE, SAND, KHAKI],
         [SAND, KHAKI, ROSEWOOD],
+        [TEAL, DEEP_TEAL, INK],
     ];
-    let belts = [GREEN, AQUA, PINK, GOLD, SKY, GOLD];
+    let belts = [GREEN, AQUA, PINK, GOLD, SKY, GOLD, RUST];
     let [hl, hm, hd] = hides[biome];
-    let head = goblin_face(skin, if biome == 5 { CREAM } else { GOLD });
+    let bones = biome == SEWER_LOOK;
+    let head = if bones {
+        goblin_skull(skin, LIME)
+    } else {
+        goblin_face(skin, if biome == 5 { CREAM } else { GOLD })
+    };
+    let front: &[&str] = if bones {
+        // A barrel of ribs where the belly was.
+        &["lkllkl", "skssks", "lkllkl", "bbbbbb", "hmhmhm"]
+    } else {
+        &["sslsss", "slllss", "slllss", "bbbbbb", "hmhmhm"]
+    };
     let body = body_tex(
-        &["sslsss", "slllss", "slllss", "bbbbbb", "hmhmhm"],
+        front,
         &[
             ('s', sm),
             ('l', sl),
+            ('k', INK),
             ('b', belts[biome]),
             ('h', hl),
             ('m', hm),
@@ -709,8 +802,8 @@ fn brute(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
                 WHITE,
             );
         }
-        // Shoulder pads (or leaves, fur, gold) for the biome.
-        let pad = [GREEN, AQUA, PINK, INK, WHITE, GOLD][biome];
+        // Shoulder pads (or leaves, fur, gold, bone) for the biome.
+        let pad = [GREEN, AQUA, PINK, INK, WHITE, GOLD, SAND][biome];
         for sx in [-1.0f32, 1.0] {
             k.bx(
                 bank,
@@ -761,9 +854,15 @@ fn sneak(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
         [RUST, MAROON, INK],
         [SKY, SLATE, INDIGO],
         [CLAY, RUST, MAROON],
+        [KHAKI, SHADOW, INK],
     ];
     let [cl, cm, cd] = cloaks[biome];
-    let mut head = goblin_face(skin, if biome == 5 { WHITE } else { GOLD });
+    let bones = biome == SEWER_LOOK;
+    let mut head = if bones {
+        goblin_skull(skin, LIME)
+    } else {
+        goblin_face(skin, if biome == 5 { WHITE } else { GOLD })
+    };
     // A hood pulled over the top and back.
     for y in 0..7 {
         for x in 0..8 {
@@ -776,8 +875,14 @@ fn sneak(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
     for x in 0..8 {
         head.set(x, 0, cl);
     }
+    let front: &[&str] = if bones {
+        // Ribs showing where the cloak falls open.
+        &["cmmmmc", "cmlkmc", "cmklmc", "dkkkkd", "mdmdmd"]
+    } else {
+        &["cmmmmc", "cmllmc", "cmmmmc", "dkkkkd", "mdmdmd"]
+    };
     let body = body_tex(
-        &["cmmmmc", "cmllmc", "cmmmmc", "dkkkkd", "mdmdmd"],
+        front,
         &[('c', cl), ('m', cm), ('d', cd), ('k', INK), ('l', sl)],
         cm,
         INK,
@@ -804,7 +909,9 @@ fn sneak(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
             cd,
         );
         parts[HEAD].append(&tip, Mat4::from_translation(v(0.0, 0.36, -0.05)));
-        let _ = sl;
+        if bones {
+            grime(bank, k, &mut parts[BODY], v(0.0, 0.27, 0.0), 0.12, 0.09);
+        }
     })
 }
 
@@ -820,8 +927,10 @@ fn skeleton(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
         [SHADOW, INK, INK],
         [WHITE, SKY, SLATE],
         [CREAM, GOLD, CLAY],
+        // Bleached in the sewers, and slimed.
+        [WHITE, SAND, KHAKI],
     ];
-    let glows = [LIME, AQUA, PINK, ORANGE, SKY, GOLD];
+    let glows = [LIME, AQUA, PINK, ORANGE, SKY, GOLD, LIME];
     let [bl, bm, bd] = bones[biome];
     let g = glows[biome];
     let charred = biome == 3;
@@ -979,6 +1088,80 @@ fn ghost_hat(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Mesh {
                     WHITE,
                 );
             }
+        }
+        SEWER_LOOK => {
+            // A skull for a head, sat on the sheet and tipped back to look up at you: a round
+            // crown, sockets with a green light in them, a hole for a nose, and a jaw full of
+            // teeth.
+            let mut skull = Mesh::new();
+            let bone = k.c(bank, WHITE);
+            lathe(
+                &mut skull,
+                Vec3::ZERO,
+                &[
+                    (0.0, 0.0),
+                    (0.14, 0.02),
+                    (0.175, 0.12),
+                    (0.155, 0.22),
+                    (0.09, 0.28),
+                    (0.0, 0.3),
+                ],
+                10,
+                0.3,
+                bone,
+                false,
+            );
+            for sx in [-1.0f32, 1.0] {
+                k.bx(
+                    bank,
+                    &mut skull,
+                    v(sx * 0.07 - 0.045, 0.08, 0.14),
+                    v(sx * 0.07 + 0.045, 0.17, 0.19),
+                    INK,
+                );
+                k.bx(
+                    bank,
+                    &mut skull,
+                    v(sx * 0.07 - 0.016, 0.105, 0.186),
+                    v(sx * 0.07 + 0.016, 0.14, 0.196),
+                    LIME,
+                );
+            }
+            k.bx(
+                bank,
+                &mut skull,
+                v(-0.02, 0.03, 0.14),
+                v(0.02, 0.065, 0.19),
+                INK,
+            );
+            k.bx(
+                bank,
+                &mut skull,
+                v(-0.12, -0.08, -0.06),
+                v(0.12, 0.02, 0.13),
+                SAND,
+            );
+            k.bx(
+                bank,
+                &mut skull,
+                v(-0.11, -0.005, 0.125),
+                v(0.11, 0.008, 0.14),
+                INK,
+            );
+            for x in 0..4 {
+                let x0 = -0.1 + x as f32 * 0.052;
+                k.bx(
+                    bank,
+                    &mut skull,
+                    v(x0, -0.045, 0.125),
+                    v(x0 + 0.04, 0.0, 0.142),
+                    WHITE,
+                );
+            }
+            m.append(
+                &skull,
+                Mat4::from_translation(v(0.0, 0.64, 0.02)) * Mat4::from_rotation_x(-0.45),
+            );
         }
         _ => nemes(bank, &mut m, 0.22, 0.2, 0.2),
     }
@@ -1183,6 +1366,12 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
         }
     };
     match biome {
+        SEWER_LOOK => {
+            // Bone spider: bleached pale as a skeleton, ribs down its back, eyes lit red.
+            let mut b = spider(bank, k, [WHITE, SAND, KHAKI], SHADOW, [SAND, WHITE], RED);
+            grime(bank, k, &mut b.body, v(0.0, 0.33, -0.24), 0.08, 0.1);
+            b
+        }
         0 => {
             // Moss spider: green and fuzzy, with moss growing on its back.
             let mut b = spider(bank, k, [LIME, GREEN, TEAL], GOLD, [GREEN, DEEP_TEAL], RED);
@@ -1499,9 +1688,18 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
 /// A fat goblin's club, gripped at the origin and pointing down the arm.
 fn club(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Mesh {
     let mut m = Mesh::new();
-    let wood = speck(bank, [CLAY, RUST, MAROON]);
+    // In the sewers the club is a great old thigh bone, knobbly end down.
+    let wood = speck(
+        bank,
+        if biome == SEWER_LOOK {
+            [WHITE, SAND, KHAKI]
+        } else {
+            [CLAY, RUST, MAROON]
+        },
+    );
     tiled_box(&mut m, v(-0.03, -0.3, -0.03), v(0.03, 0.06, 0.03), wood, 0);
     let (head, tip) = match biome {
+        SEWER_LOOK => ([WHITE, SAND, KHAKI], SAND),
         0 => ([KHAKI, ROSEWOOD, SHADOW], GREEN),
         1 => ([MINT, AQUA, TEAL], WHITE),
         2 => ([BLUSH, PINK, PLUM], WHITE),
@@ -1526,8 +1724,9 @@ fn club(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Mesh {
 /// A skinny goblin's dagger.
 fn dagger(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Mesh {
     let mut m = Mesh::new();
-    let grip = [TEAL, INDIGO, GRAPE, MAROON, SLATE, RUST][biome];
-    let blade = [WHITE, AQUA, BLUSH, ORANGE, SKY, GOLD][biome];
+    // (The sewer's are rusty.)
+    let grip = [TEAL, INDIGO, GRAPE, MAROON, SLATE, RUST, SHADOW][biome];
+    let blade = [WHITE, AQUA, BLUSH, ORANGE, SKY, GOLD, RUST][biome];
     k.bx(
         bank,
         &mut m,
@@ -1576,18 +1775,20 @@ pub fn build(bank: &mut TexBank) -> Monsters {
         [CREAM, GOLD, ORANGE],
         [WHITE, WHITE, SKY],
         [WHITE, BLUSH, LAVENDER],
+        // Sewer gas.
+        [LIME, GREEN, TEAL],
     ];
     Monsters {
-        zombie: (0..KINDS).map(|b| zombie(bank, &mut k, b)).collect(),
-        brute: (0..KINDS).map(|b| brute(bank, &mut k, b)).collect(),
-        club: (0..KINDS).map(|b| club(bank, &mut k, b)).collect(),
-        sneak: (0..KINDS).map(|b| sneak(bank, &mut k, b)).collect(),
-        dagger: (0..KINDS).map(|b| dagger(bank, &mut k, b)).collect(),
-        skeleton: (0..KINDS).map(|b| skeleton(bank, &mut k, b)).collect(),
+        zombie: (0..LOOKS).map(|b| zombie(bank, &mut k, b)).collect(),
+        brute: (0..LOOKS).map(|b| brute(bank, &mut k, b)).collect(),
+        club: (0..LOOKS).map(|b| club(bank, &mut k, b)).collect(),
+        sneak: (0..LOOKS).map(|b| sneak(bank, &mut k, b)).collect(),
+        dagger: (0..LOOKS).map(|b| dagger(bank, &mut k, b)).collect(),
+        skeleton: (0..LOOKS).map(|b| skeleton(bank, &mut k, b)).collect(),
         ghost: ghost_pals.iter().map(|p| ghost_sheet(bank, *p)).collect(),
         ghost_face,
-        ghost_hat: (0..KINDS).map(|b| ghost_hat(bank, &mut k, b)).collect(),
-        bug: (0..KINDS).map(|b| bug(bank, &mut k, b)).collect(),
+        ghost_hat: (0..LOOKS).map(|b| ghost_hat(bank, &mut k, b)).collect(),
+        bug: (0..LOOKS).map(|b| bug(bank, &mut k, b)).collect(),
     }
 }
 
@@ -1600,7 +1801,7 @@ mod tests {
         let mut bank = TexBank::default();
         let m = build(&mut bank);
         for list in [&m.zombie, &m.brute, &m.sneak, &m.skeleton] {
-            assert_eq!(list.len(), KINDS);
+            assert_eq!(list.len(), LOOKS);
             for h in list.iter() {
                 assert!(h.parts.iter().all(|p| !p.tris.is_empty()));
                 assert!(h.hip > 0.0 && h.neck > h.hip && h.shoulder_x > 0.0);
@@ -1609,7 +1810,7 @@ mod tests {
         // Fat goblins are wider and shorter in the leg than skinny ones.
         assert!(m.brute[0].shoulder_x > m.sneak[0].shoulder_x);
         assert!(m.brute[0].hip < m.sneak[0].hip);
-        assert_eq!(m.bug.len(), KINDS);
+        assert_eq!(m.bug.len(), LOOKS);
         assert!(m.bug.iter().any(|b| b.flies && b.wing.is_some()));
         assert!(m.bug.iter().any(|b| b.claw.is_some()));
         for b in &m.bug {
@@ -1624,9 +1825,11 @@ mod tests {
             assert!(b.hip_y + b.thigh_len * b.knee.sin() > 0.3);
             assert!(b.hip_x + b.thigh_len * b.knee.cos() + b.shin_len * 0.5 > 0.4);
         }
-        assert_eq!(m.ghost.len(), KINDS);
-        assert_eq!(m.ghost_hat.len(), KINDS);
-        assert_eq!(m.club.len(), KINDS);
-        assert_eq!(m.dagger.len(), KINDS);
+        assert_eq!(m.ghost.len(), LOOKS);
+        assert_eq!(m.ghost_hat.len(), LOOKS);
+        assert_eq!(m.club.len(), LOOKS);
+        assert_eq!(m.dagger.len(), LOOKS);
+        // The sewers' spider walks on its bones; it doesn't fly.
+        assert!(!m.bug[SEWER_LOOK].flies);
     }
 }

@@ -15,6 +15,9 @@ use crate::util::hash2;
 pub const CHUNK: i32 = 16;
 pub const WALL_H: f32 = 1.0;
 pub const WATER_Y: f32 = -0.22;
+/// Sewer water never looks darker than this light level: a faint glow of its own, which
+/// keeps it green in the dark rather than letting it sink to teal.
+pub const SEWER_GLOW: f32 = 0.74;
 pub const WATERED: u8 = 1;
 /// Watered by a can with Growth: the crop may grow an extra day tonight.
 pub const FERTILE: u8 = 2;
@@ -254,6 +257,14 @@ pub enum Obj {
     Drain,
     /// A round grate in a sewer walkway.
     Grate,
+    /// A barrel down in the sewers: breaks like a crate.
+    Keg {
+        hp: i16,
+    },
+    /// Broken planks, lying about or floating on the water, by look.
+    Debris {
+        var: u8,
+    },
 }
 
 impl Obj {
@@ -270,6 +281,7 @@ impl Obj {
                 | Obj::Crack
                 | Obj::Drain
                 | Obj::Grate
+                | Obj::Debris { .. }
         )
     }
 
@@ -331,6 +343,8 @@ pub struct World {
     /// An old sewer floor of the Hollow: its water is murky green (see `sewer`).
     pub sewer: bool,
     chunks: Vec<Mesh>,
+    /// What glows in each chunk (sewer water), drawn with a light floor of `SEWER_GLOW`.
+    glowing: Vec<Mesh>,
     /// Tufts of grass on the open lawn, in `TUFTS`-tile blocks, drawn swaying in the breeze.
     grass: Vec<Mesh>,
     dirty: Vec<bool>,
@@ -364,6 +378,7 @@ impl World {
             snow: false,
             sewer: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
+            glowing: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
             dirty: vec![true; (cw * ch) as usize],
             grass_dirty: vec![true; (gw * gh) as usize],
@@ -678,7 +693,7 @@ impl World {
             for cx in cx0..=cx1 {
                 let c = (cz * self.cw + cx) as usize;
                 if self.dirty[c] {
-                    self.chunks[c] = self.build_chunk(a, cx, cz);
+                    (self.chunks[c], self.glowing[c]) = self.build_chunk(a, cx, cz);
                     self.dirty[c] = false;
                 }
             }
@@ -697,6 +712,15 @@ impl World {
         self.chunk_range(rect)
             .into_iter()
             .map(|c| &self.chunks[c])
+            .collect()
+    }
+
+    /// The glowing parts of the chunks that intersect the rectangle (see `SEWER_GLOW`).
+    pub fn visible_glow(&self, rect: (i32, i32, i32, i32)) -> Vec<&Mesh> {
+        self.chunk_range(rect)
+            .into_iter()
+            .map(|c| &self.glowing[c])
+            .filter(|m| !m.tris.is_empty())
             .collect()
     }
 
@@ -979,8 +1003,10 @@ impl World {
         }
     }
 
-    fn build_chunk(&self, a: &Assets, cx: i32, cz: i32) -> Mesh {
+    /// The ground of one chunk, and apart from it whatever in it glows.
+    fn build_chunk(&self, a: &Assets, cx: i32, cz: i32) -> (Mesh, Mesh) {
         let mut m = Mesh::new();
+        let mut glow = Mesh::new();
         let full = UvRect::new(0.0, 0.0, 16.0, 16.0);
         let solid = |x: i32, z: i32| self.wall(x, z) != Wall::None;
         // A face shows unless a wall at least as tall stands next to it.
@@ -1073,7 +1099,8 @@ impl World {
                 };
                 let corners = [ao(0, 1), ao(1, 1), ao(1, 0), ao(0, 0)];
                 let tex = self.floor_tex(a, x, z, f);
-                m.quad_ao(
+                let glows = f == Floor::Water && self.sewer;
+                (if glows { &mut glow } else { &mut m }).quad_ao(
                     [
                         Vec3::new(fx, y, fz + 1.0),
                         Vec3::new(fx + 1.0, y, fz + 1.0),
@@ -1085,7 +1112,7 @@ impl World {
                     corners,
                 );
                 if matches!(f, Floor::Bridge | Floor::CopperBridge) {
-                    self.bridge(a, &mut m, x, z, f);
+                    self.bridge(a, &mut m, &mut glow, x, z, f);
                 }
                 // Banks where recessed floors (water, lava) meet higher ground.
                 if y < 0.0 {
@@ -1142,12 +1169,12 @@ impl World {
                 }
             }
         }
-        m
+        (m, glow)
     }
 
     /// A bridge's underside: the channel running on beneath the deck, a beam along each
     /// edge over the water, and a railing on posts standing up out of it.
-    fn bridge(&self, a: &Assets, m: &mut Mesh, x: i32, z: i32, f: Floor) {
+    fn bridge(&self, a: &Assets, m: &mut Mesh, glow: &mut Mesh, x: i32, z: i32, f: Floor) {
         let (fx, fz) = (x as f32, z as f32);
         let beam = if f == Floor::Bridge {
             a.sewer.wood_beam
@@ -1155,7 +1182,7 @@ impl World {
             a.sewer.copper_beam
         };
         let water = self.floor_tex(a, x, z, Floor::Water);
-        m.quad(
+        glow.quad(
             [
                 Vec3::new(fx, WATER_Y, fz + 1.0),
                 Vec3::new(fx + 1.0, WATER_Y, fz + 1.0),

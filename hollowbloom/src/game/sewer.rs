@@ -9,8 +9,8 @@
 //! of channel has a bridge, so both walkways are always in reach.
 
 use super::dungeon::{
-    CRACK_CHANCE, Foe, GLEAM_CHANCE, Level, Spawn, biome_for, floor_foes, is_waystone_floor,
-    ore_weights, pond_foes, too_tough,
+    CRACK_CHANCE, DEEP_FOLK, Foe, GLEAM_CHANCE, Level, Spawn, biome_for, is_waystone_floor,
+    ore_weights, too_tough,
 };
 use super::world::{Area, Floor, Obj, Wall, World};
 use crate::util::Rng;
@@ -24,6 +24,29 @@ pub const FIRST_SEWER: u32 = 3;
 const HALF: i32 = 3;
 /// Roughly how far apart the junctions are.
 const SPACING: i32 = 13;
+
+/// Who lives in the old sewers, whatever the biome above: sludge slimes, and the Hollow's
+/// folk down to their bones (see `Enemy::in_the_sewers`), with bone snails and bone
+/// bibliomancers deeper down.
+pub fn sewer_foes(depth: u32) -> Vec<(Foe, f32)> {
+    let mut v = vec![
+        (Foe::Slime, 3.0),
+        (Foe::Bat, 1.4),
+        (Foe::Zombie, 1.4),
+        (Foe::Sneak, 1.1),
+        (Foe::Brute, 0.8),
+        (Foe::Bug, 1.5),
+        (Foe::Skeleton, 1.2),
+        (Foe::Ghost, 0.8),
+    ];
+    if depth >= DEEP_FOLK {
+        v.extend([(Foe::Snail, 1.0), (Foe::Bookworm, 0.9)]);
+    }
+    v
+}
+
+/// The sewers' water folk: bone frogs, and the odd bone puffer.
+pub const SEWER_POND: [Foe; 3] = [Foe::Frog, Foe::Frog, Foe::Puffer];
 
 /// Is this floor sewers?
 pub fn is_sewer(seed: u64, depth: u32) -> bool {
@@ -113,6 +136,20 @@ fn wall_lane(w: &World, x: i32, z: i32) -> bool {
         && !next_to(w, x, z, |f, _| {
             matches!(f, Floor::Water | Floor::Bridge | Floor::CopperBridge)
         })
+}
+
+/// Would something solid here shut a neighbour in, leaving it no other way out? (Tucked into
+/// a corner, two barrels either side of it would.)
+fn traps(w: &World, x: i32, z: i32) -> bool {
+    const SIDES: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+    SIDES.iter().any(|&(dx, dz)| {
+        let (nx, nz) = (x + dx, z + dz);
+        !w.blocked(nx, nz)
+            && SIDES.iter().all(|&(ex, ez)| {
+                let (mx, mz) = (nx + ex, nz + ez);
+                (mx, mz) == (x, z) || w.blocked(mx, mz)
+            })
+    })
 }
 
 pub fn generate(seed: u64, depth: u32) -> Level {
@@ -349,8 +386,8 @@ pub fn generate(seed: u64, depth: u32) -> Level {
         }
     }
 
-    // Drains pouring into the walkways, grates in the floor, torches, and pots and crates
-    // along the walls.
+    // Drains pouring into the walkways, grates in the floor, torches, and barrels, crates
+    // and pots stacked along the walls.
     let mut torches = 0;
     for z in 2..h - 2 {
         for x in 2..w - 2 {
@@ -360,18 +397,47 @@ pub fn generate(seed: u64, depth: u32) -> Level {
             // Pipes come out of walls you can see: behind, or to the side.
             let wall_behind = world.wall(x, z - 1) == Wall::Sewer;
             let roll = r.f32();
-            if wall_behind && roll < 0.07 {
-                world.set_obj(x, z, Some(Obj::Drain));
-            } else if roll < 0.1 {
-                world.set_obj(x, z, Some(Obj::Grate));
-            } else if roll < 0.13 && torches < 12 + depth as i32 / 3 {
-                world.set_obj(x, z, Some(Obj::Torch));
+            let obj = if wall_behind && roll < 0.06 {
+                Obj::Drain
+            } else if roll < 0.08 {
+                Obj::Grate
+            } else if roll < 0.11 && torches < 12 + depth as i32 / 3 {
                 torches += 1;
-            } else if roll < 0.155 {
-                world.set_obj(x, z, Some(Obj::Pot { hp: 1 }));
-            } else if roll < 0.17 {
-                world.set_obj(x, z, Some(Obj::Crate { hp: 1 }));
+                Obj::Torch
+            } else if roll < 0.15 {
+                Obj::Keg { hp: 1 }
+            } else if roll < 0.18 {
+                Obj::Crate { hp: 1 }
+            } else if roll < 0.19 {
+                Obj::Pot { hp: 1 }
+            } else {
+                continue;
+            };
+            if obj.solid() && traps(&world, x, z) {
+                continue;
             }
+            world.set_obj(x, z, Some(obj));
+        }
+    }
+    // Old bones and broken planks strewn along the walkways, and more planks drifting in
+    // the channels.
+    for z in 2..h - 2 {
+        for x in 2..w - 2 {
+            if keep_clear(x, z) || world.obj(x, z).is_some() || world.wall(x, z) != Wall::None {
+                continue;
+            }
+            let roll = r.f32();
+            let obj = match world.floor(x, z) {
+                Floor::Walkway if roll < 0.03 => Obj::Bones,
+                Floor::Walkway if roll < 0.055 => Obj::Debris {
+                    var: r.below(3) as u8,
+                },
+                Floor::Water if roll < 0.05 => Obj::Debris {
+                    var: r.below(3) as u8,
+                },
+                _ => continue,
+            };
+            world.set_obj(x, z, Some(obj));
         }
     }
     // A torch by the arrival point so you never land in the dark.
@@ -398,7 +464,7 @@ pub fn generate(seed: u64, depth: u32) -> Level {
         let (cx, cz) = at(i);
         for _ in 0..20 {
             let (x, z) = (cx + r.range(-HALF, HALF), cz + r.range(-HALF, HALF));
-            if !keep_clear(x, z) && wall_lane(&world, x, z) {
+            if !keep_clear(x, z) && wall_lane(&world, x, z) && !traps(&world, x, z) {
                 world.set_obj(
                     x,
                     z,
@@ -433,9 +499,9 @@ pub fn generate(seed: u64, depth: u32) -> Level {
         }
     }
 
-    // Who lives down here: the biome's creatures on the walkways, and water folk along the
+    // Who lives down here: the sewers' creatures on the walkways, and water folk along the
     // channels.
-    let foes = floor_foes(biome, depth);
+    let foes = sewer_foes(depth);
     let weights: Vec<f32> = foes.iter().map(|f| f.1).collect();
     let cap = (6 + depth as usize / 2).min(28);
     let mut spawns = Vec::new();
@@ -459,7 +525,7 @@ pub fn generate(seed: u64, depth: u32) -> Level {
             boss: false,
         });
     }
-    let folk = pond_foes(biome);
+    let folk = SEWER_POND;
     let mut wet = 0;
     for _ in 0..400 {
         if wet >= 3 + depth as usize / 15 {
@@ -523,6 +589,29 @@ mod tests {
             assert!(walkways > 200, "only {walkways} walkway tiles");
             assert!(super::super::dungeon::reachable(w, l.start, l.stairs));
             assert_ne!(l.start, l.stairs);
+        }
+    }
+
+    #[test]
+    fn clutter_never_shuts_anywhere_in() {
+        for seed in 0..40u64 {
+            for depth in [4u32, 17, 33, 52, 76] {
+                let l = generate(seed * 7919 + 3, depth);
+                let w = &l.world;
+                let dist = walk(w, l.start);
+                for z in 0..w.h {
+                    for x in 0..w.w {
+                        if matches!(
+                            w.floor(x, z),
+                            Floor::Walkway | Floor::Bridge | Floor::CopperBridge
+                        ) && w.wall(x, z) == Wall::None
+                            && !w.blocked(x, z)
+                        {
+                            assert_ne!(dist[w.idx(x, z)], u32::MAX, "seed {seed} depth {depth}");
+                        }
+                    }
+                }
+            }
         }
     }
 

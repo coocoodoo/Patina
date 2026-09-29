@@ -6,7 +6,7 @@ use std::f32::consts::FRAC_PI_2;
 
 use glam::{Mat4, Vec3};
 
-use super::models::lathe;
+use super::models::{lathe, skin_box};
 use crate::palette::*;
 use crate::render::{Mesh, TexBank, TexId, Texture, UvRect};
 use crate::util::Rng;
@@ -39,6 +39,13 @@ pub struct SewerArt {
     pub drain: Mesh,
     /// A round grate, lying flat on the floor.
     pub grate: Mesh,
+    /// A barrel of staves and iron hoops, and one brimming over with green goo.
+    pub barrel: Mesh,
+    pub barrel_goo: Mesh,
+    /// Broken planks, three ways.
+    pub debris: [Mesh; 3],
+    /// The sewer's slime: a brown swirl three coils high with a curl on top, and a face.
+    pub swirl: Mesh,
 }
 
 fn speckle(t: &mut Texture, r: &mut Rng, c: u8, n: usize) {
@@ -185,28 +192,34 @@ fn bank() -> Texture {
     t
 }
 
-/// Murky green water: slow currents, floating scum and the odd bubble.
+/// Murky green water: slow currents, floating scum and the odd bubble. (It glows a little
+/// too, see `SEWER_GLOW`, or down here in the dark it would only ever look teal.)
 fn water(frame: i32) -> Texture {
-    let mut t = Texture::new(16, 16, DEEP_TEAL);
+    let mut t = Texture::new(16, 16, GREEN);
     let mut r = Rng::new(0x5E0);
     for _ in 0..4 {
         let (x, y) = (r.range(0, T), r.range(0, T));
         blob(&mut t, x, y, 2, 1, TEAL);
     }
+    for _ in 0..2 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        blob(&mut t, x, y, 1, 1, DEEP_TEAL);
+    }
+    // Slow currents, sliding one way on some rows and back the other on the rest.
     let mut s = Rng::new(0x5E1);
     for _ in 0..5 {
         let (x, y) = (s.range(0, T), s.range(0, T));
         let dx = if (y / 4) % 2 == 0 { frame } else { -frame };
         for k in 0..s.range(2, 4) {
-            t.set_wrap(x + k + dx, y, GREEN);
+            t.set_wrap(x + k + dx, y, LIME);
         }
     }
     // Scum drifting slowly one way.
     let mut g = Rng::new(0x5E2);
     for _ in 0..4 {
         let (x, y) = (g.range(0, T), g.range(0, T));
-        t.set_wrap(x + frame / 2, y, LIME);
-        t.set_wrap(x + frame / 2 + 1, y, GREEN);
+        t.set_wrap(x + frame / 2, y, CREAM);
+        t.set_wrap(x + frame / 2 + 1, y, LIME);
     }
     // A bubble rising in its own spot each frame.
     let b = [(3, 11), (12, 4), (7, 13), (10, 8)][frame as usize % 4];
@@ -320,6 +333,18 @@ fn beam(pal: [u8; 3], rust: bool) -> Texture {
     t
 }
 
+/// The sewer slime's skin: over each coil (whose texture runs top to bottom a few texels
+/// deep) a glossy highlight, then brown, then the dark underside.
+fn swirl_skin() -> Texture {
+    let mut t = Texture::new(16, 16, MAROON);
+    for x in 0..T {
+        t.set(x, 0, if x % 5 == 1 { GOLD } else { CLAY });
+        t.set(x, 1, if x % 7 == 3 { CLAY } else { RUST });
+        t.set(x, 2, if x % 4 == 0 { MAROON } else { RUST });
+    }
+    t
+}
+
 /// A round grate: bars across a dark hole, in a stone ring.
 fn grate_tex() -> Texture {
     let mut t = Texture::new(16, 16, CLEAR);
@@ -401,6 +426,204 @@ pub fn build(bank_: &mut TexBank) -> SewerArt {
         gt,
     );
 
+    // Barrels: staves round a bulge, two iron hoops, and a planked lid, or a lid's worth
+    // of glowing goo brimming over and dripping down the side.
+    let stave = bank_.add(super::tiles::boards([GOLD, CLAY, RUST], 0xBA2E));
+    let hoop = bank_.add(Texture::new(4, 4, SHADOW));
+    let lid = bank_.add(planks(false));
+    let goo = bank_.add(beam([LIME, GREEN, TEAL], false));
+    let mut barrel = Mesh::new();
+    lathe(
+        &mut barrel,
+        Vec3::ZERO,
+        &[
+            (0.24, 0.0),
+            (0.29, 0.16),
+            (0.3, 0.32),
+            (0.29, 0.48),
+            (0.24, 0.64),
+        ],
+        10,
+        0.0,
+        stave,
+        false,
+    );
+    for y in [0.09f32, 0.5] {
+        lathe(
+            &mut barrel,
+            Vec3::ZERO,
+            &[(0.296, y), (0.296, y + 0.05)],
+            10,
+            0.0,
+            hoop,
+            false,
+        );
+    }
+    let mut barrel_goo = barrel.clone();
+    lathe(
+        &mut barrel,
+        Vec3::ZERO,
+        &[(0.24, 0.62), (0.0, 0.63)],
+        10,
+        0.0,
+        lid,
+        false,
+    );
+    lathe(
+        &mut barrel_goo,
+        Vec3::ZERO,
+        &[(0.25, 0.62), (0.2, 0.68), (0.0, 0.7)],
+        10,
+        0.0,
+        goo,
+        false,
+    );
+    for (a, len) in [(0.3f32, 0.18f32), (2.4, 0.1), (4.2, 0.26)] {
+        let (dx, dz) = (a.cos() * 0.25, a.sin() * 0.25);
+        skin_box(
+            &mut barrel_goo,
+            Vec3::new(dx - 0.03, 0.63 - len, dz - 0.03),
+            Vec3::new(dx + 0.03, 0.66, dz + 0.03),
+            goo,
+            &Texture::new(4, 4, 0),
+        );
+    }
+
+    // Broken planks: a pair crossed, three scattered, one long and splintered.
+    let boards = bank_.add(beam([GOLD, CLAY, RUST], false));
+    let dark = bank_.add(Texture::new(4, 4, SHADOW));
+    let w4 = Texture::new(4, 4, 0);
+    let board = |m: &mut Mesh, len: f32, w: f32, at: Vec3, turn: f32, tex: TexId| {
+        let mut b = Mesh::new();
+        skin_box(
+            &mut b,
+            Vec3::new(-len * 0.5, 0.0, -w * 0.5),
+            Vec3::new(len * 0.5, 0.045, w * 0.5),
+            tex,
+            &w4,
+        );
+        m.append(&b, Mat4::from_translation(at) * Mat4::from_rotation_y(turn));
+    };
+    let mut d0 = Mesh::new();
+    board(&mut d0, 0.62, 0.14, Vec3::ZERO, 0.35, boards);
+    board(
+        &mut d0,
+        0.4,
+        0.12,
+        Vec3::new(0.02, 0.045, 0.03),
+        -0.95,
+        boards,
+    );
+    let mut d1 = Mesh::new();
+    board(
+        &mut d1,
+        0.34,
+        0.13,
+        Vec3::new(-0.15, 0.0, -0.12),
+        0.2,
+        boards,
+    );
+    board(&mut d1, 0.3, 0.12, Vec3::new(0.15, 0.0, 0.02), 1.3, boards);
+    board(
+        &mut d1,
+        0.26,
+        0.11,
+        Vec3::new(-0.05, 0.0, 0.22),
+        -0.4,
+        boards,
+    );
+    let mut d2 = Mesh::new();
+    board(&mut d2, 0.74, 0.15, Vec3::ZERO, -0.2, boards);
+    // A splinter off the end, and a bent nail.
+    board(&mut d2, 0.14, 0.06, Vec3::new(0.4, 0.0, -0.1), 0.7, boards);
+    board(
+        &mut d2,
+        0.025,
+        0.025,
+        Vec3::new(-0.2, 0.045, 0.02),
+        0.0,
+        dark,
+    );
+    let debris = [d0, d1, d2];
+
+    // The swirl: three coils, each smaller, and a curl on top.
+    let skin = bank_.add(swirl_skin());
+    let mut swirl = Mesh::new();
+    for prof in [
+        &[
+            (0.0, 0.0),
+            (0.26, 0.01),
+            (0.32, 0.07),
+            (0.3, 0.14),
+            (0.2, 0.18),
+            (0.0, 0.19),
+        ][..],
+        &[
+            (0.0, 0.14),
+            (0.22, 0.15),
+            (0.25, 0.21),
+            (0.22, 0.27),
+            (0.12, 0.3),
+            (0.0, 0.31),
+        ],
+        &[
+            (0.0, 0.27),
+            (0.14, 0.28),
+            (0.16, 0.33),
+            (0.12, 0.38),
+            (0.0, 0.4),
+        ],
+    ] {
+        lathe(&mut swirl, Vec3::ZERO, prof, 10, 0.3, skin, false);
+    }
+    let mut tip = Mesh::new();
+    lathe(
+        &mut tip,
+        Vec3::ZERO,
+        &[(0.07, 0.0), (0.045, 0.07), (0.0, 0.13)],
+        8,
+        0.0,
+        skin,
+        false,
+    );
+    swirl.append(
+        &tip,
+        Mat4::from_translation(Vec3::new(0.02, 0.36, -0.01)) * Mat4::from_rotation_z(-0.55),
+    );
+    // A face on the middle coil: big eyes, a grin and rosy cheeks.
+    let solid = |b: &mut TexBank, c: u8| b.add(Texture::new(4, 4, c));
+    let (white, ink, cheek) = (solid(bank_, WHITE), solid(bank_, INK), solid(bank_, SALMON));
+    for sx in [-1.0f32, 1.0] {
+        skin_box(
+            &mut swirl,
+            Vec3::new(sx * 0.075 - 0.045, 0.19, 0.2),
+            Vec3::new(sx * 0.075 + 0.045, 0.28, 0.245),
+            white,
+            &w4,
+        );
+        skin_box(
+            &mut swirl,
+            Vec3::new(sx * 0.075 - 0.022, 0.2, 0.24),
+            Vec3::new(sx * 0.075 + 0.022, 0.25, 0.252),
+            ink,
+            &w4,
+        );
+        skin_box(
+            &mut swirl,
+            Vec3::new(sx * 0.16 - 0.03, 0.14, 0.235),
+            Vec3::new(sx * 0.16 + 0.03, 0.17, 0.26),
+            cheek,
+            &w4,
+        );
+    }
+    skin_box(
+        &mut swirl,
+        Vec3::new(-0.06, 0.125, 0.285),
+        Vec3::new(0.06, 0.145, 0.3),
+        ink,
+        &w4,
+    );
+
     SewerArt {
         walk,
         wall_side,
@@ -413,6 +636,10 @@ pub fn build(bank_: &mut TexBank) -> SewerArt {
         copper_beam,
         drain,
         grate,
+        barrel,
+        barrel_goo,
+        debris,
+        swirl,
     }
 }
 

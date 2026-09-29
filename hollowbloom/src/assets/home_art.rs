@@ -1916,7 +1916,7 @@ pub fn build(bank: &mut TexBank, icons: &mut HashMap<&'static str, TexId>) -> Ho
     // The snail lamp's shell: every colour of the Hollow's glass, lit from within.
     let mut snail_shade = Mesh::new();
     snail_shade.append(
-        &super::deep_art::shell_mesh(bank, [PINK, AQUA, GOLD]),
+        &super::deep_art::shell_mesh(bank, [PINK, AQUA, GOLD], INK),
         // Turned so its spiral window faces the room.
         Mat4::from_translation(v(0.0, 0.98, 0.0))
             * Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2)
