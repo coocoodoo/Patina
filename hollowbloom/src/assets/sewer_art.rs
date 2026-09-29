@@ -44,8 +44,10 @@ pub struct SewerArt {
     pub barrel_goo: Mesh,
     /// Broken planks, three ways.
     pub debris: [Mesh; 3],
-    /// The sewer's slime: a brown swirl three coils high with a curl on top, and a face.
+    /// The sewer's slime: a brown swirl three coils high with a curl on top, and a scowl.
     pub swirl: Mesh,
+    /// Its eyes, glowing red: drawn unlit on top of it.
+    pub swirl_eyes: Mesh,
 }
 
 fn speckle(t: &mut Texture, r: &mut Rng, c: u8, n: usize) {
@@ -590,39 +592,73 @@ pub fn build(bank_: &mut TexBank) -> SewerArt {
         &tip,
         Mat4::from_translation(Vec3::new(0.02, 0.36, -0.01)) * Mat4::from_rotation_z(-0.55),
     );
-    // A face on the middle coil: big eyes, a grin and rosy cheeks.
+    // A face on the middle coil, and a mean one: brows knitted into a scowl, narrow eyes
+    // glowing red (a mesh of their own, drawn unlit) and a grin full of sharp teeth.
     let solid = |b: &mut TexBank, c: u8| b.add(Texture::new(4, 4, c));
-    let (white, ink, cheek) = (solid(bank_, WHITE), solid(bank_, INK), solid(bank_, SALMON));
+    let (white, ink, red, gold) = (
+        solid(bank_, WHITE),
+        solid(bank_, INK),
+        solid(bank_, RED),
+        solid(bank_, GOLD),
+    );
+    // A box `size` across centred on `at`, tipped `tilt` round the way it faces.
+    let tipped = |m: &mut Mesh, at: Vec3, size: Vec3, tilt: f32, tex: TexId| {
+        let mut b = Mesh::new();
+        skin_box(&mut b, -size * 0.5, size * 0.5, tex, &w4);
+        m.append(&b, Mat4::from_translation(at) * Mat4::from_rotation_z(tilt));
+    };
+    let mut swirl_eyes = Mesh::new();
     for sx in [-1.0f32, 1.0] {
-        skin_box(
+        // Brows slanting down to the middle, in a scowl.
+        tipped(
             &mut swirl,
-            Vec3::new(sx * 0.075 - 0.045, 0.19, 0.2),
-            Vec3::new(sx * 0.075 + 0.045, 0.28, 0.245),
-            white,
-            &w4,
-        );
-        skin_box(
-            &mut swirl,
-            Vec3::new(sx * 0.075 - 0.022, 0.2, 0.24),
-            Vec3::new(sx * 0.075 + 0.022, 0.25, 0.252),
+            Vec3::new(sx * 0.082, 0.284, 0.228),
+            Vec3::new(0.11, 0.026, 0.03),
+            sx * 0.5,
             ink,
-            &w4,
         );
-        skin_box(
-            &mut swirl,
-            Vec3::new(sx * 0.16 - 0.03, 0.14, 0.235),
-            Vec3::new(sx * 0.16 + 0.03, 0.17, 0.26),
-            cheek,
-            &w4,
+        // Slits of eyes under them, with a hot spot in each.
+        tipped(
+            &mut swirl_eyes,
+            Vec3::new(sx * 0.074, 0.238, 0.244),
+            Vec3::new(0.088, 0.03, 0.016),
+            sx * 0.3,
+            red,
+        );
+        tipped(
+            &mut swirl_eyes,
+            Vec3::new(sx * 0.068, 0.236, 0.252),
+            Vec3::new(0.022, 0.018, 0.008),
+            0.0,
+            gold,
         );
     }
+    // The grin, and its teeth: four hanging from the top and three standing up below.
     skin_box(
         &mut swirl,
-        Vec3::new(-0.06, 0.125, 0.285),
-        Vec3::new(0.06, 0.145, 0.3),
+        Vec3::new(-0.09, 0.114, 0.282),
+        Vec3::new(0.09, 0.152, 0.298),
         ink,
         &w4,
     );
+    for x in [-0.063f32, -0.021, 0.021, 0.063] {
+        skin_box(
+            &mut swirl,
+            Vec3::new(x - 0.012, 0.132, 0.294),
+            Vec3::new(x + 0.012, 0.152, 0.302),
+            white,
+            &w4,
+        );
+    }
+    for x in [-0.042f32, 0.0, 0.042] {
+        skin_box(
+            &mut swirl,
+            Vec3::new(x - 0.011, 0.114, 0.294),
+            Vec3::new(x + 0.011, 0.13, 0.302),
+            white,
+            &w4,
+        );
+    }
 
     SewerArt {
         walk,
@@ -640,6 +676,7 @@ pub fn build(bank_: &mut TexBank) -> SewerArt {
         barrel_goo,
         debris,
         swirl,
+        swirl_eyes,
     }
 }
 

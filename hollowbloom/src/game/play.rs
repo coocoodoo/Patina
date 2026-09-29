@@ -23,7 +23,7 @@ use crate::audio::{Sfx, Song};
 use crate::input::{Action, KeyCode};
 use crate::palette::*;
 use crate::render::Camera;
-use crate::util::{Rng, damp, hash2, wrap_angle};
+use crate::util::{Rng, approach, damp, hash2, wrap_angle};
 
 pub const MIN_PER_SEC: f32 = 1.55;
 pub const DAY_START: f32 = 360.0;
@@ -175,6 +175,8 @@ pub struct Play {
     pub house: super::home::House,
     /// A line in the water.
     pub fishing: Option<super::fish::Fishing>,
+    /// How far the camera has leaned in on a catch being shown off (0..1).
+    pub catch_zoom: f32,
     /// A dish on the stove.
     pub cooking: Option<super::home::Cooking>,
     /// The globe spinning, the day the fire last warmed you and the day you last saw a
@@ -316,6 +318,7 @@ impl Play {
             room: None,
             house: super::home::House::new(),
             fishing: None,
+            catch_zoom: 0.0,
             cooking: None,
             house_spin: 0.0,
             warmed: 0,
@@ -838,7 +841,7 @@ impl Play {
         self.level = None;
         self.room = None;
         self.bus = None;
-        self.fishing = None;
+        self.drop_rod();
         self.cooking = None;
         self.foes.clear();
         self.shots.clear();
@@ -1225,6 +1228,8 @@ impl Play {
     }
 
     fn update_camera(&mut self, view: (usize, usize), dt: f32) {
+        /// How close the camera comes to show off a catch.
+        const CATCH_DIST: f32 = 8.5;
         let p = self.player.world_pos()
             + Vec3::new(self.player.facing.x * 0.6, 0.0, self.player.facing.y * 0.4);
         let k = damp(7.0, dt);
@@ -1245,11 +1250,26 @@ impl Play {
             }
             _ => {}
         }
-        self.cam.dist = if matches!(self.area, Area::Inside(_) | Area::Home) {
+        let far = if matches!(self.area, Area::Inside(_) | Area::Home) {
             17.5
         } else {
             15.5
         };
+        // Showing off a catch, the camera leans in on the hero and the fish held up (and
+        // eases back out once it's put away).
+        let shown = self.fishing.as_ref().and_then(|f| f.showing()).is_some();
+        let rate = if shown { 2.2 } else { 2.8 };
+        let want = if shown { 1.0 } else { 0.0 };
+        self.catch_zoom = approach(self.catch_zoom, want, dt * rate);
+        let z = self.catch_zoom * self.catch_zoom * (3.0 - 2.0 * self.catch_zoom);
+        self.cam.dist = far - (far - CATCH_DIST) * z;
+        if z > 0.0 {
+            let p = &self.player;
+            let lift = self.fishing.as_ref().map_or(0.7, |f| f.lift(self.time));
+            let held = super::fish::rod_tip(p.world_pos(), p.yaw, lift) - Vec3::Y * 0.37;
+            let focus = (p.world_pos() + Vec3::Y * 0.7).lerp(held, 0.5);
+            t = t.lerp(focus, z);
+        }
         if self.shake > 0.0 {
             let s = self.shake * self.shake * 0.25;
             t.x += (self.time * 71.0).sin() * s;

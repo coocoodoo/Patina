@@ -958,6 +958,11 @@ pub fn heatproof(item: Item) -> bool {
 /// How far the rod reaches beyond the hand.
 pub const ROD_LEN: f32 = 1.05;
 
+/// The bag at the side of a hero standing at `pos` facing `yaw`, where a catch is tucked.
+pub fn pocket(pos: Vec3, yaw: f32) -> Vec3 {
+    pos + glam::Mat3::from_rotation_y(yaw) * Vec3::new(-0.24, 0.5, 0.04)
+}
+
 /// Where the tip of a rod is, held by the hero at `pos` facing `yaw` with the arm raised by
 /// `lift` (as in `Swing::Fish`).
 pub fn rod_tip(pos: Vec3, yaw: f32, lift: f32) -> Vec3 {
@@ -982,8 +987,12 @@ pub enum Phase {
     Bite,
     /// Reeling it in.
     Reel,
-    /// Holding up the catch.
+    /// Holding up the catch for all to see (the camera leans in), until you press A.
     Caught,
+    /// Tucking it into the bag.
+    Stow,
+    /// Tossing it back into the water: the bag's full.
+    Release,
     /// Winding the line back in.
     Reeled,
 }
@@ -1059,8 +1068,42 @@ impl Fishing {
     pub fn holds_still(&self) -> bool {
         matches!(
             self.phase,
-            Phase::Charge | Phase::Fly | Phase::Bite | Phase::Reel | Phase::Caught
+            Phase::Charge
+                | Phase::Fly
+                | Phase::Bite
+                | Phase::Reel
+                | Phase::Caught
+                | Phase::Stow
+                | Phase::Release
         )
+    }
+
+    /// A fish held up to be shown off, and not yet put away or thrown back.
+    pub fn showing(&self) -> Option<(Item, u16)> {
+        match (self.phase, self.hooked) {
+            (Phase::Caught, Some(Hooked::Fish(item, cm))) => Some((item, cm)),
+            _ => None,
+        }
+    }
+
+    /// Where the catch is right now: held up on a short line under the rod's tip, on its way
+    /// into the bag, or flying back to the water. `tip` is the rod's tip, `pocket` the bag
+    /// at the hero's side.
+    pub fn catch_at(&self, tip: Vec3, pocket: Vec3) -> Option<Vec3> {
+        let held = tip - Vec3::Y * 0.62;
+        match self.phase {
+            Phase::Caught => Some(held),
+            Phase::Stow => {
+                let k = (self.t / STOW).min(1.0);
+                Some(held.lerp(pocket, k * k))
+            }
+            Phase::Release if self.t < RELEASE => {
+                let k = self.t / RELEASE;
+                let arc = (k * std::f32::consts::PI).sin() * 0.9;
+                Some(held.lerp(self.to, k) + Vec3::Y * arc)
+            }
+            _ => None,
+        }
     }
 
     /// How high the rod is held (see `Swing::Fish`).
@@ -1072,6 +1115,10 @@ impl Fishing {
             Phase::Bite => 0.5,
             Phase::Reel => 0.42 + (time * 23.0).sin() * 0.03 + self.zone_v.max(0.0) * 0.06,
             Phase::Caught => 0.7,
+            // The rod comes down as the catch goes into the bag, and flicks up as it's
+            // thrown back.
+            Phase::Stow => 0.7 - (self.t / STOW).min(1.0) * 0.35,
+            Phase::Release => 0.7 + (self.t / RELEASE * 6.0).min(1.0) * 0.2,
             Phase::Reeled => 0.3 + (self.t / REEL_IN).min(1.0) * 0.5,
         }
     }
@@ -1107,7 +1154,11 @@ impl Fishing {
 const FLY: f32 = 0.45;
 const BITE: f32 = 0.95;
 const REEL_IN: f32 = 0.3;
-const CAUGHT: f32 = 1.5;
+/// How long a catch is shown off before A can put it away, how long it takes to tuck into
+/// the bag, and how long one thrown back is in the air.
+pub const SHOW_MIN: f32 = 0.45;
+pub const STOW: f32 = 0.35;
+pub const RELEASE: f32 = 0.7;
 
 impl Play {
     /// Which water a tile holds, if any.
@@ -1146,7 +1197,7 @@ impl Play {
         let rod = self.player.held_class() == Some(Class::Rod);
         if !rod {
             if self.fishing.is_some() {
-                self.fishing = None;
+                self.drop_rod();
             }
             return false;
         }
@@ -1210,8 +1261,20 @@ impl Play {
                 self.reel_game(dt, down, io);
             }
             Phase::Caught => {
-                if fsh.t > CAUGHT || (pressed && fsh.t > 0.4) {
-                    self.fishing = None;
+                // Held up for all to see until A (or the rod's own button) puts it away.
+                let go = pressed || input.pressed(Action::Interact);
+                if go && fsh.t > SHOW_MIN {
+                    self.put_away_catch(io);
+                }
+            }
+            Phase::Stow => {
+                if fsh.t >= STOW {
+                    self.stow_catch(io);
+                }
+            }
+            Phase::Release => {
+                if fsh.t >= RELEASE {
+                    self.splash_back(io);
                 }
             }
             Phase::Reeled => {
@@ -1504,19 +1567,11 @@ impl Play {
                 } else {
                     cm
                 };
-                self.give(Stack::new(item, 1));
+                // It's held up to be shown off first; A puts it in the bag (see
+                // `put_away_catch`). It counts as caught either way.
                 (new, record) = self.on_catch(item, cm);
+                // (A perfect catch says so over it as it's shown off.)
                 let def = fish_def(item);
-                let col = def.map_or(WHITE, |d| rarity_color(d.rarity));
-                self.toast_colored(
-                    format!("Caught: {} ({cm} cm)", item.def().name),
-                    Some(item),
-                    0,
-                    col,
-                );
-                if perfect {
-                    self.fx.popup_big(at + Vec3::Y * 0.3, "PERFECT!", GOLD);
-                }
                 if def.is_some_and(|d| d.rarity >= 2) {
                     io.audio.play(Sfx::Rare);
                 } else {
@@ -1558,6 +1613,82 @@ impl Play {
             }
         }
         self.fx.burst(at, 12, &[WHITE, SKY, AQUA], 2.0, 2.0);
+    }
+
+    /// A says what happens to the catch held up: into the bag if there's room for it, and
+    /// back into the water if there isn't.
+    fn put_away_catch(&mut self, io: &mut Io) {
+        let Some((item, _)) = self.fishing.as_ref().and_then(|f| f.showing()) else {
+            return;
+        };
+        let room = self.player.inv.can_fit(item, 1);
+        if let Some(f) = &mut self.fishing {
+            f.phase = if room { Phase::Stow } else { Phase::Release };
+            f.t = 0.0;
+        }
+        if room {
+            io.audio.play_at(Sfx::Swing, 0.35, 1.5);
+        } else {
+            io.audio.play_at(Sfx::Swing, 0.6, 0.9);
+        }
+    }
+
+    /// Into the bag it goes.
+    fn stow_catch(&mut self, io: &mut Io) {
+        let hooked = self.fishing.take().and_then(|f| f.hooked);
+        if let Some(Hooked::Fish(item, cm)) = hooked {
+            self.give(Stack::new(item, 1));
+            let col = fish_def(item).map_or(WHITE, |d| rarity_color(d.rarity));
+            self.toast_colored(
+                format!("Caught: {} ({cm} cm)", item.def().name),
+                Some(item),
+                0,
+                col,
+            );
+            io.audio.play(Sfx::Pickup);
+        }
+    }
+
+    /// Splash! The one that didn't fit swims off.
+    fn splash_back(&mut self, io: &mut Io) {
+        let Some(f) = self.fishing.take() else { return };
+        let lava = f.water == Some(Water::Lava);
+        let splash: &[u8] = if lava {
+            &[ORANGE, GOLD, RED]
+        } else {
+            &[WHITE, SKY, AQUA]
+        };
+        self.fx.burst(f.to + Vec3::Y * 0.05, 16, splash, 2.4, 1.8);
+        io.audio.play_at(Sfx::Plop, 0.8, 0.8);
+        if let Some(Hooked::Fish(item, _)) = f.hooked {
+            self.toast(
+                format!("Bag's full! The {} swims off.", item.def().name),
+                Some(item),
+                0,
+            );
+        }
+    }
+
+    /// Puts the line away for good (switching tools, going to bed): a catch still being
+    /// shown off goes into the bag if it fits, and back into the water if not.
+    pub fn drop_rod(&mut self) {
+        let Some(f) = self.fishing.take() else { return };
+        if let (Phase::Caught | Phase::Stow, Some(Hooked::Fish(item, cm))) = (f.phase, f.hooked) {
+            if self.player.inv.can_fit(item, 1) {
+                self.give(Stack::new(item, 1));
+                self.toast(
+                    format!("Caught: {} ({cm} cm)", item.def().name),
+                    Some(item),
+                    0,
+                );
+            } else {
+                self.toast(
+                    format!("Bag's full! The {} swims off.", item.def().name),
+                    Some(item),
+                    0,
+                );
+            }
+        }
     }
 }
 

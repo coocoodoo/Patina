@@ -42,6 +42,20 @@ fn snap(game: &mut Game, r: &mut Renderer, input: &Input, dir: &Path, name: &str
     snap_on(game, r, input, dir, name, None);
 }
 
+/// A picture of the game as it's being played, framed by its own camera (leaning in on a
+/// catch, and so on).
+fn snap_live(game: &mut Game, r: &mut Renderer, input: &Input, dir: &Path, name: &str) {
+    if let Some(p) = game.play_mut() {
+        p.player.hurt = 0.0;
+    }
+    game.draw(r, input);
+    let path = dir.join(format!("{name}.png"));
+    match save_png(&path, &r.fb, 2) {
+        Ok(()) => println!("wrote {}", path.display()),
+        Err(e) => eprintln!("failed to write {}: {e}", path.display()),
+    }
+}
+
 /// Like `snap`, with the camera on `focus` instead of the hero.
 fn snap_on(
     game: &mut Game,
@@ -1947,6 +1961,45 @@ fn step(game: &mut Game, input: &mut Input, audio: &Audio, frames: usize) {
     }
 }
 
+/// Presses a key for a frame.
+fn tap(game: &mut Game, input: &mut Input, audio: &Audio, key: crate::input::KeyCode) {
+    input.key_event(key, true, false);
+    step(game, input, audio, 1);
+    input.key_event(key, false, false);
+    step(game, input, audio, 1);
+}
+
+/// Casts the rod in hand, hooks `item` at `cm` and reels it in (keeping it in the bar all
+/// the way): it's left held up to be shown off.
+fn land_fish(game: &mut Game, input: &mut Input, audio: &Audio, item: Item, cm: u16) {
+    use crate::game::fish::{Hooked, Phase};
+    use crate::input::KeyCode;
+    input.key_event(KeyCode::KeyJ, true, false);
+    step(game, input, audio, 22);
+    input.key_event(KeyCode::KeyJ, false, false);
+    step(game, input, audio, 50);
+    if let Some(f) = play(game).fishing.as_mut() {
+        f.bite_in = 0.0;
+    }
+    step(game, input, audio, 3);
+    if let Some(f) = play(game).fishing.as_mut() {
+        f.hooked = Some(Hooked::Fish(item, cm));
+    }
+    tap(game, input, audio, KeyCode::KeyJ);
+    input.key_event(KeyCode::KeyJ, true, false);
+    for _ in 0..600 {
+        match play(game).fishing.as_mut() {
+            Some(f) if f.phase == Phase::Reel => {
+                f.fish_y = (f.zone + f.zone_h * 0.5).min(1.0);
+                f.fish_to = f.fish_y;
+            }
+            _ => break,
+        }
+        step(game, input, audio, 1);
+    }
+    input.key_event(KeyCode::KeyJ, false, false);
+}
+
 /// A picture of the room you're in, framed the way the game frames it.
 fn snap_room(game: &mut Game, r: &mut Renderer, input: &Input, dir: &Path, name: &str) {
     if let Some(p) = game.play_mut() {
@@ -2073,8 +2126,10 @@ pub fn home_shots(dir: &str) {
         step(&mut game, &mut input, &audio, 1);
     }
     input.key_event(KeyCode::KeyJ, false, false);
-    step(&mut game, &mut input, &audio, 14);
-    snap(&mut game, &mut r, &input, dir, "h05_caught_a_lily_koi");
+    // Held up to show off, the camera leaning in, until A puts it in the bag.
+    step(&mut game, &mut input, &audio, 60);
+    snap_live(&mut game, &mut r, &input, dir, "h05_caught_a_lily_koi");
+    tap(&mut game, &mut input, &audio, KeyCode::KeyE);
     step(&mut game, &mut input, &audio, 120);
 
     // Water folk round a pond deep in the Hollow.
@@ -4211,7 +4266,6 @@ pub fn sewer_shots(dir: &str) {
                     })
             };
             if let Some((x, z)) = bank {
-                use crate::game::fish::{Hooked, Phase};
                 use crate::input::KeyCode;
                 {
                     let p = play(&mut game);
@@ -4221,45 +4275,31 @@ pub fn sewer_shots(dir: &str) {
                     p.player.sel = 0;
                     p.toasts.clear();
                 }
-                input.key_event(KeyCode::KeyJ, true, false);
-                step(&mut game, &mut input, &audio, 22);
-                input.key_event(KeyCode::KeyJ, false, false);
-                step(&mut game, &mut input, &audio, 50);
-                if let Some(f) = play(&mut game).fishing.as_mut() {
-                    f.bite_in = 0.0;
-                }
-                step(&mut game, &mut input, &audio, 3);
-                if let Some(f) = play(&mut game).fishing.as_mut() {
-                    f.hooked = Some(Hooked::Fish(Item::SockEel, 51));
-                }
-                input.key_event(KeyCode::KeyJ, true, false);
-                step(&mut game, &mut input, &audio, 1);
-                input.key_event(KeyCode::KeyJ, false, false);
-                step(&mut game, &mut input, &audio, 1);
-                input.key_event(KeyCode::KeyJ, true, false);
-                for _ in 0..600 {
-                    match play(&mut game).fishing.as_mut() {
-                        Some(f) if f.phase == Phase::Reel => {
-                            f.fish_y = (f.zone + f.zone_h * 0.5).min(1.0);
-                            f.fish_to = f.fish_y;
-                        }
-                        _ => break,
+                // Landed and held up, the camera leaning in; A puts it in the bag.
+                land_fish(&mut game, &mut input, &audio, Item::SockEel, 51);
+                step(&mut game, &mut input, &audio, 70);
+                snap_live(&mut game, &mut r, &input, dir, "w08_caught_a_sock_eel");
+                tap(&mut game, &mut input, &audio, KeyCode::KeyE);
+                step(&mut game, &mut input, &audio, 12);
+                snap_live(&mut game, &mut r, &input, dir, "w08b_into_the_bag");
+                step(&mut game, &mut input, &audio, 60);
+                // With the bag full, the next one goes back in the water.
+                let kept = play(&mut game).player.inv.slots.clone();
+                {
+                    let p = play(&mut game);
+                    for slot in p.player.inv.slots.iter_mut().skip(1) {
+                        *slot = Some(Stack::new(Item::Stone, 99));
                     }
-                    step(&mut game, &mut input, &audio, 1);
+                    p.toasts.clear();
                 }
-                input.key_event(KeyCode::KeyJ, false, false);
-                step(&mut game, &mut input, &audio, 14);
-                let at = Vec3::new(x as f32 + 0.5, 0.4, z as f32 - 0.5);
-                close(
-                    &mut game,
-                    &mut r,
-                    &input,
-                    dir,
-                    "w08_caught_a_sock_eel",
-                    at,
-                    7.0,
-                );
-                step(&mut game, &mut input, &audio, 150);
+                land_fish(&mut game, &mut input, &audio, Item::PicklePike, 64);
+                step(&mut game, &mut input, &audio, 70);
+                snap_live(&mut game, &mut r, &input, dir, "w08c_bag_full");
+                tap(&mut game, &mut input, &audio, KeyCode::KeyE);
+                step(&mut game, &mut input, &audio, 18);
+                snap_live(&mut game, &mut r, &input, dir, "w08d_back_in_the_water");
+                step(&mut game, &mut input, &audio, 60);
+                play(&mut game).player.inv.slots = kept;
             }
             // Everyone who lives down here, lined up along a walkway: the sludge slime and
             // the bony folk.
@@ -4328,7 +4368,7 @@ pub fn sewer_shots(dir: &str) {
                 }
                 let at = Vec3::new(x as f32 + 3.8, 0.3, z as f32 + 1.0);
                 close(&mut game, &mut r, &input, dir, "w10_sewer_folk", at, 8.5);
-                // And the sludge slime up close.
+                // And the sludge slime and the bone puffer up close.
                 let slime = Vec3::new(x as f32 + 0.5, 0.25, z as f32 + 1.5);
                 close(
                     &mut game,
@@ -4337,6 +4377,16 @@ pub fn sewer_shots(dir: &str) {
                     dir,
                     "w10b_sludge_slime",
                     slime,
+                    3.6,
+                );
+                let puffer = Vec3::new(x as f32 + 0.5 + 4.0 * 1.1, 0.6, z as f32 + 1.5);
+                close(
+                    &mut game,
+                    &mut r,
+                    &input,
+                    dir,
+                    "w10c_bone_puffer",
+                    puffer,
                     3.6,
                 );
                 play(&mut game).foes.clear();

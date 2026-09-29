@@ -1454,6 +1454,17 @@ impl Enemy {
                 };
                 let body = at(self.y) * rot * sc(sx, sy * 1.2);
                 r.mesh(&a.bank, &a.sewer.swirl, &body, &o.with_warp(warp));
+                // Eyes glowing red in the dark.
+                let eyes = if self.flash > 0.0 {
+                    o
+                } else {
+                    o.with_mode(Mode::Unlit)
+                };
+                r.mesh(&a.bank, &a.sewer.swirl_eyes, &body, &eyes.with_warp(warp));
+                for sx in [-1.0f32, 1.0] {
+                    let eye = warp.apply(body.transform_point3(Vec3::new(sx * 0.074, 0.24, 0.26)));
+                    r.halo(eye, 0.1 * s, RED, 0.3);
+                }
                 // Flies: dark specks with a flicker of wing, so they show on a dark floor.
                 for i in 0..3 {
                     let t = self.anim * (4.0 + i as f32 * 1.3) + i as f32 * 2.1 + self.seed as f32;
@@ -1699,6 +1710,21 @@ impl Enemy {
                 r.mesh(&a.bank, &a.critters.jelly_bell, &m, &bell);
                 if self.st == St::Windup && (self.anim * 30.0).sin() > 0.0 {
                     r.halo(self.world_pos() + Vec3::Y * 0.1, 0.5 * s, CREAM, 0.7);
+                }
+            }
+            Foe::Puffer if self.sewer => {
+                // A cage of ribs round a glowing heart, bristling with bony spines, eyes
+                // burning in their sockets.
+                let puff = 1.0 + self.squash * 0.55;
+                let m = at(self.y) * rot * sc(puff, puff);
+                r.mesh(&a.bank, &a.foes.puffer[b], &m, &o.two_sided());
+                r.mesh(&a.bank, &a.critters.puffer_spikes, &m, &o);
+                let heart = m.transform_point3(Vec3::new(0.0, 0.0, 0.0));
+                let beat = 0.3 + (self.anim * 5.0).sin().max(0.0) * 0.15;
+                r.halo(heart, 0.22 * s * puff, LIME, beat);
+                for sx in [-1.0f32, 1.0] {
+                    let eye = m.transform_point3(Vec3::new(sx * 0.085, 0.07, 0.27));
+                    r.halo(eye, 0.08 * s, RED, 0.35);
                 }
             }
             Foe::Puffer => {

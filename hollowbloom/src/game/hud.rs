@@ -320,7 +320,11 @@ impl Play {
                 let col = s.rarity().map_or(CREAM, |r| r.color());
                 c.text_outline((w - tw) / 2, hy - 14, &name, col, INK);
             }
-        } else if let Some(hint) = &self.hint {
+        } else if let Some(hint) = self
+            .hint
+            .as_ref()
+            .filter(|_| self.fishing.as_ref().and_then(|f| f.showing()).is_none())
+        {
             let t = format!("[{}] {hint}", self.key(Action::Interact));
             let tw = c.text_width(&t);
             c.text_outline((w - tw) / 2, hy - 14, &t, WHITE, INK);
@@ -504,37 +508,55 @@ impl Play {
                 let Some(s) = head else { return };
                 let p = &self.player;
                 let tip = fish::rod_tip(p.world_pos(), p.yaw, f.lift(self.time));
-                // (The catch hangs 0.62 under the tip and stands half a unit tall.)
+                // (The catch hangs 0.62 under the tip, a sprite half a unit tall standing up
+                // towards the camera.)
                 let above = cam
-                    .project(tip - Vec3::Y * 0.12)
+                    .project(tip - Vec3::Y * 0.62 + cam.up * 0.5)
                     .map_or(s.y, |q| q.y.min(s.y));
                 let Some(Hooked::Fish(item, size)) = f.hooked else {
                     return;
                 };
                 let rare = fish::fish_def(item).map_or(0, |d| d.rarity);
-                let tag = if f.record {
-                    Some(("Record!", GOLD))
+                let mut tags = Vec::new();
+                if f.record {
+                    tags.push(("Record!", GOLD));
                 } else if f.new {
-                    Some(("New!", LIME))
-                } else {
-                    None
-                };
+                    tags.push(("New!", LIME));
+                }
+                if f.perfect {
+                    tags.push(("Perfect!", ORANGE));
+                }
                 let name = item.def().name;
                 let sub = format!("{size} cm  {}", fish::rarity_name(rare));
                 let tw = c.text_width(name).max(c.text_width(&sub));
                 let x = (s.x as i32).clamp(tw / 2 + 2, w - tw / 2 - 2);
                 // The tag on top, then the name, then its size.
                 let y = (above as i32 - 36).clamp(26, h - 64);
-                if let Some((t, col)) = tag {
-                    if (self.time * 6.0).fract() < 0.75 {
-                        let bw = c.text_width(t);
-                        c.text_outline(x - bw / 2, y, t, col, INK);
+                if !tags.is_empty() && (self.time * 6.0).fract() < 0.75 {
+                    let gap = 8;
+                    let all = tags.iter().map(|(t, _)| c.text_width(t)).sum::<i32>()
+                        + gap * (tags.len() as i32 - 1);
+                    let mut tx = x - all / 2;
+                    for (t, col) in tags {
+                        c.text_outline(tx, y, t, col, INK);
+                        tx += c.text_width(t) + gap;
                     }
                 }
                 let nw = c.text_width(name);
                 c.text_outline(x - nw / 2, y + 11, name, fish::rarity_color(rare), INK);
                 let sw = c.text_width(&sub);
                 c.text_outline(x - sw / 2, y + 22, &sub, CREAM, INK);
+                // What A does with it, just above the hotbar.
+                if f.t > fish::SHOW_MIN {
+                    let key = self.key(Action::Interact);
+                    let (t, col) = if self.player.inv.can_fit(item, 1) {
+                        (format!("[{key}] Put it in your bag"), WHITE)
+                    } else {
+                        (format!("[{key}] Bag's full - throw it back"), SALMON)
+                    };
+                    let tw = c.text_width(&t);
+                    c.text_outline((w - tw) / 2, h - 36, &t, col, INK);
+                }
             }
             _ => {}
         }

@@ -329,6 +329,10 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   hook the fish, then **hold J to raise the green bar and let go to sink it**, keeping the
   fish inside until the catch meter fills. Stay with it the whole way for a **perfect** catch
   (and a bigger fish). Walk off, or get hit, and it's gone.
+* Landed, the fish is **held up to show off** while the camera leans in on it, its name,
+  size and rarity over it (and "New!", "Record!" or "Perfect!"). Press **A** (E on the
+  keyboard) to **put it in your bag**; if your bag is full, you **throw it back** into the
+  water instead (it still counts in your Fishdex).
 * **51 fish** in nine waters, each with its own shape, colours and markings: the farm pond,
   Bramblewick's stream, and pools in every biome of the Hollow (ponds turn up in bigger cave
   rooms now), even the **lava** of the Ember Depths if your rod can take the heat. Some only

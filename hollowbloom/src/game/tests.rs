@@ -1929,15 +1929,96 @@ fn fishing_casts_hooks_and_lands_a_fish() {
         s.frames(1);
     }
     s.input.key_event(KeyCode::KeyJ, false, false);
-    assert_eq!(s.play.player.inv.count(Item::PondPerch), 1);
+    // Held up to be shown off (it counts as caught already), but not in the bag until A
+    // says so.
     assert!(s.play.journal.fish.contains(&Item::PondPerch));
     assert_eq!(s.play.stats.caught, 1);
     let f = s.play.fishing.as_ref().expect("holding it up");
     assert_eq!(f.phase, Phase::Caught);
     assert!(f.new, "a new kind for the Fishdex");
-    // Walking away puts the rod down.
-    s.frames(120);
+    assert_eq!(s.play.player.inv.count(Item::PondPerch), 0);
+    // It waits, the camera leaning in on it...
+    s.frames(150);
+    assert_eq!(
+        s.play.fishing.as_ref().map(|f| f.phase),
+        Some(Phase::Caught)
+    );
+    assert!(s.play.cam.dist < 10.0, "the camera leans in");
+    // ...until A (E on the keyboard) tucks it into the bag, and the camera eases back.
+    s.tap(KeyCode::KeyE, 60);
+    assert_eq!(s.play.player.inv.count(Item::PondPerch), 1);
     assert!(s.play.fishing.is_none());
+    assert!(s.play.cam.dist > 15.0);
+}
+
+/// Casts from the pond's edge, hooks `item` and reels it in: it's left held up.
+fn land_a_fish(s: &mut Sim, item: Item) {
+    s.input.key_event(KeyCode::KeyJ, true, false);
+    s.frames(20);
+    s.input.key_event(KeyCode::KeyJ, false, false);
+    s.frames(40);
+    s.play.fishing.as_mut().unwrap().bite_in = 0.0;
+    s.frames(1);
+    s.play.fishing.as_mut().unwrap().hooked = Some(Hooked::Fish(item, 20));
+    s.tap(KeyCode::KeyJ, 0);
+    s.input.key_event(KeyCode::KeyJ, true, false);
+    for _ in 0..900 {
+        match s.play.fishing.as_mut() {
+            Some(f) if f.phase == Phase::Reel => {
+                f.fish_y = (f.zone + f.zone_h * 0.5).min(1.0);
+                f.fish_to = f.fish_y;
+            }
+            _ => break,
+        }
+        s.frames(1);
+    }
+    s.input.key_event(KeyCode::KeyJ, false, false);
+    assert_eq!(
+        s.play.fishing.as_ref().map(|f| f.phase),
+        Some(Phase::Caught)
+    );
+}
+
+#[test]
+fn a_catch_the_bag_cant_hold_goes_back_in_the_water() {
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    by_a_pond(&mut s);
+    // Every slot but the rod's is full of stone.
+    for (i, slot) in s.play.player.inv.slots.iter_mut().enumerate() {
+        if i != 5 {
+            *slot = Some(Stack::new(Item::Stone, 99));
+        }
+    }
+    land_a_fish(&mut s, Item::Bluegill);
+    s.frames(40);
+    s.tap(KeyCode::KeyE, 5);
+    assert_eq!(
+        s.play.fishing.as_ref().map(|f| f.phase),
+        Some(Phase::Release),
+        "thrown back"
+    );
+    s.frames(60);
+    assert!(s.play.fishing.is_none());
+    assert_eq!(s.play.player.inv.count(Item::Bluegill), 0);
+    assert!(
+        s.play.drops.iter().all(|d| d.stack.item != Item::Bluegill),
+        "not left lying on the bank"
+    );
+    assert!(s.play.journal.fish.contains(&Item::Bluegill), "still seen");
+}
+
+#[test]
+fn putting_the_rod_away_keeps_a_catch_being_shown_off() {
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    by_a_pond(&mut s);
+    land_a_fish(&mut s, Item::PondPerch);
+    // Straight to another tool on the hotbar: the fish goes into the bag on the way.
+    s.select(0);
+    s.frames(2);
+    assert!(s.play.fishing.is_none());
+    assert_eq!(s.play.player.inv.count(Item::PondPerch), 1);
 }
 
 #[test]

@@ -522,6 +522,9 @@ pub struct Critters {
     pub wing_tex: TexId,
     pub beetle_tex: TexId,
     pub golem_tex: TexId,
+    /// The white of the frogs' eyes, and the bats' pale eyes.
+    pub white_tex: TexId,
+    pub bat_eye_tex: TexId,
 }
 
 pub fn slime_skin(pal: [u8; 3]) -> Texture {
@@ -1234,6 +1237,8 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         wing_tex: wing_t,
         beetle_tex: shell2,
         golem_tex: rock,
+        white_tex: white,
+        bat_eye_tex: red_eye,
     }
 }
 

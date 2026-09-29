@@ -1105,14 +1105,33 @@ impl Play {
                 line(r, tip, bob, 0.0);
                 draw_bobber(r, bob);
             }
-            Phase::Caught => {
+            Phase::Caught | Phase::Stow | Phase::Release => {
                 let Some(Hooked::Fish(item, _)) = f.hooked else {
                     return;
                 };
-                // Held up high on a short line, flapping.
-                let flap = (self.time * 14.0).sin();
-                let at = tip - Vec3::Y * 0.62;
-                line(r, tip, at + Vec3::Y * 0.4, 0.0);
+                let shown = f.phase == Phase::Caught;
+                // Held up high on a short line, flapping; or unhooked, the line hanging
+                // empty while it goes into the bag or back into the water.
+                let bag = fish::pocket(p.world_pos(), p.yaw);
+                let Some(at) = f.catch_at(tip, bag) else {
+                    line(r, tip, tip - Vec3::Y * 0.3, 0.0);
+                    return;
+                };
+                if shown {
+                    line(r, tip, at + Vec3::Y * 0.4, 0.0);
+                } else {
+                    line(r, tip, tip - Vec3::Y * 0.3, 0.0);
+                }
+                let flap = if f.phase == Phase::Release {
+                    (self.time * 30.0).sin()
+                } else {
+                    (self.time * 14.0).sin()
+                };
+                let size = if f.phase == Phase::Stow {
+                    0.5 * (1.0 - (f.t / fish::STOW).min(1.0) * 0.8)
+                } else {
+                    0.5
+                };
                 let id = a.icon(item.def().icon);
                 let uv = if flap > 0.0 {
                     full_uv(a, id)
@@ -1123,9 +1142,12 @@ impl Play {
                     a.tex(id),
                     uv,
                     at,
-                    Vec2::splat(0.5),
+                    Vec2::splat(size),
                     &DrawOpts::at(at).with_glow(0.9).with_tag(3),
                 );
+                if !shown {
+                    return;
+                }
                 let rare = fish::fish_def(item).map_or(0, |d| d.rarity);
                 if rare > 0 {
                     let c = fish::rarity_color(rare);

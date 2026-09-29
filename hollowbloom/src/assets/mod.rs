@@ -204,6 +204,126 @@ fn bone_wing() -> Texture {
     t
 }
 
+/// A pufferfish down to its bones: a see-through cage of ribs (drawn two-sided) round a
+/// glowing green heart, a spine along its back, a fan of a bony tail, and a skull's face with
+/// red eyes glowing in the sockets and a mouthful of teeth. Its spines are the puffer's own.
+fn bone_puffer(bank: &mut TexBank, red: TexId) -> crate::render::Mesh {
+    use glam::{Mat4, Vec3};
+    use models::{lathe, skin_box};
+    let w4 = Texture::new(4, 4, 0);
+    // Bars of rib curving down round the sides from the spine to a keel, with nothing
+    // between them (the texture runs round the body, and down it).
+    let mut t = Texture::clear(16, 16);
+    for y in 0..16 {
+        for x in 0..16 {
+            let c = match (y, x % 4) {
+                (7.., _) => SAND,
+                (_, 0) => WHITE,
+                (_, 1) => SAND,
+                _ => continue,
+            };
+            t.set(x, y, c);
+        }
+    }
+    let ribs = bank.add(t);
+    let solid = |bank: &mut TexBank, c: u8| bank.add(tiles::solid(c));
+    let (bone, dark, heart) = (solid(bank, WHITE), solid(bank, INK), solid(bank, LIME));
+    let mut m = crate::render::Mesh::new();
+    lathe(
+        &mut m,
+        Vec3::ZERO,
+        &[
+            (0.0, -0.24),
+            (0.17, -0.2),
+            (0.26, -0.06),
+            (0.25, 0.08),
+            (0.17, 0.2),
+            (0.0, 0.25),
+        ],
+        8,
+        0.39,
+        ribs,
+        false,
+    );
+    // The heart inside, glowing.
+    lathe(
+        &mut m,
+        Vec3::new(0.0, -0.07, 0.0),
+        &[
+            (0.0, 0.0),
+            (0.07, 0.03),
+            (0.08, 0.08),
+            (0.05, 0.13),
+            (0.0, 0.14),
+        ],
+        6,
+        0.0,
+        heart,
+        false,
+    );
+    // The spine, knob by knob over its back.
+    for k in 0..6 {
+        let z = -0.2 + k as f32 * 0.075;
+        let y = 0.24 - (z * 2.8).powi(2) * 0.03;
+        skin_box(
+            &mut m,
+            Vec3::new(-0.024, y, z - 0.022),
+            Vec3::new(0.024, y + 0.045, z + 0.022),
+            bone,
+            &w4,
+        );
+    }
+    // Its face: sockets with a red glow deep in them, and teeth.
+    for sx in [-1.0f32, 1.0] {
+        skin_box(
+            &mut m,
+            Vec3::new(sx * 0.085 - 0.04, 0.03, 0.2),
+            Vec3::new(sx * 0.085 + 0.04, 0.11, 0.262),
+            dark,
+            &w4,
+        );
+        skin_box(
+            &mut m,
+            Vec3::new(sx * 0.085 - 0.02, 0.05, 0.255),
+            Vec3::new(sx * 0.085 + 0.02, 0.085, 0.268),
+            red,
+            &w4,
+        );
+    }
+    skin_box(
+        &mut m,
+        Vec3::new(-0.07, -0.08, 0.215),
+        Vec3::new(0.07, -0.03, 0.26),
+        dark,
+        &w4,
+    );
+    for x in [-0.045f32, -0.015, 0.015, 0.045] {
+        skin_box(
+            &mut m,
+            Vec3::new(x - 0.011, -0.055, 0.252),
+            Vec3::new(x + 0.011, -0.03, 0.266),
+            bone,
+            &w4,
+        );
+    }
+    // A tail of bony rays, fanned out behind.
+    for a in [-0.55f32, 0.0, 0.55] {
+        let mut ray = crate::render::Mesh::new();
+        skin_box(
+            &mut ray,
+            Vec3::new(-0.012, -0.012, -0.17),
+            Vec3::new(0.012, 0.012, 0.0),
+            bone,
+            &w4,
+        );
+        m.append(
+            &ray,
+            Mat4::from_translation(Vec3::new(0.0, 0.0, -0.22)) * Mat4::from_rotation_x(a),
+        );
+    }
+    m
+}
+
 fn ramp(from: [u8; 3], to: [u8; 3]) -> impl Fn(u8) -> u8 {
     move |c| {
         if c == from[0] {
@@ -372,15 +492,36 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
     }
     // Down in the sewers: bats, frogs and puffers are nothing but bones, and the rest (who
     // don't live there, but just in case) are bleached or gone brown.
+    // Evil eyes on them all: dark sockets with a red glow in them.
+    let red = bank.add(tiles::solid(RED));
+    let socket = bank.add(tiles::solid(INK));
     let ribs = bank.add(bone_tex(4, 4, 2));
-    s.bat_body.push(c.bat_body.retexture(c.fur_tex, ribs));
+    s.bat_body.push(
+        c.bat_body
+            .retexture(c.fur_tex, ribs)
+            .retexture(c.bat_eye_tex, red),
+    );
     let wing = bank.add(bone_wing());
     s.bat_wing.push(c.bat_wing.retexture(c.wing_tex, wing));
     let ribs = bank.add(bone_tex(16, 16, 2));
-    s.frog.push(c.frog.retexture(c.frog_tex, ribs));
+    let mut frog = c
+        .frog
+        .retexture(c.frog_tex, ribs)
+        .retexture(c.white_tex, socket);
+    let w4 = Texture::new(4, 4, 0);
+    for sx in [-1.0f32, 1.0] {
+        let e = glam::Vec3::new(sx * 0.12, 0.3, 0.1);
+        models::skin_box(
+            &mut frog,
+            e + glam::Vec3::new(-0.026, -0.014, 0.083),
+            e + glam::Vec3::new(0.026, 0.018, 0.09),
+            red,
+            &w4,
+        );
+    }
+    s.frog.push(frog);
     s.frog_leg.push(c.frog_leg.retexture(c.frog_tex, ribs));
-    let cage = bank.add(bone_tex(16, 16, 2));
-    s.puffer.push(c.puffer.retexture(c.puffer_tex, cage));
+    s.puffer.push(bone_puffer(bank, red));
     let sludge = ramp([LIME, GREEN, TEAL], slime_cols[SEWER_LOOK]);
     s.slime
         .push(recolor(bank, &c.slime, &[c.slime_tex], &sludge));

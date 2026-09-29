@@ -568,7 +568,7 @@ impl Play {
     /// Goes indoors (after the fade).
     pub fn enter_house(&mut self) {
         let (dx, dz) = HOUSE_DOOR;
-        self.fishing = None;
+        self.drop_rod();
         self.player.pos = Vec2::new(dx as f32 + 0.5, dz as f32 - 0.45);
         self.player.facing = Vec2::new(0.0, -1.0);
         self.player.act = None;
