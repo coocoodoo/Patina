@@ -541,7 +541,10 @@ hollowbloom --mute                # no sound
   the whole game stays one file under 30 MB, and decoded in the background by Symphonia, a
   pure-Rust decoder. Each plays all the way through and starts again after a short pause,
   but for the guardians', which loops seamlessly over its middle (the seam blended) so a
-  fight never stops for an ending. Tracks are matched in loudness, and one you come back to
+  fight never stops for an ending. When the guardian falls it leaves the loop within a beat,
+  in step (the track keeps a steady 145 beats a minute, though its accents shift by half a
+  beat in places), for the track's last three and a half seconds, and the floor's own song
+  follows. Tracks are matched in loudness, and one you come back to
   within three minutes carries on where it left off. The chiptune band stands in for any
   track that's missing or won't decode. `hollowbloom --decode` and `tools/find_loop.py`
   find a new track's loop and loudness, and `tools/encode_tracks.py` makes the Ogg files.
