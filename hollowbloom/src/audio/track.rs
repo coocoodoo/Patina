@@ -101,6 +101,15 @@ pub const TRACKS: &[Track] = &[
         rest: REST,
         gain: 0.653,
     },
+    // "Beneath the Glowing Cap"
+    Track {
+        song: Song::Burrows,
+        mp3: include_bytes!("../../music/burrows.mp3"),
+        start: 0,
+        end: 6_714_225,
+        rest: REST,
+        gain: 0.668,
+    },
 ];
 
 pub fn track(song: Song) -> Option<&'static Track> {
