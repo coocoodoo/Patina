@@ -121,6 +121,15 @@ pub const TRACKS: &[Track] = &[
         rest: 0,
         gain: 0.631,
     },
+    // "Beneath the Burning Spire"
+    Track {
+        song: Song::Depths,
+        mp3: include_bytes!("../../music/depths.mp3"),
+        start: 0,
+        end: 7_982_100,
+        rest: REST,
+        gain: 0.641,
+    },
 ];
 
 pub fn track(song: Song) -> Option<&'static Track> {
