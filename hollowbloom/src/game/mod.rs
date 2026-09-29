@@ -384,8 +384,8 @@ fn draw_title(c: &mut Canvas, a: &Assets, t: &Title, pad: bool) {
     let (w, h) = (c.w(), c.h());
     let items = title_items(t);
     let (x0, y0, _) = title_item_rect(w, h, 0);
-    // The logo: the biggest that fits between the credit line and the menu, bobbing gently.
-    let (top, bottom) = (14, y0 - 12);
+    // The logo: the biggest that fits above the menu, bobbing gently.
+    let (top, bottom) = (4, y0 - 12);
     if let Some(logo) = a
         .logo
         .iter()
@@ -440,8 +440,6 @@ fn draw_title(c: &mut Canvas, a: &Assets, t: &Title, pad: bool) {
             INK,
         );
     }
-    let credit = "Palette: Resurrect 32 by Kerrie Lake";
-    c.text_outline(w - c.text_width(credit) - 4, 4, credit, KHAKI, INK);
 }
 
 /// A villager's face and shoulders, for the talk box.
