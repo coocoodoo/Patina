@@ -13,6 +13,8 @@ mod input;
 mod pad;
 mod palette;
 mod render;
+#[cfg(target_os = "linux")]
+mod sdl;
 mod shot;
 mod ui;
 mod util;
@@ -25,6 +27,7 @@ USAGE:
 
 OPTIONS:
     --mute          start without sound
+    --sdl           play fullscreen through SDL2 (what a handheld with no desktop does anyway)
     --shots DIR     render a tour of the game to PNG files in DIR (no window needed)
     --wardrobe FILE render the hero in every piece of gear to one PNG
     --magic-shots DIR  render jelly slimes, sparks, grass, potions and spells
@@ -54,6 +57,7 @@ STEAM DECK / CONTROLLER:
     L1 / R1              hotbar, tabs    L2 / R2         cast your two spells
     View                 crafting        Menu            pause (Controls shows the layout)
     L3 / R3              map / quests    B (at home)     turn furniture
+    (on a handheld View and Menu are Select and Start; hold both to save and quit)
 ";
 
 fn main() {
@@ -122,13 +126,31 @@ fn main() {
         headless::bench();
         return;
     }
+    // A handheld with no desktop (the RG351P and its kin) plays through SDL. It's decided
+    // first, as the settings it starts with depend on it.
+    #[cfg(target_os = "linux")]
+    let handheld = args.iter().any(|a| a == "--sdl")
+        || (std::env::var_os("DISPLAY").is_none()
+            && std::env::var_os("WAYLAND_DISPLAY").is_none()
+            && sdl::available());
+    #[cfg(not(target_os = "linux"))]
+    let handheld = false;
+    input::set_handheld(handheld);
     let game = game::Game::new();
     let audio = if args.iter().any(|a| a == "--mute") {
         audio::Audio::silent()
     } else {
         audio::Audio::start()
     };
-    if let Err(e) = app::run(game, audio) {
+    #[cfg(target_os = "linux")]
+    let result = if handheld {
+        sdl::run(game, audio)
+    } else {
+        app::run(game, audio)
+    };
+    #[cfg(not(target_os = "linux"))]
+    let result = app::run(game, audio);
+    if let Err(e) = result {
         eprintln!("hollowbloom: {e}");
         std::process::exit(1);
     }

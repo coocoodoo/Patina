@@ -83,8 +83,9 @@ impl Default for Settings {
             // A Deck's small screen is best filled edge to edge.
             fullscreen: steam_deck(),
             shake: true,
-            shadows: true,
-            ao: true,
+            // A handheld's little processor keeps up better without them.
+            shadows: !crate::input::handheld(),
+            ao: !crate::input::handheld(),
             dirty: false,
         }
     }
@@ -319,7 +320,7 @@ impl Game {
                     font: &a.font,
                     darken: &r.sh.darken,
                 };
-                draw_title(&mut c, t, input.pad_active);
+                draw_title(&mut c, a, t, input.pad_active);
                 draw_cursor(&mut c, a, input);
             }
             State::Play(p) => {
@@ -363,29 +364,38 @@ fn title_items(t: &Title) -> Vec<&'static str> {
     if t.has_save {
         v.push("Continue");
     }
-    v.extend(["New game", "Fullscreen", "Quit"]);
+    v.push("New game");
+    // A handheld's screen is always filled.
+    if !crate::input::handheld() {
+        v.push("Fullscreen");
+    }
+    v.push("Quit");
     v
 }
 
 fn title_item_rect(w: i32, h: i32, i: usize) -> (i32, i32, i32) {
     let bw = 110;
-    ((w - bw) / 2, h / 2 + 10 + i as i32 * 14, bw)
+    // A tall screen (a handheld's 480x320) gives the logo more room.
+    let y0 = h / 2 + 10 + ((h - 280) / 2).max(0);
+    ((w - bw) / 2, y0 + i as i32 * 14, bw)
 }
 
-fn draw_title(c: &mut Canvas, t: &Title, pad: bool) {
+fn draw_title(c: &mut Canvas, a: &Assets, t: &Title, pad: bool) {
     let (w, h) = (c.w(), c.h());
-    let title = "Hollowbloom";
-    let scale = if w >= 400 { 4 } else { 3 };
-    let tw = c.big_width(title, scale);
-    let bob = ((t.t * 1.5).sin() * 2.0) as i32;
-    let ty = h / 2 - 72 + bob;
-    c.text_big((w - tw) / 2 + 2, ty + 3, title, scale, INK, INK);
-    c.text_big((w - tw) / 2, ty, title, scale, CREAM, RUST);
-    let sub = "a cozy farm above an endless Hollow";
-    let sw = c.text_width(sub);
-    c.text_outline((w - sw) / 2, ty + 9 * scale + 6, sub, GOLD, INK);
     let items = title_items(t);
     let (x0, y0, _) = title_item_rect(w, h, 0);
+    // The logo: the biggest that fits between the credit line and the menu, bobbing gently.
+    let (top, bottom) = (14, y0 - 12);
+    if let Some(logo) = a
+        .logo
+        .iter()
+        .find(|l| l.h <= bottom - top)
+        .or(a.logo.last())
+    {
+        let bob = ((t.t * 1.5).sin() * 2.0) as i32;
+        let y = top + (bottom - top - logo.h).max(0) / 2 + bob;
+        c.picture(logo, (w - logo.w) / 2, y);
+    }
     c.panel(
         x0 - 8,
         y0 - 8,
@@ -411,12 +421,15 @@ fn draw_title(c: &mut Canvas, t: &Title, pad: bool) {
             INK,
         );
     }
+    let (view, menu) = crate::input::view_menu_names();
     let help = if pad {
-        "L stick walk  -  X use  -  A talk, interact  -  B roll  -  Y bag  -  View craft  -  R3 quests  -  Menu: all controls"
+        format!(
+            "L stick walk  -  X use  -  A talk, interact  -  B roll  -  Y bag  -  {view} craft  -  R3 quests  -  {menu}: all controls"
+        )
     } else {
-        "WASD move  -  J / click use  -  E / right click talk, interact  -  Space roll  -  Tab bag  -  C craft  -  L quests"
+        "WASD move  -  J / click use  -  E / right click talk, interact  -  Space roll  -  Tab bag  -  C craft  -  L quests".to_string()
     };
-    let lines = c.font.wrap(help, w - 20);
+    let lines = c.font.wrap(&help, w - 20);
     for (i, l) in lines.iter().enumerate() {
         let lw = c.text_width(l);
         c.text_outline(

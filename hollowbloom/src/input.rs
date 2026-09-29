@@ -122,6 +122,27 @@ fn pad_buttons(a: Action) -> &'static [P] {
     }
 }
 
+/// Playing on a retro handheld (the RG351P and its kin), whose View and Menu buttons are
+/// called Select and Start.
+static HANDHELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_handheld(on: bool) {
+    HANDHELD.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn handheld() -> bool {
+    HANDHELD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// What the pad's View and Menu buttons are called on this one.
+pub fn view_menu_names() -> (&'static str, &'static str) {
+    if handheld() {
+        ("Select", "Start")
+    } else {
+        ("View", "Menu")
+    }
+}
+
 /// The Steam Deck button to show for an action in on-screen hints.
 pub fn pad_name(a: Action) -> &'static str {
     match a {
@@ -129,8 +150,8 @@ pub fn pad_name(a: Action) -> &'static str {
         Action::Interact | Action::Confirm => "A",
         Action::Dodge | Action::Cancel | Action::Turn => "B",
         Action::Inventory => "Y",
-        Action::Crafting => "View",
-        Action::Menu => "Menu",
+        Action::Crafting => view_menu_names().0,
+        Action::Menu => view_menu_names().1,
         Action::Up | Action::Down | Action::Left | Action::Right => "D-pad",
         Action::NextSlot => "R1",
         Action::PrevSlot => "L1",

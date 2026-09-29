@@ -164,6 +164,24 @@ switch them from mouse mode to gamepad mode.
 | Pause (and the Controls page) | Menu |
 | In the bag and shops: split a stack, wear, sell just one | X |
 
+### Linux handhelds (Anbernic RG351P and friends)
+
+The same game runs on 64-bit ARM handhelds that run Linux without a desktop, such as the
+**Anbernic RG351P**, RG351M and RG351V on ArkOS, AmberELEC or ROCKNIX. There it draws through
+SDL2, which every such system ships (it's loaded at run time, so nothing is needed anywhere
+else), fills the screen at its own resolution (480x320 on an RG351P, pixel for pixel), and
+reads the built-in controls through SDL's mapping for the handheld (PortMaster's, when it's
+installed). Hints and the Controls page name the buttons as printed, **Select** and
+**Start**, the journal and minimap are in the pause menu for sticks that don't click in, and
+holding **Select + Start** for a second saves and quits, as other ports do. Sun shadows and
+ambient occlusion start off, as they halve the frame rate on a small processor.
+
+`hollowbloom/package.sh handheld` builds it (with cargo-zigbuild) and lays it out for a
+ports folder: copy `Hollowbloom.sh` and the `hollowbloom` folder into `roms/ports` and it
+shows up under **Ports** in EmulationStation. Saves go in `hollowbloom/save` beside the game,
+and if A and B come out the wrong way round, `Hollowbloom.sh` has a line to swap them. The
+game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
+
 ### The farm (Stardew-style)
 
 * **Till** any open ground on your property with the hoe (lawn, bare soil, the paths, the
@@ -464,6 +482,9 @@ cargo zigbuild -p hollowbloom --release --target x86_64-pc-windows-gnu
 
 # Or package both into dist/ (zip for Windows, tar.gz for Linux)
 hollowbloom/package.sh
+
+# 64-bit ARM handhelds (glibc 2.17 and newer), laid out for a ports folder
+hollowbloom/package.sh handheld
 ```
 
 On Windows itself a plain `cargo build -p hollowbloom --release` produces a native MSVC build.
@@ -488,6 +509,8 @@ hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: e
 hollowbloom --bench               # rendering speed (about 5 ms per frame at 480x270)
 hollowbloom --palette-chart FILE  # the light maps: every colour at every light level
 hollowbloom --mute                # no sound
+hollowbloom --sdl                 # fullscreen through SDL2, as on a handheld
+tools/logo.py                     # the title's logo from art/logo-source.jpg
 ```
 
 ## How it works
@@ -525,7 +548,8 @@ hollowbloom --mute                # no sound
 * **Wind**: grass is meshed per 8x8-tile block and bent per vertex by a wind field (a steady
   breeze, gust fronts rolling downwind and a flutter), which also leans every plant and tree
   and pushes grass aside round the hero's feet.
-* **Everything is procedural or written in code**: tile textures, the low-poly models
+* **Everything is procedural or written in code**, but for the logo and the recorded music:
+  tile textures, the low-poly models
   (boxes and lathes, including a 3D look for every hat, boot, shield, weapon and tool), about
   390 item icons, crop sprites and stat symbols drawn as ASCII art, two bitmap fonts,
   the sound effects (sfxr-style synthesis) and the chiptune soundtrack: eleven songs (the
@@ -536,6 +560,10 @@ hollowbloom --mute                # no sound
   town's buildings are generated from a short description each (size, walls, roof, awning,
   sign), and villagers find their way about with a simple breadth-first path search over
   the town's tiles.
+* **The logo** is drawn from `art/logo-source.jpg`: `tools/logo.py` keys out its green
+  backdrop (flooding in from the edges, plus the pockets ringed by its cream outline, like
+  the gaps in the H), scales it to the three heights the title picks between, and sets every
+  pixel to the nearest palette colour, so it's still nothing but Resurrect 32.
 * **Recorded music**: every song has a recorded track (eleven, made with Google's Lyria 3:
   the MP3s are in `music/`), built into the executable as Ogg Vorbis at about 100 kbps so
   the whole game stays one file under 30 MB, and decoded in the background by Symphonia, a

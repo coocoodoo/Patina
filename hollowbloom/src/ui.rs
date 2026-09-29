@@ -2,6 +2,7 @@
 //! Everything here writes exact palette indices, so the UI is palette-locked by construction.
 
 use crate::assets::font::{Font, tiny_glyph};
+use crate::assets::logo::Picture;
 use crate::palette::*;
 use crate::render::{Frame, Texture};
 
@@ -216,6 +217,15 @@ impl<'a> Canvas<'a> {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// A picture, see-through where it's `CLEAR`.
+    pub fn picture(&mut self, p: &Picture, x: i32, y: i32) {
+        for (i, &c) in p.px.iter().enumerate() {
+            if c != CLEAR {
+                self.px(x + i as i32 % p.w, y + i as i32 / p.w, c);
             }
         }
     }

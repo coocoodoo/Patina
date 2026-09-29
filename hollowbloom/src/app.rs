@@ -27,8 +27,13 @@ const FRAME: Duration = Duration::from_micros(16_667);
 /// Ctrl+C in a terminal. The game saves and quits as if closed from its own menu.
 static CLOSE_ASKED: AtomicBool = AtomicBool::new(false);
 
+/// Whether the system has asked the game to close since last asked.
+pub fn close_asked() -> bool {
+    CLOSE_ASKED.swap(false, Ordering::SeqCst)
+}
+
 #[cfg(unix)]
-fn catch_close_signals() {
+pub fn catch_close_signals() {
     use std::ffi::c_int;
     unsafe extern "C" {
         fn signal(signum: c_int, handler: extern "C" fn(c_int)) -> usize;
@@ -46,7 +51,7 @@ fn catch_close_signals() {
 }
 
 #[cfg(not(unix))]
-fn catch_close_signals() {}
+pub fn catch_close_signals() {}
 
 /// In the Steam Deck's Game Mode (or any gamescope session), which shows one window filling
 /// the screen: the game fills it too.
@@ -361,7 +366,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
-        if CLOSE_ASKED.swap(false, Ordering::SeqCst) {
+        if close_asked() {
             self.game.shutdown();
             el.exit();
             return;

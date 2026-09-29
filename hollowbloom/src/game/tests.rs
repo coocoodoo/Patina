@@ -2472,7 +2472,7 @@ fn a_steam_deck_plays_the_game() {
     // Menu pauses; the controls page shows the Deck's layout.
     press(&mut s, PadButton::Menu);
     assert!(matches!(s.play.menu, Menu::Pause { .. }));
-    for _ in 0..2 {
+    for _ in 0..4 {
         press(&mut s, PadButton::Down);
     }
     press(&mut s, PadButton::A);

@@ -6,6 +6,7 @@ pub mod font;
 pub mod gear_art;
 pub mod home_art;
 pub mod item_art;
+pub mod logo;
 pub mod magic_art;
 pub mod models;
 pub mod monster_art;
@@ -331,6 +332,8 @@ pub struct Assets {
     pub bank: TexBank,
     pub icons: HashMap<&'static str, TexId>,
     pub font: Font,
+    /// The title screen's logo, largest first.
+    pub logo: Vec<logo::Picture>,
     pub grass: [TexId; 4],
     pub grass_flowers: [TexId; 2],
     pub path: [TexId; 2],
@@ -538,6 +541,7 @@ impl Assets {
             bank,
             icons,
             font: Font::regular(),
+            logo: logo::logos(),
             grass,
             grass_flowers,
             path,

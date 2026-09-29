@@ -775,7 +775,7 @@ impl Play {
                 mut sel,
                 settings: in_settings,
             } => {
-                let items = if in_settings { 7 } else { 5 };
+                let items = 7;
                 if input.pressed_repeat(Action::Down) {
                     sel = (sel + 1) % items;
                     io.audio.play_at(Sfx::UiMove, 0.5, 1.0);
@@ -837,7 +837,7 @@ impl Play {
                     }
                     if picked == Some(6) || input.pressed(Action::Cancel) || rclick {
                         Menu::Pause {
-                            sel: 1,
+                            sel: 3,
                             settings: false,
                         }
                     } else {
@@ -853,6 +853,8 @@ impl Play {
                     io.audio.play(Sfx::UiBack);
                     Menu::None
                 } else {
+                    // The journal and the map are here too, for pads whose sticks don't
+                    // click in.
                     match picked {
                         Some(0) => {
                             io.audio.play(Sfx::UiBack);
@@ -860,20 +862,29 @@ impl Play {
                         }
                         Some(1) => {
                             io.audio.play(Sfx::UiSelect);
+                            Menu::Journal { tab: 0, sel: 0 }
+                        }
+                        Some(2) => {
+                            io.audio.play(Sfx::UiSelect);
+                            self.show_map = !self.show_map;
+                            Menu::None
+                        }
+                        Some(3) => {
+                            io.audio.play(Sfx::UiSelect);
                             Menu::Pause {
                                 sel: 0,
                                 settings: true,
                             }
                         }
-                        Some(2) => {
+                        Some(4) => {
                             io.audio.play(Sfx::UiSelect);
                             Menu::Controls { deck: self.pad }
                         }
-                        Some(3) => {
+                        Some(5) => {
                             self.quit_to_title = true;
                             Menu::None
                         }
-                        Some(4) => {
+                        Some(6) => {
                             io.quit = true;
                             Menu::None
                         }
@@ -1600,6 +1611,12 @@ impl Play {
                 } else {
                     vec![
                         "Resume".into(),
+                        "Quest journal".into(),
+                        if self.show_map {
+                            "Hide minimap".into()
+                        } else {
+                            "Show minimap".into()
+                        },
                         "Settings".into(),
                         "Controls".into(),
                         "Save & quit to title".into(),
@@ -1869,7 +1886,7 @@ impl Play {
             x,
             y,
             if self.pad {
-                "A: pick up or wear.  X: split or wear.  L1/R1: stats."
+                "A: pick up or wear. X: split. L1/R1: stats"
             } else {
                 "Right click: wear or split. Shift: quick wear."
             },

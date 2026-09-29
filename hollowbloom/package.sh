@@ -4,10 +4,12 @@
 #   hollowbloom/package.sh            # both platforms
 #   hollowbloom/package.sh linux      # just one
 #   hollowbloom/package.sh windows
+#   hollowbloom/package.sh handheld   # 64-bit ARM Linux handhelds (RG351P and friends)
 #
 # Linux is built with cargo-zigbuild when it is installed (portable: glibc 2.28 and newer),
 # otherwise with the host toolchain. Windows is cross-compiled with MinGW-w64 when
-# `x86_64-w64-mingw32-gcc` is available, otherwise with cargo-zigbuild.
+# `x86_64-w64-mingw32-gcc` is available, otherwise with cargo-zigbuild. The handheld build
+# needs cargo-zigbuild and comes laid out for a ports folder.
 # Packages land in dist/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -75,8 +77,39 @@ for t in "${targets[@]}"; do
         zip_dir "dist/$name"
         echo "built dist/$name.zip"
         ;;
+    handheld)
+        rustup target add aarch64-unknown-linux-gnu >/dev/null 2>&1 || true
+        if ! have cargo-zigbuild; then
+            echo "install cargo-zigbuild to build for handhelds" >&2
+            exit 1
+        fi
+        cargo zigbuild -p hollowbloom --release --target aarch64-unknown-linux-gnu.2.17
+        name="hollowbloom-$version-handheld-aarch64"
+        dir="dist/$name"
+        rm -rf "$dir" && mkdir -p "$dir/hollowbloom"
+        cp hollowbloom/port/Hollowbloom.sh "$dir/"
+        cp target/aarch64-unknown-linux-gnu/release/hollowbloom hollowbloom/port/README.txt \
+            LICENSE "$dir/hollowbloom/"
+        chmod +x "$dir/Hollowbloom.sh" "$dir/hollowbloom/hollowbloom"
+        # Zipped from inside, so it unpacks straight into a ports folder.
+        rm -f "dist/$name.zip"
+        if have zip; then
+            (cd "$dir" && zip -qr "../$name.zip" Hollowbloom.sh hollowbloom)
+        else
+            python3 - "$dir" "dist/$name.zip" <<'PY'
+import os, sys, zipfile
+src, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for root, _, files in os.walk(src):
+        for f in files:
+            p = os.path.join(root, f)
+            z.write(p, os.path.relpath(p, src))
+PY
+        fi
+        echo "built dist/$name.zip"
+        ;;
     *)
-        echo "unknown target: $t (use linux or windows)" >&2
+        echo "unknown target: $t (use linux, windows or handheld)" >&2
         exit 1
         ;;
     esac

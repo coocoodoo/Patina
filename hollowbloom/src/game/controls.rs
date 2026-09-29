@@ -1,5 +1,5 @@
-//! The controls page from the pause menu: the Steam Deck's layout, drawn as the Deck with
-//! every button labelled, and the keyboard's.
+//! The controls page from the pause menu: the controller's layout, drawn as the Steam Deck
+//! (or a retro handheld) with every button labelled, and the keyboard's.
 
 use super::Io;
 use super::menus::{Menu, center};
@@ -104,6 +104,37 @@ fn draw_deck(c: &mut Canvas, x: i32, y: i32) {
     c.rect(x + w - 30, y - 2, 22, 2, SHADOW);
 }
 
+/// A retro handheld like the RG351P: a 3:2 screen between the D-pad and the face buttons,
+/// with a little stick below each and Select and Start at the bottom.
+fn draw_handheld(c: &mut Canvas, x: i32, y: i32) {
+    let (w, h) = (170, 58);
+    c.rect(x + 6, y, w - 12, h, INK);
+    c.rect(x, y + 6, w, h - 12, INK);
+    c.rect(x + 2, y + 2, w - 4, h - 4, INK);
+    c.rect(x + 6, y, w - 12, 1, SHADOW);
+    // The screen.
+    c.rect(x + 51, y + 6, 68, 46, SHADOW);
+    c.rect(x + 53, y + 8, 64, 42, DEEP_TEAL);
+    c.rect(x + 55, y + 42, 18, 5, GREEN);
+    c.rect(x + 83, y + 22, 6, 8, GOLD);
+    // Left: the D-pad above the stick, Select below.
+    let (dx, dy) = (x + 22, y + 17);
+    c.rect(dx - 1, dy - 5, 3, 11, SLATE);
+    c.rect(dx - 5, dy - 1, 11, 3, SLATE);
+    stick(c, x + 30, y + 38);
+    c.rect(x + 16, y + 50, 5, 2, SLATE);
+    // Right: the face buttons above the stick, Start below.
+    let (fx, fy) = (x + w - 22, y + 17);
+    for (ox, oy) in [(0, -5), (-5, 0), (5, 0), (0, 5)] {
+        c.rect(fx + ox - 1, fy + oy - 1, 3, 3, SLATE);
+    }
+    stick(c, x + w - 30, y + 38);
+    c.rect(x + w - 21, y + 50, 5, 2, SLATE);
+    // Shoulders.
+    c.rect(x + 8, y - 2, 22, 2, SHADOW);
+    c.rect(x + w - 30, y - 2, 22, 2, SHADOW);
+}
+
 impl Play {
     pub fn update_controls(&mut self, io: &mut Io, deck: bool) -> Menu {
         let input = io.input;
@@ -123,7 +154,7 @@ impl Play {
         {
             io.audio.play(Sfx::UiBack);
             return Menu::Pause {
-                sel: 2,
+                sel: 4,
                 settings: false,
             };
         }
@@ -134,17 +165,19 @@ impl Play {
         let (w, h) = (c.w(), c.h());
         let l = center(w, h, 300.min(w - 8), 214.min(h - 8));
         c.panel(l.px, l.py, l.pw, l.ph, Style::Paper);
+        let handheld = crate::input::handheld();
+        let pad_name = if handheld { "handheld" } else { "Steam Deck" };
         let title = if deck {
-            "Controls - Steam Deck"
+            format!("Controls - {pad_name}")
         } else {
-            "Controls - keyboard and mouse"
+            "Controls - keyboard and mouse".to_string()
         };
-        c.text_center(l.px + l.pw / 2, l.py + 6, title, RUST);
+        c.text_center(l.px + l.pw / 2, l.py + 6, &title, RUST);
         let flip = format!(
             "{} / {}: {}",
             self.key(Action::PrevSlot),
             self.key(Action::NextSlot),
-            if deck { "keyboard" } else { "Steam Deck" }
+            if deck { "keyboard" } else { pad_name }
         );
         c.text(
             l.px + l.pw - c.text_width(&flip) - 8,
@@ -160,15 +193,28 @@ impl Play {
         );
         if deck {
             let dx = l.px + (l.pw - 170) / 2;
-            draw_deck(c, dx, l.py + 20);
-            // Labels either side, joined to where they are on the Deck.
+            if handheld {
+                draw_handheld(c, dx, l.py + 20);
+            } else {
+                draw_deck(c, dx, l.py + 20);
+            }
+            // Labels either side. A handheld's sticks may not click in, so the map and the
+            // journal are in the pause menu too.
+            let (view, menu) = crate::input::view_menu_names();
             let top = l.py + 84;
             for (i, (b, what)) in DECK_LEFT.iter().enumerate() {
                 let y = top + i as i32 * 13;
                 let name = match *b {
                     "L" => "L stick",
                     "+" => "D-pad",
+                    "View" => view,
+                    "Menu" => menu,
                     other => other,
+                };
+                let what = if handheld && *b == "L3" {
+                    "Map; or pause menu"
+                } else {
+                    what
                 };
                 let cw = cap(c, l.px + 8, y, name);
                 c.text(l.px + 12 + cw, y + 2, what, INK);
@@ -177,6 +223,11 @@ impl Play {
             for (i, (b, what)) in DECK_RIGHT.iter().enumerate() {
                 let y = top + i as i32 * 13;
                 let name = if *b == "R" { "R stick" } else { b };
+                let what = if handheld && *b == "R3" {
+                    "Journal; or pause menu"
+                } else {
+                    what
+                };
                 let cw = cap(c, mid, y, name);
                 c.text(mid + 4 + cw, y + 2, what, INK);
             }
