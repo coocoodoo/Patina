@@ -1491,8 +1491,8 @@ pub fn music(dir: &str) {
     }
 }
 
-/// `--decode IN.mp3 OUT.wav`: an MP3 decoded just as the game decodes its tracks, for
-/// finding loop points in exactly what the game plays.
+/// `--decode IN OUT.wav`: a track (Ogg Vorbis or MP3) decoded just as the game decodes it,
+/// for finding loop points in exactly what the game plays.
 pub fn decode_track(input: &str, output: &str) {
     let bytes = match std::fs::read(input) {
         Ok(b) => b,
@@ -1501,8 +1501,8 @@ pub fn decode_track(input: &str, output: &str) {
             return;
         }
     };
-    let mp3: &'static [u8] = Box::leak(bytes.into_boxed_slice());
-    match crate::audio::track::decode(mp3) {
+    let audio: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+    match crate::audio::track::decode(audio) {
         Ok(pcm) => match write_wav(Path::new(output), &pcm.data, 2, 44_100) {
             Ok(()) => println!("wrote {output} ({} frames)", pcm.frames()),
             Err(e) => eprintln!("failed to write {output}: {e}"),

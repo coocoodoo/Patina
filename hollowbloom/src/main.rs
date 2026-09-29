@@ -33,7 +33,7 @@ OPTIONS:
     --monster-shots DIR  render every monster family in every biome's look
     --feature-shots DIR  render recipe cards, bombs, secret rooms and store hours
     --music DIR     render every song to WAV files
-    --decode IN OUT decode an MP3 to WAV just as the game does (for finding loop points)
+    --decode IN OUT decode a track (Ogg or MP3) to WAV just as the game does (for loop points)
     --bench         measure rendering speed
     -h, --help      show this help
 
@@ -110,7 +110,7 @@ fn main() {
     if let Some(i) = args.iter().position(|a| a == "--decode") {
         match (args.get(i + 1), args.get(i + 2)) {
             (Some(input), Some(output)) => headless::decode_track(input, output),
-            _ => eprintln!("usage: hollowbloom --decode IN.mp3 OUT.wav"),
+            _ => eprintln!("usage: hollowbloom --decode IN.ogg OUT.wav"),
         }
         return;
     }

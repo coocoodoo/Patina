@@ -1,6 +1,7 @@
-//! Recorded music: MP3 tracks built into the game for some of the songs, decoded in the
-//! background the first time they're wanted, and looped seamlessly between two points.
-//! Songs without a track are played by the chiptune band in `music.rs`.
+//! Recorded music: tracks built into the game (Ogg Vorbis, kept small enough that the whole
+//! game stays one modest file), decoded in the background the first time they're wanted, and
+//! played through or looped seamlessly between two points. A song without a track is played
+//! by the chiptune band in `music.rs`.
 
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
@@ -19,7 +20,8 @@ use super::synth::RATE;
 /// A recorded track for one of the songs.
 pub struct Track {
     pub song: Song,
-    pub mp3: &'static [u8],
+    /// The track, compressed (Ogg Vorbis, or MP3).
+    pub audio: &'static [u8],
     /// The loop, in frames of the decoded track: it plays from the start to `end`, then
     /// carries on from `start`, round and round, the seam blended.
     pub start: usize,
@@ -45,7 +47,7 @@ pub const TRACKS: &[Track] = &[
     // "The First Day of Spring"
     Track {
         song: Song::Title,
-        mp3: include_bytes!("../../music/title.mp3"),
+        audio: include_bytes!("../../music/ogg/title.ogg"),
         start: 0,
         end: 6_703_200,
         rest: REST,
@@ -55,7 +57,7 @@ pub const TRACKS: &[Track] = &[
     // "Seven AM Dew"
     Track {
         song: Song::Morning,
-        mp3: include_bytes!("../../music/morning.mp3"),
+        audio: include_bytes!("../../music/ogg/morning.ogg"),
         start: 0,
         end: 6_174_000,
         rest: REST,
@@ -65,7 +67,7 @@ pub const TRACKS: &[Track] = &[
     // "Golden Hour at the Orchard"
     Track {
         song: Song::Afternoon,
-        mp3: include_bytes!("../../music/afternoon.mp3"),
+        audio: include_bytes!("../../music/ogg/afternoon.ogg"),
         start: 0,
         end: 7_904_925,
         rest: REST,
@@ -75,7 +77,7 @@ pub const TRACKS: &[Track] = &[
     // "Moonlit Fence Posts"
     Track {
         song: Song::Night,
-        mp3: include_bytes!("../../music/night.mp3"),
+        audio: include_bytes!("../../music/ogg/night.ogg"),
         start: 0,
         end: 6_989_850,
         rest: REST,
@@ -85,7 +87,7 @@ pub const TRACKS: &[Track] = &[
     // "Cobblestone Promenade"
     Track {
         song: Song::Town,
-        mp3: include_bytes!("../../music/town.mp3"),
+        audio: include_bytes!("../../music/ogg/town.ogg"),
         start: 70_560,
         end: 7_860_825,
         rest: REST,
@@ -95,7 +97,7 @@ pub const TRACKS: &[Track] = &[
     // "Sunday Morning Curio"
     Track {
         song: Song::Shop,
-        mp3: include_bytes!("../../music/shop.mp3"),
+        audio: include_bytes!("../../music/ogg/shop.ogg"),
         start: 103_635,
         end: 7_750_575,
         rest: REST,
@@ -105,7 +107,7 @@ pub const TRACKS: &[Track] = &[
     // "The Keeper's Hearth"
     Track {
         song: Song::Haven,
-        mp3: include_bytes!("../../music/haven.mp3"),
+        audio: include_bytes!("../../music/ogg/haven.ogg"),
         start: 0,
         end: 6_857_550,
         rest: REST,
@@ -115,7 +117,7 @@ pub const TRACKS: &[Track] = &[
     // "Beneath the Glowing Cap"
     Track {
         song: Song::Burrows,
-        mp3: include_bytes!("../../music/burrows.mp3"),
+        audio: include_bytes!("../../music/ogg/burrows.ogg"),
         start: 0,
         end: 6_714_225,
         rest: REST,
@@ -125,7 +127,7 @@ pub const TRACKS: &[Track] = &[
     // "Below the Glacial Line"
     Track {
         song: Song::Glimmer,
-        mp3: include_bytes!("../../music/glimmer.mp3"),
+        audio: include_bytes!("../../music/ogg/glimmer.ogg"),
         start: 0,
         end: 7_089_075,
         rest: REST,
@@ -135,7 +137,7 @@ pub const TRACKS: &[Track] = &[
     // "Beneath the Burning Spire"
     Track {
         song: Song::Depths,
-        mp3: include_bytes!("../../music/depths.mp3"),
+        audio: include_bytes!("../../music/ogg/depths.ogg"),
         start: 0,
         end: 7_982_100,
         rest: REST,
@@ -146,7 +148,7 @@ pub const TRACKS: &[Track] = &[
     // for an ending; once the guardian falls it plays on from the loop's end to its own.
     Track {
         song: Song::Boss,
-        mp3: include_bytes!("../../music/boss.mp3"),
+        audio: include_bytes!("../../music/ogg/boss.ogg"),
         start: 2_232_024,
         end: 5_763_072,
         rest: 0,
@@ -170,15 +172,14 @@ impl Pcm {
     }
 }
 
-/// Decodes an MP3 to stereo frames at the mixer's rate.
-pub fn decode(mp3: &'static [u8]) -> Result<Pcm, String> {
-    let src = ReadOnlySource::new(std::io::Cursor::new(mp3));
+/// Decodes a track (Ogg Vorbis or MP3, told apart by their contents) to stereo frames at the
+/// mixer's rate.
+pub fn decode(audio: &'static [u8]) -> Result<Pcm, String> {
+    let src = ReadOnlySource::new(std::io::Cursor::new(audio));
     let mss = MediaSourceStream::new(Box::new(src), Default::default());
-    let mut hint = Hint::new();
-    hint.with_extension("mp3");
     let probed = symphonia::default::get_probe()
         .format(
-            &hint,
+            &Hint::new(),
             mss,
             &FormatOptions::default(),
             &MetadataOptions::default(),
@@ -280,11 +281,11 @@ impl TrackPlayer {
     pub fn new(t: &'static Track, pcm: Option<Arc<Pcm>>) -> TrackPlayer {
         let loading = if pcm.is_none() {
             let (tx, rx) = channel();
-            let mp3 = t.mp3;
+            let audio = t.audio;
             let spawned = std::thread::Builder::new()
                 .name("hollowbloom-decode".into())
                 .spawn(move || {
-                    let _ = tx.send(decode(mp3));
+                    let _ = tx.send(decode(audio));
                 });
             spawned.is_ok().then_some(rx)
         } else {
@@ -481,7 +482,7 @@ mod tests {
     #[test]
     fn every_track_decodes_and_its_loop_fits() {
         for t in TRACKS {
-            let pcm = decode(t.mp3).unwrap_or_else(|e| panic!("{:?}: {e}", t.song));
+            let pcm = decode(t.audio).unwrap_or_else(|e| panic!("{:?}: {e}", t.song));
             assert!(
                 t.start < t.end && t.end <= pcm.frames(),
                 "{:?}: loop {}..{} in {} frames",
@@ -510,7 +511,7 @@ mod tests {
         let data: Vec<i16> = (0..1000).flat_map(|i| [i as i16, i as i16]).collect();
         let t = Box::leak(Box::new(Track {
             song: Song::Title,
-            mp3: &[],
+            audio: &[],
             start: 300,
             end: 900,
             rest: 0,
@@ -540,7 +541,7 @@ mod tests {
             .collect();
         let t = Box::leak(Box::new(Track {
             song: Song::Boss,
-            mp3: &[],
+            audio: &[],
             start: 2000,
             end: 18000,
             rest: 0,
@@ -574,7 +575,7 @@ mod tests {
             .collect();
         let t = Box::leak(Box::new(Track {
             song: Song::Boss,
-            mp3: &[],
+            audio: &[],
             start: 2000,
             end: 18000,
             rest: 0,
@@ -603,7 +604,7 @@ mod tests {
             .collect();
         let t = Box::leak(Box::new(Track {
             song: Song::Title,
-            mp3: &[],
+            audio: &[],
             start: 0,
             end: 100,
             rest: 50,
