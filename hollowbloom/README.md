@@ -433,12 +433,26 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   float in the channels, and the dead ends hide chests. The old brickwork can be mined like
   rock.
 * **Who lives in the sewers**, whatever the biome above: **sludge slimes**, brown swirls
-  with googly eyes and flies buzzing round them, and everyone else **down to their bones**:
-  bone bats with skeletal wings, bone shamblers in rags, bone brutes swinging thigh-bone
-  clubs, hooded bone sneaks with rusty daggers, pale bone spiders, slimy sewer skeletons,
-  skull ghosts, bone frogs and puffers along the water, and from floor 11 bone snails in
-  shells of bone and green glass, and bone bibliomancers spitting green ink. The bony ones
-  often leave an old bone behind.
+  with a scowl, glowing red eyes and flies buzzing round them, and everyone else **down to
+  their bones**: bone bats with skeletal wings, bone shamblers in rags, bone brutes swinging
+  thigh-bone clubs, hooded bone sneaks with rusty daggers, pale bone spiders, slimy sewer
+  skeletons, skull ghosts, bone frogs and puffers along the water, and from floor 11 bone
+  snails in shells of bone and green glass, and bone bibliomancers spitting green ink. The
+  bony ones often leave an old bone behind.
+* **The glowcap caves.** Now and then (from floor 4, never on a guardian's floor, and most
+  often in the Fungal Hollow) a floor is a cave lit by **glowing mushrooms** instead of
+  torches. You come in at the end of a wing of **old ruins**: brick rooms floored with worn
+  flagstones along a torch-lit corridor, with barrels, crates, pots, old bones and a chest.
+  The corridor opens into a **winding cave** lined with **glowcaps** in blue, cyan, green
+  and purple, from little clusters to tall ones you can't walk through, with **shelf fungi**
+  glowing up the walls and side passages ending in quiet alcoves. At the far end a **great
+  chamber** opens out, with **glowing pools** round a **giant mushroom**, and the stairs
+  down. **Sealed nooks** glow in the rock beside the way (dig in with a pickaxe: now and
+  then one hides a chest), and past the rock there's nothing but the dark. The light down
+  there is cool and blue: the mushrooms and pools light the way, spores drift up off them,
+  and the **shroomlings glow** like the caps. Take a **sickle** to the glowcaps and shelf
+  fungi for glowcaps, glow spores and now and then glowcap spores to grow your own; the
+  pools hold the Fungal Hollow's fish.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -599,6 +613,7 @@ hollowbloom --pet-shots DIR       # the cat, the jumping spider, its egg, autumn
 hollowbloom --season-shots DIR    # the farm and town in every season, day and night
 hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and the snail lamp
 hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
+hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)

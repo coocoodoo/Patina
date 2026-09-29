@@ -593,10 +593,17 @@ impl Play {
             }
             Area::Hollow { depth } => {
                 let st = &BIOME_STYLES[self.hollow_biome(depth)];
+                // The glowcap caves are lit cool, and the mushrooms' own colours glow in it.
+                let glowing = self.level.as_ref().is_some_and(|l| l.world.glowcave);
+                let (ambient, warmth, clear) = if glowing {
+                    (0.42, 2.0, INK)
+                } else {
+                    (st.ambient, st.warmth, st.clear)
+                };
                 Env {
-                    ambient: st.ambient,
-                    warmth: st.warmth,
-                    clear: st.clear,
+                    ambient,
+                    warmth,
+                    clear,
                     time: self.time,
                     night: 1.0,
                     wind: 0.0,
@@ -700,13 +707,16 @@ impl Play {
             if level.world.sewer {
                 f = f.in_the_sewers();
             }
+            if level.world.glowcave {
+                f = f.in_the_glowcaves();
+            }
             f.feel_the_moon(moon);
             self.foes.push(f);
         }
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
         self.revealed = vec![false; (level.world.w * level.world.h) as usize];
-        let sewer = level.world.sewer;
+        let (sewer, glowcave) = (level.world.sewer, level.world.glowcave);
         self.level = Some(level);
         self.area = Area::Hollow { depth };
         self.cam_pos = self.player.world_pos();
@@ -726,6 +736,8 @@ impl Play {
                 )
             } else if sewer {
                 format!("{} - the old sewers", BIOME_STYLES[biome].name)
+            } else if glowcave {
+                format!("{} - the glowcap caves", BIOME_STYLES[biome].name)
             } else {
                 BIOME_STYLES[biome].name.to_string()
             },
@@ -1479,7 +1491,11 @@ impl Play {
                 Class::Hoe => self.area == Area::Farm && tillable(w, x, z),
                 Class::Can => w.floor(x, z) == Floor::Tilled || w.floor(x, z) == Floor::Water,
                 Class::Sickle => w.obj(x, z).is_some_and(|o| match o {
-                    Obj::Weed { .. } | Obj::Flower { .. } | Obj::Shrub { .. } => true,
+                    Obj::Weed { .. }
+                    | Obj::Flower { .. }
+                    | Obj::Shrub { .. }
+                    | Obj::Glowcap { .. }
+                    | Obj::ShelfFungus { .. } => true,
                     Obj::Crop { crop, days, .. } => crop.stage(*days) == 3,
                     _ => false,
                 }),
@@ -2468,6 +2484,9 @@ impl Play {
                     Some(Obj::Shrub { .. }) => {
                         self.cut_shrub(tx, tz, 2, io);
                         any = true;
+                    }
+                    Some(Obj::Glowcap { .. } | Obj::ShelfFungus { .. }) => {
+                        any |= self.gather_glow(tx, tz, io);
                     }
                     _ => {}
                 }

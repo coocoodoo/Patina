@@ -5,6 +5,7 @@ pub mod delve_art;
 pub mod fish_art;
 pub mod font;
 pub mod gear_art;
+pub mod glowcave_art;
 pub mod home_art;
 pub mod item_art;
 pub mod logo;
@@ -141,6 +142,8 @@ pub struct FoeSkins {
     /// Each look's slime colours (light, mid, dark), for bubbles and glints.
     pub slime_cols: [[u8; 3]; LOOKS],
     pub shroom: Vec<crate::render::Mesh>,
+    /// Shroomlings of the glowcap caves, by glowcap colour (see `glowcave_art::GLOW`).
+    pub glow_shroom: Vec<crate::render::Mesh>,
     pub bat_body: Vec<crate::render::Mesh>,
     pub bat_wing: Vec<crate::render::Mesh>,
     pub crab: Vec<crate::render::Mesh>,
@@ -415,6 +418,7 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
         slime_core: vec![],
         slime_cols,
         shroom: vec![],
+        glow_shroom: vec![],
         bat_body: vec![],
         bat_wing: vec![],
         crab: vec![],
@@ -530,6 +534,11 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
     s.shroom.push(recolor(bank, &c.shroom, &[c.cap_tex], &|x| {
         if x == RED { KHAKI } else { x }
     }));
+    // In the glowcap caves: caps glowing in the glowcaps' colours.
+    for pal in glowcave_art::GLOW {
+        let cap = bank.add(glowcave_art::shroom_cap(pal));
+        s.glow_shroom.push(c.shroom.retexture(c.cap_tex, cap));
+    }
     let bone = [WHITE, SAND, KHAKI];
     s.crab.push(recolor(
         bank,
@@ -659,6 +668,8 @@ pub struct Assets {
     pub deep: deep_art::DeepArt,
     /// The old sewers: walkways, brickwork, murky water and bridges.
     pub sewer: sewer_art::SewerArt,
+    /// The glowcap caves: their rock, ruins and pools, and the glowing mushrooms.
+    pub glowcave: glowcave_art::GlowcaveArt,
 }
 
 impl Assets {
@@ -818,6 +829,7 @@ impl Assets {
         let pets = pet_art::build(&mut bank);
         let deep = deep_art::build(&mut bank);
         let sewer = sewer_art::build(&mut bank);
+        let glowcave = glowcave_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -870,6 +882,7 @@ impl Assets {
             pets,
             deep,
             sewer,
+            glowcave,
         }
     }
 

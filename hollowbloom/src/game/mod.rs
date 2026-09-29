@@ -14,6 +14,7 @@ pub mod foes;
 pub mod folk;
 pub mod fx;
 pub mod gear;
+pub mod glowcave;
 pub mod home;
 pub mod hud;
 pub mod ink;

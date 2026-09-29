@@ -70,6 +70,8 @@ pub struct Enemy {
     /// Living in the old sewers, where everyone is down to their bones (and the slimes are
     /// sludge): the look and the name that go with it.
     pub sewer: bool,
+    /// Living in the glowcap caves, where the shroomlings glow like the caps.
+    pub glowcave: bool,
 }
 
 /// How long a lantern snail hides in its shell once struck, and how much of a blow the
@@ -343,6 +345,7 @@ impl Enemy {
             hide: 0.0,
             trail: Vec::new(),
             sewer: false,
+            glowcave: false,
         }
     }
 
@@ -356,9 +359,25 @@ impl Enemy {
         self
     }
 
+    /// Living in the glowcap caves (see `glowcave`).
+    pub fn in_the_glowcaves(mut self) -> Enemy {
+        self.glowcave = true;
+        self
+    }
+
+    /// A glowing shroomling's colour, as the glowcaps' (see `glowcave_art::GLOW`).
+    pub fn glow_colour(&self) -> usize {
+        self.seed as usize % 4
+    }
+
     /// One of its own kind, called up or split off: dressed as it is.
     fn kin(&self, e: Enemy) -> Enemy {
-        if self.sewer { e.in_the_sewers() } else { e }
+        let e = if self.sewer { e.in_the_sewers() } else { e };
+        if self.glowcave {
+            e.in_the_glowcaves()
+        } else {
+            e
+        }
     }
 
     /// Which of its family's looks it wears: its biome's, or the sewers'.
@@ -1352,6 +1371,13 @@ impl Enemy {
             });
         }
         match self.foe {
+            // A glowcap caves' shroomling lights its way like the caps round it.
+            Foe::Shroom if self.glowcave => Some(PointLight {
+                pos: self.world_pos() + Vec3::Y * 0.45 * self.scale(),
+                radius: 2.6 * self.scale(),
+                power: 0.45,
+                warmth: crate::assets::glowcave_art::WARMTH[self.glow_colour()],
+            }),
             Foe::Wisp => Some(PointLight {
                 pos: self.world_pos() + Vec3::Y * 0.3,
                 radius: 3.5,
@@ -1572,12 +1598,27 @@ impl Enemy {
             Foe::Shroom => {
                 let waddle = (self.anim * 8.0).sin() * 0.15;
                 let hop = (self.anim * 8.0).sin().abs() * 0.08;
-                r.mesh(
-                    &a.bank,
-                    &a.foes.shroom[b],
-                    &(at(hop) * rot * Mat4::from_rotation_z(waddle) * sc(1.0, 1.0)),
-                    &o,
-                );
+                let m = at(hop) * rot * Mat4::from_rotation_z(waddle) * sc(1.0, 1.0);
+                if self.glowcave {
+                    // Its cap glowing like the glowcaps', a glow round it and spores
+                    // puffing off it.
+                    use crate::assets::glowcave_art::{GLOW, HALO};
+                    let c = self.glow_colour();
+                    // It glows by itself: its own colours, whatever light falls on it.
+                    let own = DrawOpts {
+                        light: Light::Fixed(1.0, crate::palette::NEUTRAL),
+                        ..o
+                    };
+                    r.mesh(&a.bank, &a.foes.glow_shroom[c], &m, &own);
+                    let cap = m.transform_point3(Vec3::Y * 0.44);
+                    let pulse = (self.anim * 2.0).sin() * 0.5 + 0.5;
+                    r.halo(cap, 0.5 * s, HALO[c], 0.26 + pulse * 0.1);
+                    let t = (self.anim * 0.4).fract();
+                    let q = cap + Vec3::new((self.anim * 1.3).sin() * 0.15, 0.1 + t * 0.7, 0.0) * s;
+                    r.point(q, 1, if t < 0.5 { GLOW[c][0] } else { GLOW[c][1] });
+                } else {
+                    r.mesh(&a.bank, &a.foes.shroom[b], &m, &o);
+                }
             }
             Foe::Crab => {
                 let shuffle = (self.anim * 10.0).sin() * 0.05;

@@ -1580,6 +1580,45 @@ pub fn bench() {
         total * 1000.0 / frames as f64,
         draw_time * 1000.0 / frames as f64
     );
+    // A floor of glowcap caves, stood by the giant mushroom among the pools: lights and
+    // glows all round.
+    let glow = {
+        let p = play(&mut game);
+        (4..90).find(|&d| crate::game::glowcave::is_glowcave(p.seed, d, p.biome_at(d)))
+    };
+    if let Some(depth) = glow {
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            let w = &p.level.as_ref().unwrap().world;
+            let giant = (0..w.h)
+                .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+                .find(|&(x, z)| {
+                    matches!(
+                        w.obj(x, z),
+                        Some(crate::game::world::Obj::GiantShroom { .. })
+                    )
+                });
+            if let Some((x, z)) = giant {
+                let (x, z) = w.nearest_open(x, z + 3);
+                p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+            }
+        }
+        let t0 = Instant::now();
+        let mut draw_time = 0.0;
+        for _ in 0..frames {
+            tick(&mut game, &input, &audio, 1);
+            let t = Instant::now();
+            game.draw(&mut r, &input);
+            draw_time += t.elapsed().as_secs_f64();
+        }
+        let total = t0.elapsed().as_secs_f64();
+        println!(
+            "glowcap caves (floor {depth}): {:.2} ms/frame total, {:.2} ms/frame drawing",
+            total * 1000.0 / frames as f64,
+            draw_time * 1000.0 / frames as f64
+        );
+    }
     // The busiest place: the plaza at noon, everyone out and about.
     {
         let p = play(&mut game);
@@ -4439,4 +4478,283 @@ pub fn sewer_shots(dir: &str) {
         }
     }
     println!("sewer floors: {floors:?}");
+}
+
+/// The glowcap caves: arriving in the ruins, the whole floor from above, the torch-lit
+/// corridor, the glowing cave and its nooks, the chamber with its pools and giant mushroom,
+/// every glowcap up close, shelf fungi, and the shroomlings that live there.
+pub fn glowcave_shots(dir: &str) {
+    use crate::game::dungeon::Foe;
+    use crate::game::foes::Enemy;
+    use crate::game::glowcave::{self, is_glowcave};
+    use crate::game::world::{Floor, Obj};
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261201);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+        p.player.level = 30;
+        p.player.refresh();
+    }
+    let depth = {
+        let p = play(&mut game);
+        (4..90)
+            .find(|&d| is_glowcave(p.seed, d, p.biome_at(d)))
+            .expect("a glowcap floor")
+    };
+    descend(&mut game, &input, &audio, depth, false);
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.toasts.clear();
+        let biome = p.hollow_biome(depth);
+        p.banner = Some(crate::game::play::Banner {
+            title: format!("Floor {depth}"),
+            sub: format!(
+                "{} - the glowcap caves",
+                crate::assets::BIOME_STYLES[biome].name
+            ),
+            t: 0.0,
+        });
+    }
+    tick(&mut game, &input, &audio, 30);
+    snap(&mut game, &mut r, &input, dir, "g01_arrival");
+    let find = |game: &mut Game, want: &dyn Fn(&crate::game::world::World, i32, i32) -> bool| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (sx, sz) = p.player.tile();
+        let mut best = None;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if want(w, x, z) {
+                    let d = (x - sx).abs() + (z - sz).abs();
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, (x, z)));
+                    }
+                }
+            }
+        }
+        best.map(|(_, t)| t)
+    };
+    let tile = |(x, z): (i32, i32)| Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+    // The whole floor from high above.
+    let mid = {
+        let p = play(&mut game);
+        p.banner = None;
+        let w = &p.level.as_ref().unwrap().world;
+        Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5)
+    };
+    play(&mut game).cam.dist = 42.0;
+    snap_on(&mut game, &mut r, &input, dir, "g02_overview", Some(mid));
+    play(&mut game).cam.dist = 15.5;
+    // Along the ruins' torch-lit corridor.
+    let start = play(&mut game).player.tile();
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "g03_ruins",
+        tile(start) + Vec3::new(if start.0 < mid.x as i32 { 5.0 } else { -5.0 }, 0.0, 0.0),
+        11.0,
+    );
+    // The busiest stretch of glowing cave.
+    let busy = {
+        let p = play(&mut game);
+        let w = &p.level.as_ref().unwrap().world;
+        let mut best = (0, (0, 0));
+        for z in 4..w.h - 4 {
+            for x in 4..w.w - 4 {
+                let n = (-3..=3)
+                    .flat_map(|dz: i32| (-4..=4).map(move |dx: i32| (dx, dz)))
+                    .filter(|&(dx, dz)| {
+                        matches!(
+                            w.obj(x + dx, z + dz),
+                            Some(Obj::Glowcap { .. } | Obj::ShelfFungus { .. })
+                        )
+                    })
+                    .count();
+                let chamber = (-5..=5).any(|dz: i32| {
+                    (-5..=5).any(|dx: i32| {
+                        matches!(w.obj(x + dx, z + dz), Some(Obj::GiantShroom { .. }))
+                    })
+                });
+                if n > best.0 && !chamber && !w.blocked(x, z) {
+                    best = (n, (x, z));
+                }
+            }
+        }
+        best.1
+    };
+    {
+        let p = play(&mut game);
+        p.player.pos = Vec2::new(busy.0 as f32 + 0.5, busy.1 as f32 + 0.5);
+    }
+    tick(&mut game, &input, &audio, 2);
+    close(&mut game, &mut r, &input, dir, "g04_cave", tile(busy), 11.5);
+    // The chamber: the giant mushroom among the pools.
+    if let Some(g) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::GiantShroom { .. }))
+    }) {
+        let at = Vec3::new(g.0 as f32 + 1.0, 0.0, g.1 as f32 + 1.0);
+        {
+            let p = play(&mut game);
+            let w = &p.level.as_ref().unwrap().world;
+            let (px, pz) = w.nearest_open(g.0, g.1 + 4);
+            p.player.pos = Vec2::new(px as f32 + 0.5, pz as f32 + 0.5);
+            p.player.facing = Vec2::new(0.0, -1.0);
+        }
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "g05_chamber",
+            at + Vec3::new(0.0, 0.0, 1.5),
+            15.0,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "g06_giant",
+            at + Vec3::new(0.0, 0.8, 0.6),
+            8.0,
+        );
+    }
+    if let Some(p) = find(&mut game, &|w, x, z| w.floor(x, z) == Floor::Water) {
+        close(&mut game, &mut r, &input, dir, "g07_pool", tile(p), 7.0);
+    }
+    // A nook sealed in the rock.
+    let nook = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Glowcap { .. }))
+            && [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|&(dx, dz)| {
+                w.wall(x + dx, z + dz) != crate::game::world::Wall::None
+                    || matches!(w.obj(x + dx, z + dz), Some(Obj::Glowcap { .. }))
+            })
+            && [(2, 0), (-2, 0), (0, 2), (0, -2)]
+                .iter()
+                .any(|&(dx, dz)| !w.blocked(x + dx, z + dz))
+    });
+    if let Some(n) = nook {
+        close(&mut game, &mut r, &input, dir, "g08_nook", tile(n), 7.0);
+    }
+    // Shelf fungi up a wall.
+    if let Some(s) = find(
+        &mut game,
+        &|w, x, z| matches!(w.obj(x, z), Some(Obj::ShelfFungus { var }) if glowcave::shelf_side(*var) == glowcave::NORTH),
+    ) {
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "g09_shelves",
+            tile(s) + Vec3::new(0.0, 0.5, -0.3),
+            5.0,
+        );
+    }
+    // Every glowcap: four colours, three sizes.
+    let spot = {
+        let p = play(&mut game);
+        let w = &p.level.as_ref().unwrap().world;
+        let mut found = None;
+        'find: for z in 3..w.h - 6 {
+            for x in 3..w.w - 7 {
+                if (0..6).all(|dx| {
+                    (-1..4).all(|dz| {
+                        !w.blocked(x + dx, z + dz)
+                            && w.obj(x + dx, z + dz).is_none()
+                            && w.floor(x + dx, z + dz) == Floor::Cave
+                    })
+                }) {
+                    found = Some((x, z));
+                    break 'find;
+                }
+            }
+        }
+        found
+    };
+    if let Some((x0, z0)) = spot {
+        {
+            let p = play(&mut game);
+            let w = &mut p.level.as_mut().unwrap().world;
+            for size in 0..3 {
+                for c in 0..4 {
+                    w.set_obj(
+                        x0 + 1 + c as i32,
+                        z0 + size as i32,
+                        Some(glowcave::glowcap(c, size)),
+                    );
+                }
+            }
+            p.player.pos = Vec2::new(x0 as f32 + 3.0, z0 as f32 + 3.6);
+            p.player.facing = Vec2::new(0.0, -1.0);
+        }
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "g10_glowcaps",
+            Vec3::new(x0 as f32 + 3.0, 0.3, z0 as f32 + 1.8),
+            6.5,
+        );
+        // And the shroomlings that live among them.
+        {
+            let p = play(&mut game);
+            let w = &mut p.level.as_mut().unwrap().world;
+            for size in 0..3 {
+                for c in 0..4 {
+                    w.set_obj(x0 + 1 + c, z0 + size, None);
+                }
+            }
+            p.foes.clear();
+            for c in 0..4u32 {
+                let mut f = Enemy::new(
+                    Foe::Shroom,
+                    x0 as f32 + 1.5 + c as f32,
+                    z0 as f32 + 1.2,
+                    depth,
+                    2,
+                    false,
+                    4 + c * 4,
+                )
+                .in_the_glowcaves();
+                f.seed = c;
+                f.yaw = 0.3 - c as f32 * 0.15;
+                p.foes.push(f);
+            }
+        }
+        tick(&mut game, &input, &audio, 1);
+        hold_still(play(&mut game));
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "g11_shroomlings",
+            Vec3::new(x0 as f32 + 3.0, 0.3, z0 as f32 + 1.6),
+            6.0,
+        );
+    }
 }

@@ -15,9 +15,13 @@ use crate::util::hash2;
 pub const CHUNK: i32 = 16;
 pub const WALL_H: f32 = 1.0;
 pub const WATER_Y: f32 = -0.22;
+/// The glowcap caves' pools are shallow: barely below the ground round them.
+pub const POOL_Y: f32 = -0.03;
 /// Sewer water never looks darker than this light level: a faint glow of its own, which
 /// keeps it green in the dark rather than letting it sink to teal.
 pub const SEWER_GLOW: f32 = 0.74;
+/// The glowcap caves' pools shine brighter still.
+pub const POOL_GLOW: f32 = 1.0;
 pub const WATERED: u8 = 1;
 /// Watered by a can with Growth: the crop may grow an extra day tonight.
 pub const FERTILE: u8 = 2;
@@ -67,7 +71,7 @@ pub enum Wall {
     Hedge,
     /// A tall papered wall inside a building, by style.
     Paper(u8),
-    /// Old sewer brickwork.
+    /// Old brickwork: a sewer's, or a ruin's in the glowcap caves.
     Sewer,
 }
 
@@ -265,10 +269,28 @@ pub enum Obj {
     Debris {
         var: u8,
     },
+    /// Glowing mushrooms in the glowcap caves, by colour and size (see `glowcave::glowcap`):
+    /// a cluster of little ones, a few bigger ones, or one tall one you can't walk through.
+    Glowcap {
+        var: u8,
+    },
+    /// Shelf fungi growing out of the wall beside a tile, glowing, by colour and which wall
+    /// (see `glowcave::shelf`).
+    ShelfFungus {
+        var: u8,
+    },
+    /// A giant glowing mushroom, standing on four tiles (the other three are `Part`s), by
+    /// colour.
+    GiantShroom {
+        var: u8,
+    },
 }
 
 impl Obj {
     pub fn solid(&self) -> bool {
+        if let Obj::Glowcap { var } = self {
+            return super::glowcave::cap_size(*var) == super::glowcave::TALL;
+        }
         !matches!(
             self,
             Obj::Weed { .. }
@@ -282,6 +304,7 @@ impl Obj {
                 | Obj::Drain
                 | Obj::Grate
                 | Obj::Debris { .. }
+                | Obj::ShelfFungus { .. }
         )
     }
 
@@ -307,6 +330,26 @@ impl Obj {
                 opened: false,
                 gleam: true,
             } => Some((0.5, 2.6, 0.45, 6.5)),
+            Obj::Glowcap { var } => {
+                let warmth = crate::assets::glowcave_art::WARMTH[*var as usize % 4];
+                Some(match super::glowcave::cap_size(*var) {
+                    0 => (0.25, 2.2, 0.3, warmth),
+                    1 => (0.35, 2.8, 0.4, warmth),
+                    _ => (0.75, 3.6, 0.55, warmth),
+                })
+            }
+            Obj::ShelfFungus { var } => Some((
+                0.6,
+                2.4,
+                0.32,
+                crate::assets::glowcave_art::WARMTH[*var as usize % 4],
+            )),
+            Obj::GiantShroom { var } => Some((
+                2.2,
+                7.5,
+                0.85,
+                crate::assets::glowcave_art::WARMTH[*var as usize % 4],
+            )),
             _ => None,
         }
     }
@@ -342,8 +385,12 @@ pub struct World {
     snow: bool,
     /// An old sewer floor of the Hollow: its water is murky green (see `sewer`).
     pub sewer: bool,
+    /// A floor of glowcap caves: dark rock, mossy ground, old flagstones and brickwork in
+    /// its ruins, and glowing pools (see `glowcave`).
+    pub glowcave: bool,
     chunks: Vec<Mesh>,
-    /// What glows in each chunk (sewer water), drawn with a light floor of `SEWER_GLOW`.
+    /// What glows in each chunk (sewer water, glowing pools), drawn with a light floor of
+    /// `SEWER_GLOW` or `POOL_GLOW`.
     glowing: Vec<Mesh>,
     /// Tufts of grass on the open lawn, in `TUFTS`-tile blocks, drawn swaying in the breeze.
     grass: Vec<Mesh>,
@@ -377,6 +424,7 @@ impl World {
             wall_dmg: Default::default(),
             snow: false,
             sewer: false,
+            glowcave: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             glowing: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
@@ -715,7 +763,8 @@ impl World {
             .collect()
     }
 
-    /// The glowing parts of the chunks that intersect the rectangle (see `SEWER_GLOW`).
+    /// The glowing parts of the chunks that intersect the rectangle (see `SEWER_GLOW` and
+    /// `POOL_GLOW`).
     pub fn visible_glow(&self, rect: (i32, i32, i32, i32)) -> Vec<&Mesh> {
         self.chunk_range(rect)
             .into_iter()
@@ -945,10 +994,25 @@ impl World {
                 }
             }
             Floor::Water if self.sewer => a.sewer.water[0],
+            Floor::Water if self.glowcave => a.glowcave.water[0][self.shore(x, z) as usize],
             Floor::Water => a.water[0],
+            // The glowcap caves' old flagstones.
+            Floor::Walkway if self.glowcave => a.glowcave.flags[(h % 3 == 0) as usize],
             Floor::Walkway => a.sewer.walk[self.curb(x, z) as usize],
             Floor::Bridge => a.sewer.wood[self.deck_turn(x, z)],
             Floor::CopperBridge => a.sewer.copper[self.deck_turn(x, z)],
+            Floor::Cave if self.glowcave => {
+                // Moss in patches, and here and there a sprinkle of glowing spores.
+                let g = &a.glowcave.floor;
+                let patch = hash2(x.div_euclid(3), z.div_euclid(3), 91) % 3 == 0;
+                if h % 7 == 0 {
+                    g[3]
+                } else if patch {
+                    g[1 + (h % 2) as usize]
+                } else {
+                    g[0]
+                }
+            }
             Floor::Cave => {
                 let b = &a.biomes[self.biome];
                 b.floor[if h % 5 == 0 { 1 } else { (h % 2) as usize * 2 }]
@@ -960,6 +1024,16 @@ impl World {
 
     fn wall_tex(&self, a: &Assets, w: Wall) -> (TexId, TexId) {
         let b = &a.biomes[self.biome];
+        if self.glowcave {
+            let g = &a.glowcave;
+            match w {
+                Wall::Rock | Wall::None => return (g.rock_side, g.rock_top),
+                Wall::Ore(o) => return (g.ore_side[o as usize % g.ore_side.len()], g.rock_top),
+                Wall::Bedrock => return (g.rock_side, a.bedrock),
+                Wall::Sewer => return (g.ruin_side, g.ruin_top),
+                _ => {}
+            }
+        }
         match w {
             Wall::Rock => (b.side, b.top),
             Wall::Ore(o) => (
@@ -979,6 +1053,20 @@ impl World {
         }
     }
 
+    /// Which sides of a pool tile meet the shore (see `glowcave_art::shore`).
+    fn shore(&self, x: i32, z: i32) -> u8 {
+        use crate::assets::sewer_art::{EAST, NORTH, SOUTH, WEST};
+        [(0, -1, NORTH), (1, 0, EAST), (0, 1, SOUTH), (-1, 0, WEST)]
+            .iter()
+            .filter(|(dx, dz, _)| self.floor(x + dx, z + dz) != Floor::Water)
+            .fold(0, |m, (_, _, bit)| m | bit)
+    }
+
+    /// How high the water stands (see `WATER_Y` and `POOL_Y`).
+    pub fn water_y(&self) -> f32 {
+        if self.glowcave { POOL_Y } else { WATER_Y }
+    }
+
     /// Which sides of a walkway meet the water (see `sewer_art::NORTH` and so on).
     fn curb(&self, x: i32, z: i32) -> u8 {
         use crate::assets::sewer_art::{EAST, NORTH, SOUTH, WEST};
@@ -995,9 +1083,9 @@ impl World {
         if wet(x, z - 1) || wet(x, z + 1) { 0 } else { 1 }
     }
 
-    fn floor_y(f: Floor) -> f32 {
+    fn floor_y(&self, f: Floor) -> f32 {
         match f {
-            Floor::Water => WATER_Y,
+            Floor::Water => self.water_y(),
             Floor::Lava => -0.12,
             _ => 0.0,
         }
@@ -1040,7 +1128,7 @@ impl World {
                     );
                     // South face (towards the camera).
                     if !hides(x, z + 1, hgt) {
-                        let base = Self::floor_y(self.floor(x, z + 1)).min(0.0);
+                        let base = self.floor_y(self.floor(x, z + 1)).min(0.0);
                         m.quad(
                             [
                                 Vec3::new(fx, base, fz + 1.0),
@@ -1086,7 +1174,7 @@ impl World {
                 if matches!(self.objs[i], Some(Obj::StairsDown)) {
                     continue;
                 }
-                let y = Self::floor_y(f);
+                let y = self.floor_y(f);
                 // Ambient occlusion at each corner from surrounding walls.
                 let ao = |ox: i32, oz: i32| {
                     let mut n = 0;
@@ -1099,7 +1187,7 @@ impl World {
                 };
                 let corners = [ao(0, 1), ao(1, 1), ao(1, 0), ao(0, 0)];
                 let tex = self.floor_tex(a, x, z, f);
-                let glows = f == Floor::Water && self.sewer;
+                let glows = f == Floor::Water && (self.sewer || self.glowcave);
                 (if glows { &mut glow } else { &mut m }).quad_ao(
                     [
                         Vec3::new(fx, y, fz + 1.0),
@@ -1119,6 +1207,8 @@ impl World {
                     // Earthy banks up top; the cave's own rock underground.
                     let bank = if self.sewer {
                         a.sewer.bank
+                    } else if self.glowcave {
+                        a.glowcave.bank
                     } else if f == Floor::Water && !matches!(self.area, Area::Hollow { .. }) {
                         a.soil
                     } else {
@@ -1127,7 +1217,7 @@ impl World {
                     let higher = |tx: i32, tz: i32| {
                         let nf = self.floor(tx, tz);
                         !solid(tx, tz)
-                            && Self::floor_y(nf) > y
+                            && self.floor_y(nf) > y
                             && !matches!(nf, Floor::Void | Floor::Bridge | Floor::CopperBridge)
                     };
                     if higher(x, z - 1) {

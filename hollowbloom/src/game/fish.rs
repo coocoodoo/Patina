@@ -12,7 +12,7 @@ use super::gear::{Class, Stat};
 use super::items::{Item, Stack};
 use super::loot;
 use super::play::Play;
-use super::world::{Area, Floor, WATER_Y};
+use super::world::{Area, Floor};
 use crate::assets::models::{HERO, SHOULDER, SHOULDER_X};
 use crate::audio::Sfx;
 use crate::input::Action;
@@ -1167,6 +1167,8 @@ impl Play {
             (Area::Farm, Floor::Water) => Some(Water::Pond),
             (Area::Town, Floor::Water) => Some(Water::River),
             (Area::Hollow { .. }, Floor::Water) if self.world().sewer => Some(Water::Sewer),
+            // The glowcap caves' pools hold the Fungal Hollow's fish, wherever they are.
+            (Area::Hollow { .. }, Floor::Water) if self.world().glowcave => Some(Water::Fungal),
             (Area::Hollow { depth }, Floor::Water) => Some(match self.hollow_biome(depth) {
                 0 => Water::Cave,
                 1 => Water::Grotto,
@@ -1308,7 +1310,7 @@ impl Play {
         }
         let y = match water {
             Some(Water::Lava) => -0.1,
-            Some(_) => WATER_Y + 0.04,
+            Some(_) => self.world().water_y() + 0.04,
             None => 0.05,
         };
         let Some(fsh) = &mut self.fishing else { return };

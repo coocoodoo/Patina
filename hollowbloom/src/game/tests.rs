@@ -3553,3 +3553,66 @@ fn an_ink_map_lights_the_way_down() {
     s.tap(KeyCode::KeyE, 5);
     assert_eq!(s.play.player.inv.count(Item::InkMap), 1);
 }
+
+#[test]
+fn glowcap_caves_glow_and_their_mushrooms_can_be_gathered() {
+    use super::dungeon::Foe;
+    use super::fish::Water;
+    use super::glowcave::{self, TALL, is_glowcave};
+    use super::world::Floor;
+    let mut s = Sim::new();
+    let depth = (4..90)
+        .find(|&d| is_glowcave(s.play.seed, d, s.play.biome_at(d)))
+        .expect("a glowcap floor");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    s.frames(30);
+    assert!(s.play.world().glowcave);
+    let banner = s.play.banner.as_ref().expect("the floor's banner");
+    assert!(banner.sub.ends_with("the glowcap caves"), "{}", banner.sub);
+    // Lit cooler than the caves round about, and everyone who lives here is at home in it:
+    // the shroomlings glow like the caps.
+    let env = s.play.env();
+    assert!(env.warmth < 3.0);
+    assert!(s.play.foes.iter().all(|f| f.glowcave));
+    let mut shroom =
+        super::foes::Enemy::new(Foe::Shroom, 5.0, 5.0, depth, 2, false, 3).in_the_glowcaves();
+    assert!(shroom.light().is_some(), "it lights its way");
+    shroom.glowcave = false;
+    assert!(shroom.light().is_none());
+    // A sickle through a tall glowcap gathers at least one glowcap, and it's gone.
+    let (x, z) = {
+        let w = s.play.world_mut();
+        let spot = (0..w.h)
+            .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+            .find(|&(x, z)| matches!(w.obj(x, z), Some(Obj::Glowcap { .. })))
+            .expect("glowcaps");
+        w.set_obj(spot.0, spot.1, Some(glowcave::glowcap(1, TALL)));
+        spot
+    };
+    s.play.drops.clear();
+    let mut io = frame_io(&s.input, &s.audio);
+    assert!(s.play.gather_glow(x, z, &mut io));
+    assert!(s.play.world().obj(x, z).is_none());
+    let caps: u32 = s
+        .play
+        .drops
+        .iter()
+        .filter(|d| d.stack.item == Item::Glowcap)
+        .map(|d| d.stack.n as u32)
+        .sum();
+    assert!(caps >= 1);
+    assert!(!s.play.gather_glow(x, z, &mut io), "nothing left there");
+    // Its pools hold the Fungal Hollow's fish.
+    let pool = {
+        let w = s.play.world();
+        (0..w.h)
+            .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+            .find(|&(x, z)| w.floor(x, z) == Floor::Water)
+            .expect("a pool")
+    };
+    assert_eq!(s.play.water_at(pool.0, pool.1), Some(Water::Fungal));
+}

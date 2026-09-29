@@ -641,7 +641,13 @@ impl Play {
                     (Wall::None, Some(Obj::Waystone)) => MINT,
                     (Wall::None, _) if wld.floor(x, z) == Floor::Void => continue,
                     (Wall::None, _) if wld.floor(x, z) == Floor::Lava => ORANGE,
-                    (Wall::None, _) if wld.floor(x, z) == Floor::Water => TEAL,
+                    (Wall::None, _) if wld.floor(x, z) == Floor::Water => {
+                        if wld.glowcave {
+                            AQUA
+                        } else {
+                            TEAL
+                        }
+                    }
                     (Wall::None, _) if wld.floor(x, z) == Floor::Bridge => CLAY,
                     (Wall::None, _) if wld.floor(x, z) == Floor::CopperBridge => AQUA,
                     (

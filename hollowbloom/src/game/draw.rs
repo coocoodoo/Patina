@@ -4,11 +4,13 @@ use std::f32::consts::PI;
 
 use glam::{Mat4, Vec2, Vec3};
 
+use super::glowcave::{EAST, NORTH, cap_colour, cap_size, shelf_side};
 use super::home::{self, Furn};
 use super::items::{Item, Stack};
 use super::play::Season;
-use super::world::{Floor, Obj, SEWER_GLOW, WATER_Y, World};
+use super::world::{Floor, Obj, POOL_GLOW, SEWER_GLOW, WATER_Y, World};
 use crate::assets::Assets;
+use crate::assets::glowcave_art::{GLOW, HALO};
 use crate::assets::models::{ARM_L, ARM_R, BODY, HEAD, Humanoid, LEG_L, LEG_R};
 use crate::palette::*;
 use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, TexId, UvRect, Warp};
@@ -132,6 +134,8 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
             }
             let base = match o {
                 Obj::Furniture { f, rot, .. } => home::center(*f, *rot, x, z),
+                // Stood on four tiles, from the corner they share.
+                Obj::GiantShroom { .. } => Vec3::new(x as f32 + 1.0, 0.0, z as f32 + 1.0),
                 _ => Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5),
             };
             if let Some((hgt, radius, power, warmth)) = o.light() {
@@ -172,6 +176,21 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
             }
         }
     }
+    // The glowcap caves' pools light up the rock round them.
+    if w.glowcave {
+        for z in z0.max(0)..z1.min(w.h) {
+            for x in x0.max(0)..x1.min(w.w) {
+                if w.floor(x, z) == Floor::Water && (x + z) % 2 == 0 {
+                    out.push(PointLight {
+                        pos: Vec3::new(x as f32 + 0.5, 0.1, z as f32 + 0.5),
+                        radius: 2.8,
+                        power: 0.4,
+                        warmth: 1.2,
+                    });
+                }
+            }
+        }
+    }
     if w.biome == 3 && matches!(w.area, super::world::Area::Hollow { .. }) {
         for z in z0.max(0)..z1.min(w.h) {
             for x in x0.max(0)..x1.min(w.w) {
@@ -205,6 +224,11 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     if w.sewer {
         r.remap.push((a.sewer.water[0], a.sewer.water[frame]));
     }
+    if w.glowcave {
+        let water = &a.glowcave.water;
+        r.remap
+            .extend((0..16).map(|m| (water[0][m], water[frame][m])));
+    }
     if let Some(s) = env.season {
         r.remap.extend_from_slice(&a.props.seasons[s as usize]);
     }
@@ -213,7 +237,7 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
         r.mesh(&a.bank, chunk, &Mat4::IDENTITY, &opts);
     }
     let glow = DrawOpts {
-        glow: SEWER_GLOW,
+        glow: if w.glowcave { POOL_GLOW } else { SEWER_GLOW },
         ..opts
     };
     for chunk in w.visible_glow(rect) {
@@ -225,6 +249,63 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
             if let Some(o) = w.obj(x, z) {
                 draw_object(r, a, w, x, z, o, env);
             }
+        }
+    }
+    if w.glowcave {
+        pool_shimmer(r, w, rect, env.time);
+    }
+}
+
+/// Glowing pools shimmer: a soft glow here and there on the water, and motes of light
+/// rising off it.
+fn pool_shimmer(r: &mut Renderer, w: &World, (x0, z0, x1, z1): (i32, i32, i32, i32), time: f32) {
+    for z in z0.max(0)..=z1.min(w.h - 1) {
+        for x in x0.max(0)..=x1.min(w.w - 1) {
+            if w.floor(x, z) != Floor::Water {
+                continue;
+            }
+            let h = hash2(x, z, 41);
+            let at = Vec3::new(x as f32 + 0.5, w.water_y() + 0.02, z as f32 + 0.5);
+            if h % 4 == 1 {
+                let pulse = (time * 1.1 + (h % 13) as f32).sin() * 0.5 + 0.5;
+                r.halo(at, 0.6, AQUA, 0.1 + pulse * 0.06);
+            }
+            if h % 3 == 0 {
+                let k = (time * 0.35 + (h % 100) as f32 / 100.0).fract();
+                if k < 0.55 {
+                    let sway = (time * 1.7 + (h % 17) as f32).sin() * 0.1;
+                    let q = at + Vec3::new(sway, k * 1.1, ((h / 7) % 5) as f32 * 0.08 - 0.16);
+                    r.point(q, 1, if k < 0.3 { WHITE } else { MINT });
+                }
+            }
+        }
+    }
+}
+
+/// A cluster of glowcaps: pale stems, caps shining in their colour with a glow all round,
+/// and spores drifting up off the bigger ones.
+fn draw_glowcap(r: &mut Renderer, a: &Assets, (x, z): (i32, i32), var: u8, env: &Env) {
+    let base = Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+    let (c, size) = (cap_colour(var), cap_size(var));
+    let m = Mat4::from_translation(base) * small_rot(x, z);
+    r.shadow(a.tex(a.disk), base, [0.2, 0.3, 0.38][size]);
+    r.mesh(
+        &a.bank,
+        &a.glowcave.glowcaps[c][size],
+        &m,
+        &DrawOpts::default().with_mode(Mode::Unlit),
+    );
+    let pulse = (env.time * 1.3 + (x * 7 + z * 3) as f32 * 0.7).sin() * 0.5 + 0.5;
+    let (hy, hr, hs) = [(0.12, 0.36, 0.28), (0.3, 0.52, 0.32), (0.66, 0.72, 0.36)][size];
+    r.halo(base + Vec3::Y * hy, hr, HALO[c], hs + pulse * 0.08);
+    if size > 0 {
+        let h = (hash2(x, z, 77) % 1000) as f32 / 1000.0;
+        let t = (env.time * 0.25 + h).fract();
+        if t < 0.8 {
+            let k = h * std::f32::consts::TAU + env.time * 0.8;
+            let rise = [0.3, 0.4, 0.8][size] + t * 1.1;
+            let q = base + Vec3::new(k.sin() * 0.2, rise, k.cos() * 0.14);
+            r.point(q, 1, if t < 0.45 { GLOW[c][0] } else { GLOW[c][1] });
         }
     }
 }
@@ -506,6 +587,63 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 );
             } else {
                 r.mesh(&a.bank, mesh, &(at * small_rot(x, z)), &lit);
+            }
+        }
+        Obj::Glowcap { var } => draw_glowcap(r, a, (x, z), *var, env),
+        Obj::ShelfFungus { var } => {
+            // Out of the face of the wall beside the tile, slid along it a little.
+            let c = cap_colour(*var);
+            let slide = ((hash2(x, z, 5) % 5) as f32 - 2.0) * 0.05;
+            let (at, turn, out) = match shelf_side(*var) {
+                NORTH => (Vec3::new(base.x + slide, 0.0, z as f32), 0.0, Vec3::Z),
+                EAST => (
+                    Vec3::new(x as f32 + 1.0, 0.0, base.z + slide),
+                    -PI / 2.0,
+                    Vec3::NEG_X,
+                ),
+                _ => (Vec3::new(x as f32, 0.0, base.z + slide), PI / 2.0, Vec3::X),
+            };
+            r.mesh(
+                &a.bank,
+                &a.glowcave.shelves[c],
+                &(Mat4::from_translation(at) * Mat4::from_rotation_y(turn)),
+                &DrawOpts::default().with_mode(Mode::Unlit),
+            );
+            let pulse = (env.time * 1.1 + (x * 5 + z) as f32).sin() * 0.5 + 0.5;
+            r.halo(
+                at + out * 0.15 + Vec3::Y * 0.6,
+                0.42,
+                HALO[c],
+                0.2 + pulse * 0.06,
+            );
+        }
+        Obj::GiantShroom { var } => {
+            let c = *var as usize % 4;
+            let g = &a.glowcave;
+            let mid = Vec3::new(x as f32 + 1.0, 0.0, z as f32 + 1.0);
+            let m = Mat4::from_translation(mid) * small_rot(x, z);
+            r.shadow(a.tex(a.disk), mid, 1.3);
+            r.mesh(
+                &a.bank,
+                &g.giant_stem[c],
+                &m,
+                &DrawOpts::at(mid + Vec3::Y).with_glow(0.8),
+            );
+            r.mesh(
+                &a.bank,
+                &g.giant_cap[c],
+                &m,
+                &DrawOpts::default().with_mode(Mode::Unlit),
+            );
+            let pulse = (env.time * 0.9 + x as f32).sin() * 0.5 + 0.5;
+            r.halo(mid + Vec3::Y * 2.1, 2.3, HALO[c], 0.18 + pulse * 0.08);
+            // Spores sifting down from under the cap.
+            for k in 0..7 {
+                let t = (env.time * 0.16 + k as f32 / 7.0).fract();
+                let turn = k as f32 * 0.9 + env.time * 0.12;
+                let rr = 0.9 + (k % 3) as f32 * 0.4;
+                let q = mid + Vec3::new(turn.cos() * rr, 1.55 - t * 1.45, turn.sin() * rr);
+                r.point(q, 1, if t < 0.5 { GLOW[c][0] } else { GLOW[c][1] });
             }
         }
         Obj::House => {

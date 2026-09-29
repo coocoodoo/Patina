@@ -366,6 +366,9 @@ pub fn generate(seed: u64, depth: u32, biome: usize, via_waystone: bool) -> Leve
     if super::sewer::is_sewer(seed, depth) {
         return super::sewer::generate(seed, depth, biome);
     }
+    if super::glowcave::is_glowcave(seed, depth, biome) {
+        return super::glowcave::generate(seed, depth, biome);
+    }
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x9E37_79B9));
     let grow = depth.min(30) as i32;
     let (w, h) = (44 + grow, 36 + grow * 2 / 3);
