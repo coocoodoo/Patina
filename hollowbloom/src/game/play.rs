@@ -532,32 +532,16 @@ impl Play {
     }
 
     pub fn music(&self) -> (Option<Song>, i32, f32) {
+        let night = self.clock.min > 1170.0;
         match self.area {
-            Area::Town => {
-                if self.clock.min > 1170.0 {
-                    (Some(Song::Night), -2, 0.95)
-                } else {
-                    (Some(Song::Town), 0, 1.0)
-                }
-            }
-            Area::Inside(place) => {
-                let tr = [0, -3, 2, -2, -5, 3, 4, 1, 5, -1, 0, 6][place as usize];
-                (Some(Song::Shop), tr, 1.0)
-            }
-            Area::Home => {
-                if self.clock.min > 1170.0 {
-                    (Some(Song::Night), -2, 0.9)
-                } else {
-                    (Some(Song::Haven), 2, 0.95)
-                }
-            }
-            Area::Farm => {
-                if self.clock.min > 1170.0 {
-                    (Some(Song::Night), 0, 1.0)
-                } else {
-                    (Some(Song::Morning), 0, 1.0)
-                }
-            }
+            Area::Town if night => (Some(Song::Night), 0, 1.0),
+            Area::Town => (Some(Song::Town), 0, 1.0),
+            Area::Inside(_) => (Some(Song::Shop), 0, 1.0),
+            Area::Home if night => (Some(Song::Night), 0, 0.92),
+            Area::Home => (Some(Song::Haven), 0, 1.0),
+            Area::Farm if night => (Some(Song::Night), 0, 1.0),
+            Area::Farm if self.clock.min < 720.0 => (Some(Song::Morning), 0, 1.0),
+            Area::Farm => (Some(Song::Afternoon), 0, 1.0),
             Area::Hollow { depth } => {
                 if self.foes.iter().any(|f| f.boss && f.alert) {
                     return (Some(Song::Boss), 0, 1.0);
@@ -565,10 +549,15 @@ impl Play {
                 if is_waystone_floor(depth) && !self.foes.iter().any(|f| f.boss) {
                     return (Some(Song::Haven), 0, 1.0);
                 }
-                let b = biome_for(depth);
-                let tr = [0, 2, -2, -3, 5, 3][b];
-                let tempo = [1.0, 1.04, 0.96, 1.1, 0.92, 1.0][b];
-                (Some(Song::Hollow), tr, tempo)
+                // Three themes, each biome of a pair in its own key and pace.
+                match biome_for(depth) {
+                    0 => (Some(Song::Burrows), 0, 1.0),
+                    1 => (Some(Song::Glimmer), 0, 1.0),
+                    2 => (Some(Song::Burrows), -2, 1.06),
+                    3 => (Some(Song::Depths), 0, 1.06),
+                    4 => (Some(Song::Glimmer), -2, 0.92),
+                    _ => (Some(Song::Depths), -3, 0.94),
+                }
             }
         }
     }

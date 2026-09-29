@@ -1459,6 +1459,60 @@ pub fn palette_chart(path: &str) {
     let _ = save_png(Path::new(path), &fb, 3);
 }
 
+/// `--music DIR`: every song from its start to a few seconds past where it first starts
+/// over, as WAV files (at the game's default music volume), and its notes as CSV.
+pub fn music(dir: &str) {
+    use crate::audio::music::{Player, SONGS};
+    use crate::audio::synth::RATE;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    for &song in SONGS {
+        let mut p = Player::new(song, 0, 1.0);
+        let (first, _) = p.length();
+        let n = ((first + 4.0) * RATE) as usize;
+        let pcm: Vec<i16> = (0..n)
+            .map(|_| ((p.next() * 0.7 * 0.8).clamp(-1.0, 1.0) * 30000.0) as i16)
+            .collect();
+        let path = dir.join(format!("{}.wav", song.name()));
+        match write_wav(&path, &pcm, RATE as u32) {
+            Ok(()) => println!("wrote {} ({first:.0}s)", path.display()),
+            Err(e) => eprintln!("failed to write {}: {e}", path.display()),
+        }
+        // And the notes, for a look at the song's shape.
+        let csv: String = p
+            .written()
+            .iter()
+            .map(|(part, t, len, m)| format!("{part},{t:.3},{len:.3},{m}\n"))
+            .collect();
+        let _ = std::fs::write(dir.join(format!("{}.csv", song.name())), csv);
+    }
+}
+
+/// Mono 16-bit PCM in a WAV file.
+fn write_wav(path: &Path, pcm: &[i16], rate: u32) -> std::io::Result<()> {
+    let data = pcm.len() as u32 * 2;
+    let mut b = Vec::with_capacity(44 + data as usize);
+    b.extend_from_slice(b"RIFF");
+    b.extend_from_slice(&(36 + data).to_le_bytes());
+    b.extend_from_slice(b"WAVEfmt ");
+    b.extend_from_slice(&16u32.to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&rate.to_le_bytes());
+    b.extend_from_slice(&(rate * 2).to_le_bytes());
+    b.extend_from_slice(&2u16.to_le_bytes());
+    b.extend_from_slice(&16u16.to_le_bytes());
+    b.extend_from_slice(b"data");
+    b.extend_from_slice(&data.to_le_bytes());
+    for s in pcm {
+        b.extend_from_slice(&s.to_le_bytes());
+    }
+    std::fs::write(path, b)
+}
+
 pub fn bench() {
     let audio = Audio::silent();
     let input = Input::default();

@@ -32,6 +32,7 @@ OPTIONS:
     --light-shots DIR  render sun and moon shadows and ambient occlusion
     --monster-shots DIR  render every monster family in every biome's look
     --feature-shots DIR  render recipe cards, bombs, secret rooms and store hours
+    --music DIR     render every song to WAV files
     --bench         measure rendering speed
     -h, --help      show this help
 
@@ -103,6 +104,10 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--town-shots") {
         headless::town_shots(args.get(i + 1).map(String::as_str).unwrap_or("town"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--music") {
+        headless::music(args.get(i + 1).map(String::as_str).unwrap_or("music"));
         return;
     }
     if args.iter().any(|a| a == "--bench") {

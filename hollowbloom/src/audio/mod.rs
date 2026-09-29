@@ -5,6 +5,7 @@
 
 mod backend;
 pub mod music;
+mod songs;
 pub mod synth;
 
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};

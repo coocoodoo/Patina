@@ -482,6 +482,7 @@ hollowbloom --home-shots DIR      # fishing, the farmhouse, cooking and the furn
 hollowbloom --light-shots DIR     # the sun's shadows through the day, the moon, ambient occlusion
 hollowbloom --monster-shots DIR   # every monster family in every biome, the moon, the giants
 hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs and secret rooms
+hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
 hollowbloom --bench               # rendering speed (about 5 ms per frame at 480x270)
 hollowbloom --palette-chart FILE  # the light maps: every colour at every light level
@@ -526,10 +527,14 @@ hollowbloom --mute                # no sound
 * **Everything is procedural or written in code**: tile textures, the low-poly models
   (boxes and lathes, including a 3D look for every hat, boot, shield, weapon and tool), about
   390 item icons, crop sprites and stat symbols drawn as ASCII art, two bitmap fonts,
-  the sound effects (sfxr-style synthesis) and the chiptune soundtrack (a small four-channel
-  sequencer with eight songs). The town's buildings are generated from a short description
-  each (size, walls, roof, awning, sign), and villagers find their way about with a simple
-  breadth-first path search over the town's tiles.
+  the sound effects (sfxr-style synthesis) and the chiptune soundtrack: eleven songs (the
+  farm by morning and afternoon, night, the town's waltz, the shops, home, three Hollow
+  themes, the guardians and the title), each written as sections of chords, a tune and a
+  counter-tune, with the arpeggios and bass lines drawn from the chords. Tests check that
+  every part fits its bars and that no held note clashes with the chord under it. The
+  town's buildings are generated from a short description each (size, walls, roof, awning,
+  sign), and villagers find their way about with a simple breadth-first path search over
+  the town's tiles.
 * **Audio** uses ALSA on Linux (loaded with `dlopen`) and winmm on Windows, from a mixer
   thread.
 
