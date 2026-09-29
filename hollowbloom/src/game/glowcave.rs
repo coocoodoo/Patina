@@ -448,7 +448,9 @@ pub fn generate(seed: u64, depth: u32, biome: usize) -> Level {
         }
     }
 
-    let start = (fx(x0 + 1), cz + 1);
+    // In at the far end of the corridor, on its north side (the wall across the south side
+    // would hide you from view).
+    let start = (fx(x0 + 1), cz);
 
     // Nooks sealed off in the rock beside the way, one wall's thickness from it.
     let mut nooks: Vec<Vec<(i32, i32)>> = Vec::new();

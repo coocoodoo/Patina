@@ -4757,4 +4757,205 @@ pub fn glowcave_shots(dir: &str) {
             6.0,
         );
     }
+
+    // A walk through glowcap caves in the Fungal Hollow itself, as you'd play it.
+    let fungal = {
+        let p = play(&mut game);
+        (4..120).find(|&d| p.biome_at(d) == 2 && is_glowcave(p.seed, d, 2))
+    };
+    let Some(depth) = fungal else { return };
+    descend(&mut game, &input, &audio, depth, false);
+    // Nobody about to spoil the pictures (the shroomlings are brought on as needed), and
+    // the hero fresh.
+    let fresh = |game: &mut Game| {
+        let p = play(game);
+        p.player.flash = 0.0;
+        p.player.hurt = 0.0;
+        p.player.hp = p.player.hp.max(p.player.base_hp);
+    };
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.toasts.clear();
+        p.banner = Some(crate::game::play::Banner {
+            title: format!("Floor {depth}"),
+            sub: "Fungal Hollow - the glowcap caves".into(),
+            t: 0.0,
+        });
+    }
+    tick(&mut game, &input, &audio, 30);
+    fresh(&mut game);
+    snap(&mut game, &mut r, &input, dir, "g12_fungal_arrival");
+    play(&mut game).banner = None;
+    // Where the ruins open onto the cave.
+    let door = find(&mut game, &|w, x, z| {
+        w.floor(x, z) == Floor::Walkway
+            && [(1, 0), (-1, 0)]
+                .iter()
+                .any(|&(dx, _)| w.floor(x + dx, z) == Floor::Cave && !w.blocked(x + dx, z))
+    });
+    if let Some((x, z)) = door {
+        {
+            let p = play(&mut game);
+            p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+        }
+        tick(&mut game, &input, &audio, 2);
+        fresh(&mut game);
+        snap(&mut game, &mut r, &input, dir, "g13_out_of_the_ruins");
+    }
+    // Along the glowing cave, shroomlings pottering about.
+    let busy = {
+        let p = play(&mut game);
+        let w = &p.level.as_ref().unwrap().world;
+        let mut best = (0, (0, 0));
+        for z in 4..w.h - 4 {
+            for x in 4..w.w - 4 {
+                if w.blocked(x, z) || w.floor(x, z) != Floor::Cave {
+                    continue;
+                }
+                let n = (-3..=3)
+                    .flat_map(|dz: i32| (-4..=4).map(move |dx: i32| (dx, dz)))
+                    .filter(|&(dx, dz)| {
+                        matches!(
+                            w.obj(x + dx, z + dz),
+                            Some(Obj::Glowcap { .. } | Obj::ShelfFungus { .. })
+                        )
+                    })
+                    .count();
+                if n > best.0 {
+                    best = (n, (x, z));
+                }
+            }
+        }
+        best.1
+    };
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.player.pos = Vec2::new(busy.0 as f32 + 0.5, busy.1 as f32 + 0.5);
+        p.player.facing = Vec2::new(0.3, 1.0).normalize();
+        let w = &p.level.as_ref().unwrap().world;
+        let mut k = 0u32;
+        for (dx, dz) in [(3, -1), (-3, 2), (2, 3), (-2, -3), (4, 2)] {
+            let (x, z) = (busy.0 + dx, busy.1 + dz);
+            if k < 3 && !w.blocked(x, z) {
+                let mut f = Enemy::new(
+                    Foe::Shroom,
+                    x as f32 + 0.5,
+                    z as f32 + 0.5,
+                    depth,
+                    2,
+                    false,
+                    k,
+                )
+                .in_the_glowcaves();
+                f.seed = k + 1;
+                f.yaw = 0.6 - k as f32 * 0.9;
+                f.anim = k as f32 * 1.3;
+                p.foes.push(f);
+                k += 1;
+            }
+        }
+    }
+    tick(&mut game, &input, &audio, 1);
+    hold_still(play(&mut game));
+    fresh(&mut game);
+    snap(&mut game, &mut r, &input, dir, "g14_through_the_cave");
+    // A sickle through a glowcap: spores and pickings.
+    let cap = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Glowcap { var }) if glowcave::cap_size(*var) == glowcave::MEDIUM)
+            && !w.blocked(x, z + 1)
+            && w.obj(x, z + 1).is_none()
+    });
+    if let Some((x, z)) = cap {
+        {
+            let p = play(&mut game);
+            p.foes.clear();
+            p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 1.45);
+            p.player.facing = Vec2::new(0.0, -1.0);
+            if let Some(i) = (0..crate::game::player::HOTBAR).find(|&i| {
+                p.player.inv.slots[i].is_some_and(|s| {
+                    matches!(
+                        s.item.def().kind,
+                        crate::game::items::Kind::Gear(b) if b.class == crate::game::gear::Class::Sickle
+                    )
+                })
+            }) {
+                p.player.sel = i;
+            }
+        }
+        tick(&mut game, &input, &audio, 2);
+        {
+            let p = play(&mut game);
+            let mut io = mk_io(&input, &audio);
+            p.gather_glow(x, z, &mut io);
+        }
+        tick(&mut game, &input, &audio, 3);
+        {
+            let p = play(&mut game);
+            let mut act = Act::new(ActKind::Reap, 0.38, (x, z), Vec2::new(0.0, -1.0));
+            act.t = 0.16;
+            act.fired = true;
+            p.player.act = Some(act);
+        }
+        fresh(&mut game);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "g15_harvest",
+            Vec3::new(x as f32 + 0.5, 0.3, z as f32 + 1.0),
+            7.5,
+        );
+        play(&mut game).player.act = None;
+    }
+    // The chamber, as you come into it.
+    if let Some(g) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::GiantShroom { .. }))
+    }) {
+        {
+            let p = play(&mut game);
+            let w = &p.level.as_ref().unwrap().world;
+            let (px, pz) = w.nearest_open(g.0, g.1 + 5);
+            p.player.pos = Vec2::new(px as f32 + 0.5, pz as f32 + 0.5);
+            p.player.facing = Vec2::new(0.0, -1.0);
+        }
+        tick(&mut game, &input, &audio, 2);
+        fresh(&mut game);
+        snap(&mut game, &mut r, &input, dir, "g16_the_chamber");
+    }
+    // And the whole floor from above.
+    let mid = {
+        let p = play(&mut game);
+        let w = &p.level.as_ref().unwrap().world;
+        p.cam.dist = 30.0;
+        Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5)
+    };
+    snap_on(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "g17_fungal_overview",
+        Some(mid),
+    );
+    play(&mut game).cam.dist = 15.5;
+    // The Fungal Hollow's ordinary caves, for comparison.
+    let plain = {
+        let p = play(&mut game);
+        (1..120).find(|&d| {
+            p.biome_at(d) == 2
+                && !crate::game::dungeon::is_waystone_floor(d)
+                && !crate::game::sewer::is_sewer(p.seed, d)
+                && !is_glowcave(p.seed, d, 2)
+        })
+    };
+    if let Some(depth) = plain {
+        descend(&mut game, &input, &audio, depth, false);
+        play(&mut game).foes.clear();
+        tick(&mut game, &input, &audio, 20);
+        fresh(&mut game);
+        snap(&mut game, &mut r, &input, dir, "g18_fungal_hollow");
+    }
 }
