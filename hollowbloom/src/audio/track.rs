@@ -92,6 +92,15 @@ pub const TRACKS: &[Track] = &[
         rest: REST,
         gain: 0.629,
     },
+    // "The Keeper's Hearth"
+    Track {
+        song: Song::Haven,
+        mp3: include_bytes!("../../music/haven.mp3"),
+        start: 0,
+        end: 6_857_550,
+        rest: REST,
+        gain: 0.653,
+    },
 ];
 
 pub fn track(song: Song) -> Option<&'static Track> {
