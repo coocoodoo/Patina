@@ -3243,7 +3243,8 @@ impl Play {
         let warm = if q.request().is_some() { 40 } else { 90 };
         if self.friends.add(giver, warm) {
             let h = self.friends.hearts(giver);
-            lines.push((None, format!("{}: {h} hearts!", giver.name()), PINK));
+            let hearts = if h == 1 { "heart" } else { "hearts" };
+            lines.push((None, format!("{}: {h} {hearts}!", giver.name()), PINK));
         }
         for r in rewards {
             if let Some(line) = self.grant(&r, io) {

@@ -3336,28 +3336,44 @@ pub fn pet_shots(dir: &str) {
         p.banner = None;
         Vec3::new(at.x, 0.3, at.y)
     };
-    for (k, frames) in [
-        (0, 70),
-        (1, 30),
-        (2, 24),
-        (3, 18),
-        (4, 12),
-        (5, 8),
-        (6, 8),
-        (7, 20),
-        (8, 60),
-        (9, 120),
-    ] {
-        tick(&mut game, &input, &audio, frames);
-        close(
-            &mut game,
-            &mut r,
-            &input,
-            dir,
-            &format!("c{k:02}_candy"),
-            boss_at,
-            14.0,
-        );
+    // The whole floor at moments along the way, and the first rock up close from the floor
+    // cracking to the bang.
+    let first = play(&mut game).erupting.first().map(|e| (e.x, e.z));
+    let wide = [70, 100, 124, 142, 154, 162, 170, 190, 250, 370];
+    let near = [
+        (0.3f32, "c20_floor_cracks"),
+        (1.2, "c21_fuse_hisses"),
+        (1.95, "c22_flashing"),
+        (2.22, "c23_bang"),
+        (2.6, "c24_set_hard"),
+    ];
+    let (mut w, mut n) = (0, 0);
+    for frame in 1..=wide[wide.len() - 1] {
+        tick(&mut game, &input, &audio, 1);
+        if let Some((x, z)) = first {
+            let t = play(&mut game)
+                .erupting
+                .iter()
+                .find(|e| (e.x, e.z) == (x, z))
+                .map(|e| e.t);
+            if n < near.len() && t.is_none_or(|t| t >= near[n].0) {
+                let at = Vec3::new(x as f32 + 0.5, 0.4, z as f32 + 0.5);
+                close(&mut game, &mut r, &input, dir, near[n].1, at, 5.0);
+                n += 1;
+            }
+        }
+        if w < wide.len() && frame == wide[w] {
+            close(
+                &mut game,
+                &mut r,
+                &input,
+                dir,
+                &format!("c{w:02}_candy"),
+                boss_at,
+                14.0,
+            );
+            w += 1;
+        }
     }
     // A close look at one.
     let rock = {
@@ -3382,6 +3398,203 @@ pub fn pet_shots(dir: &str) {
         p.menu = Menu::Journal { tab: 0, sel: 0 };
     }
     snap(&mut game, &mut r, &input, dir, "q02_journal");
+
+    // Once they've all gone bang and set hard, knock them loose with a pickaxe: five candy
+    // rocks glinting on the floor.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+    }
+    for _ in 0..20 {
+        if play(&mut game).erupting.is_empty() {
+            break;
+        }
+        tick(&mut game, &input, &audio, 60);
+    }
+    let rocks = {
+        let p = play(&mut game);
+        // The guardian's hoard is gathered up already.
+        p.drops.clear();
+        let w = &p.level.as_ref().expect("a floor").world;
+        let mut rocks = Vec::new();
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if let Some(Obj::CandyRock { hp }) = w.obj(x, z) {
+                    rocks.push((x, z, *hp));
+                }
+            }
+        }
+        rocks
+    };
+    if let Some(&(x, z, _)) = rocks.first() {
+        // Mid-swing at the first one.
+        let p = play(&mut game);
+        let from = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            .into_iter()
+            .map(|(dx, dz)| (x + dx, z + dz))
+            .find(|&(ax, az)| !p.level.as_ref().unwrap().world.blocked(ax, az))
+            .unwrap_or((x, z - 1));
+        let face = Vec2::new((x - from.0) as f32, (z - from.1) as f32);
+        p.player.pos = Vec2::new(from.0 as f32 + 0.5, from.1 as f32 + 0.5);
+        p.player.facing = face;
+        if let Some(k) = (0..10).find(|&k| {
+            p.player.inv.slots[k].is_some_and(|s| matches!(s.item, Item::Pick0 | Item::Pick1))
+        }) {
+            p.player.sel = k;
+        }
+        // Already struck, so holding the pose doesn't knock it loose.
+        let mut act = Act::new(ActKind::Mine, 0.4, (x, z), face);
+        act.t = 0.26;
+        act.fired = true;
+        p.player.act = Some(act);
+    }
+    tick(&mut game, &input, &audio, 1);
+    if let Some(&(x, z, _)) = rocks.first() {
+        let p = play(&mut game);
+        let mut act = Act::new(ActKind::Mine, 0.4, (x, z), p.player.facing);
+        act.t = 0.26;
+        act.fired = true;
+        p.player.act = Some(act);
+        let at = Vec3::new(x as f32 + 0.5, 0.3, z as f32 + 0.5);
+        let me = p.player.world_pos();
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c11_mining",
+            (at + me) * 0.5,
+            5.5,
+        );
+    }
+    {
+        let p = play(&mut game);
+        let mut io = mk_io(&input, &audio);
+        p.player.act = None;
+        for &(x, z, hp) in &rocks {
+            p.mine_candy(x, z, hp, 50, &mut io);
+        }
+        // Out of reach of the hero, so they lie there to be seen.
+        p.player.pos = Vec2::new(boss_at.x, boss_at.z + 7.0);
+    }
+    // Scooped up: five of five.
+    {
+        let p = play(&mut game);
+        p.drops.retain(|d| d.stack.item != Item::CandyRock);
+        p.player.inv.add(Item::CandyRock, 5);
+        p.player.pos = Vec2::new(boss_at.x, boss_at.z + 1.5);
+        p.toasts.clear();
+        p.toast("Candy Rock", Some(Item::CandyRock), 5);
+    }
+    tick(&mut game, &input, &audio, 20);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "c12_five_of_five",
+        boss_at,
+        9.0,
+    );
+
+    // Back up to town with all five for Pip, who trades them for the egg.
+    {
+        let p = play(&mut game);
+        p.fade = None;
+        p.start_fade(Trans::Home);
+    }
+    tick(&mut game, &input, &audio, 60);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.min = 640.0;
+        p.ride_bus(true);
+        p.bus = None;
+        p.banner = None;
+        p.player.pos = Vec2::new(35.5, 29.6);
+        p.arrive_folk();
+    }
+    tick(&mut game, &input, &audio, 120);
+    {
+        let p = play(&mut game);
+        let mut io = mk_io(&input, &audio);
+        if let Some(i) = p
+            .folk
+            .iter()
+            .position(|n| n.who == crate::game::folk::Villager::Pip)
+        {
+            let at = p.folk[i].pos;
+            p.player.pos = at + Vec2::new(0.0, 1.0);
+            p.player.facing = Vec2::new(0.0, -1.0);
+            p.talk_to(i, &mut io);
+            if let Menu::Talk { text, shown, .. } = &mut p.menu {
+                *shown = text.chars().count() as f32;
+            }
+        }
+    }
+    snap(&mut game, &mut r, &input, dir, "q03_pip_thanks");
+    {
+        let p = play(&mut game);
+        for n in &mut p.folk {
+            n.talking = false;
+        }
+        p.menu = Menu::Cheer;
+    }
+    tick(&mut game, &input, &audio, 50);
+    snap(&mut game, &mut r, &input, dir, "q04_egg_for_candy");
+
+    // Home, and down it goes on the farm: tucked into a nest of leaves.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.cheer = None;
+        p.fade = None;
+        p.start_fade(Trans::Bus { to_town: false });
+    }
+    tick(&mut game, &input, &audio, 80);
+    let (tx, tz) = (CAT_HOME.x as i32 + 4, CAT_HOME.y as i32 + 3);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.bus = None;
+        p.spider = None;
+        p.toasts.clear();
+        p.farm.set_obj(tx, tz, None);
+        let slot = p
+            .player
+            .inv
+            .slots
+            .iter()
+            .position(|s| s.is_some_and(|s| s.item == Item::MysteryEgg))
+            .expect("Pip's egg");
+        if slot >= 10 {
+            p.player.inv.slots.swap(slot, 9);
+        }
+        p.player.sel = slot.min(9);
+        p.player.pos = Vec2::new(tx as f32 + 0.5, tz as f32 - 0.5);
+        p.player.facing = Vec2::new(0.0, 1.0);
+        p.player.act = None;
+    }
+    tick(&mut game, &input, &audio, 3);
+    let nest = Vec3::new(tx as f32 + 0.5, 0.15, tz as f32 + 0.5);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "e00_holding_the_egg",
+        nest,
+        5.0,
+    );
+    {
+        let p = play(&mut game);
+        let mut io = mk_io(&input, &audio);
+        p.use_item(Item::MysteryEgg, (tx, tz), &mut io);
+    }
+    tick(&mut game, &input, &audio, 12);
+    close(&mut game, &mut r, &input, dir, "e00b_egg_placed", nest, 5.0);
     let _ = Area::Farm;
 }
 
