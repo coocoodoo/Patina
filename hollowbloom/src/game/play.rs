@@ -593,10 +593,14 @@ impl Play {
             }
             Area::Hollow { depth } => {
                 let st = &BIOME_STYLES[self.hollow_biome(depth)];
-                // The glowcap caves are lit cool, and the mushrooms' own colours glow in it.
+                // The glowcap caves are lit cool, and the mushrooms' own colours glow in it;
+                // the labyrinth's marble shows pale and warm.
                 let glowing = self.level.as_ref().is_some_and(|l| l.world.glowcave);
+                let marble = self.level.as_ref().is_some_and(|l| l.world.labyrinth);
                 let (ambient, warmth, clear) = if glowing {
                     (0.42, 2.0, INK)
+                } else if marble {
+                    (0.56, 4.8, INK)
                 } else {
                     (st.ambient, st.warmth, st.clear)
                 };
@@ -730,7 +734,11 @@ impl Play {
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
         self.revealed = vec![false; (level.world.w * level.world.h) as usize];
-        let (sewer, glowcave) = (level.world.sewer, level.world.glowcave);
+        let (sewer, glowcave, labyrinth) = (
+            level.world.sewer,
+            level.world.glowcave,
+            level.world.labyrinth,
+        );
         self.level = Some(level);
         self.area = Area::Hollow { depth };
         self.cam_pos = self.player.world_pos();
@@ -752,6 +760,8 @@ impl Play {
                 format!("{} - the old sewers", BIOME_STYLES[biome].name)
             } else if glowcave {
                 format!("{} - the glowcap caves", BIOME_STYLES[biome].name)
+            } else if labyrinth {
+                format!("{} - the marble labyrinth", BIOME_STYLES[biome].name)
             } else {
                 BIOME_STYLES[biome].name.to_string()
             },
@@ -2677,7 +2687,13 @@ impl Play {
         let w = self.world();
         let hard_wall = matches!(
             w.wall(x, z),
-            Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Bedrock | Wall::Cliff | Wall::Sewer
+            Wall::Rock
+                | Wall::Ore(_)
+                | Wall::Brick
+                | Wall::Bedrock
+                | Wall::Cliff
+                | Wall::Sewer
+                | Wall::Marble(_)
         ) && w.inside(x, z);
         let hard_obj = w.obj(x, z).is_some_and(|o| {
             matches!(
@@ -3280,6 +3296,21 @@ impl Play {
                         .motes(from.lerp(to, k as f32 / 6.0), 1, &[LIME, MINT], 0.05);
                 }
                 io.audio.play_at(Sfx::Magic, 0.45, 1.5);
+            }
+            Call::Charge => {
+                let pitch = 0.9 + self.rng.f32() * 0.15;
+                io.audio.play_at(Sfx::Bellow, 0.9, pitch);
+            }
+            Call::Crash => {
+                // The walls shake with it.
+                io.audio.play_at(Sfx::Crash, 1.0, 1.0);
+                let near = (self.player.pos - pos).length();
+                self.shake = self.shake.max((0.6 - near * 0.05).max(0.15));
+                self.fx.popup(at + Vec3::Y * 1.3, "Dazed!", GOLD);
+            }
+            Call::Screech => {
+                let pitch = 0.95 + self.rng.f32() * 0.1;
+                io.audio.play_at(Sfx::Screech, 0.7, pitch);
             }
         }
     }

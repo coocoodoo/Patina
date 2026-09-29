@@ -73,6 +73,8 @@ pub enum Wall {
     Paper(u8),
     /// Old brickwork: a sewer's, or a ruin's in the glowcap caves.
     Sewer,
+    /// The labyrinth's marble, by look (see `labyrinth::PLAIN` and so on).
+    Marble(u8),
 }
 
 impl Wall {
@@ -81,6 +83,7 @@ impl Wall {
         match self {
             Wall::Paper(_) => 2.0,
             Wall::Hedge => 0.8,
+            Wall::Marble(super::labyrinth::PIER) => super::labyrinth::PIER_H,
             _ => WALL_H,
         }
     }
@@ -284,12 +287,39 @@ pub enum Obj {
     GiantShroom {
         var: u8,
     },
+    /// A marble column in the labyrinth: standing, broken off, or fallen in pieces (see
+    /// `labyrinth::STANDING` and so on).
+    Column {
+        var: u8,
+    },
+    /// A brazier of old green bronze, burning.
+    Brazier,
+    /// A marble statue on its plinth, by look.
+    Statue {
+        var: u8,
+    },
+    /// Broken marble: a few chunks lying about, or a heap you can't walk through (see
+    /// `labyrinth::HEAP`).
+    Rubble {
+        var: u8,
+    },
+    /// A griffin's nest up on a broken column.
+    Nest,
+    /// An arch over a doorway three wide, from pier to pier.
+    Arch,
+    /// A torch in a bracket on the wall behind the tile.
+    Sconce,
+    /// A shaft of daylight falling into the labyrinth's courtyard.
+    Sunbeam,
 }
 
 impl Obj {
     pub fn solid(&self) -> bool {
         if let Obj::Glowcap { var } = self {
             return super::glowcave::cap_size(*var) == super::glowcave::TALL;
+        }
+        if let Obj::Rubble { var } = self {
+            return *var == super::labyrinth::HEAP;
         }
         !matches!(
             self,
@@ -305,6 +335,9 @@ impl Obj {
                 | Obj::Grate
                 | Obj::Debris { .. }
                 | Obj::ShelfFungus { .. }
+                | Obj::Arch
+                | Obj::Sconce
+                | Obj::Sunbeam
         )
     }
 
@@ -350,6 +383,10 @@ impl Obj {
                 0.85,
                 crate::assets::glowcave_art::WARMTH[*var as usize % 4],
             )),
+            Obj::Brazier => Some((0.95, 4.8, 0.6, 6.5)),
+            Obj::Sconce => Some((0.8, 4.2, 0.5, 6.5)),
+            // Daylight from far above.
+            Obj::Sunbeam => Some((1.4, 3.8, 0.45, 3.8)),
             _ => None,
         }
     }
@@ -388,6 +425,8 @@ pub struct World {
     /// A floor of glowcap caves: dark rock, mossy ground, old flagstones and brickwork in
     /// its ruins, and glowing pools (see `glowcave`).
     pub glowcave: bool,
+    /// The marble labyrinth: its flagstones and mosaics (see `labyrinth`).
+    pub labyrinth: bool,
     chunks: Vec<Mesh>,
     /// What glows in each chunk (sewer water, glowing pools), drawn with a light floor of
     /// `SEWER_GLOW` or `POOL_GLOW`.
@@ -425,6 +464,7 @@ impl World {
             snow: false,
             sewer: false,
             glowcave: false,
+            labyrinth: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             glowing: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
@@ -978,6 +1018,12 @@ impl World {
                     _ => a.wood_floor,
                 }
             }
+            // The labyrinth's mosaics, a medallion to a cell.
+            Floor::Tiles if self.labyrinth => {
+                use super::labyrinth::{SECOND_MOTIF, mosaic_at};
+                let motif = self.flag(x, z, SECOND_MOTIF) as usize;
+                a.labyrinth.mosaic[motif][mosaic_at(x, z)]
+            }
             Floor::Tiles => a.checker,
             Floor::Carpet => match self.area {
                 Area::Inside(Place::Scrolls | Place::Spellery) => a.carpets[1],
@@ -998,6 +1044,20 @@ impl World {
             Floor::Water => a.water[0],
             // The glowcap caves' old flagstones.
             Floor::Walkway if self.glowcave => a.glowcave.flags[(h % 3 == 0) as usize],
+            // The labyrinth's marble flagstones: laid two ways, now and then cracked or
+            // broken.
+            Floor::Walkway if self.labyrinth => {
+                let f = if self.flag(x, z, super::labyrinth::COURTYARD) {
+                    &a.labyrinth.court
+                } else {
+                    &a.labyrinth.flags
+                };
+                match h % 17 {
+                    0 => f[2],
+                    1 => f[3],
+                    _ => f[(h / 17 % 2) as usize],
+                }
+            }
             Floor::Walkway => a.sewer.walk[self.curb(x, z) as usize],
             Floor::Bridge => a.sewer.wood[self.deck_turn(x, z)],
             Floor::CopperBridge => a.sewer.copper[self.deck_turn(x, z)],
@@ -1035,6 +1095,15 @@ impl World {
             }
         }
         match w {
+            Wall::Marble(look) => {
+                let l = &a.labyrinth;
+                let top = if look == super::labyrinth::PIER {
+                    l.pier_top
+                } else {
+                    l.top
+                };
+                (l.side[look as usize % l.side.len()], top)
+            }
             Wall::Rock => (b.side, b.top),
             Wall::Ore(o) => (
                 b.ore_side[o as usize % b.ore_side.len()],
@@ -1112,6 +1181,7 @@ impl World {
                     let hgt = wall.height();
                     let top_ao = match wall {
                         Wall::Cliff | Wall::Brick | Wall::Timber | Wall::Hedge => [1.0; 4],
+                        Wall::Marble(_) => [0.86; 4],
                         Wall::Paper(_) => [0.5; 4],
                         _ => [0.62; 4],
                     };

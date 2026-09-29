@@ -25,6 +25,13 @@ pub enum St {
     Howl,
 }
 
+/// What a minotaur's doing in its wind-up and its dash (`Enemy::hops`): charging down a
+/// corridor, or swinging its axe at you up close; and at rest, dazed from running into a
+/// wall (see `Enemy::dazed`).
+pub const CHARGING: u32 = 0;
+pub const SWINGING: u32 = 2;
+pub const DAZED: u32 = 1;
+
 /// Something a creature has done that reaches past itself, for the floor to answer (see
 /// `Play::update_foes`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,6 +42,12 @@ pub enum Call {
     Breath,
     /// A leafling mending whoever's most hurt round it.
     Mend,
+    /// A minotaur bellowing as it charges.
+    Charge,
+    /// A minotaur running headlong into a wall.
+    Crash,
+    /// A griffin's screech, as it takes wing or stoops to dive.
+    Screech,
 }
 
 /// How long a werewolf howls, and how far the howl carries.
@@ -48,6 +61,22 @@ pub const BREATH_SECS: f32 = 0.45;
 pub const MEND_SECS: f32 = 5.0;
 pub const MEND_REACH: f32 = 5.0;
 pub const MEND_AGAIN: f32 = 1.0;
+/// A minotaur's charge: how long it paws the ground first, how far off it'll charge from,
+/// how fast it goes and for how long, and how long a wall leaves it dazed (taking harder
+/// blows meanwhile).
+pub const CHARGE_WINDUP: f32 = 0.8;
+pub const CHARGE_RANGE: f32 = 7.5;
+pub const CHARGE_SPEED: f32 = 8.5;
+pub const CHARGE_SECS: f32 = 1.3;
+pub const DAZE_SECS: f32 = 2.4;
+pub const DAZED_BLOWS: f32 = 1.5;
+/// How high a griffin wheels, and how low it stoops, and where it perches on its nest.
+pub const WHEEL_Y: f32 = 1.25;
+pub const STOOP_Y: f32 = 0.35;
+pub const PERCH_Y: f32 = 1.06;
+/// How much bigger than its model a minotaur and a griffin are drawn.
+pub const MINOTAUR_SIZE: f32 = 1.15;
+pub const GRIFFIN_SIZE: f32 = 1.3;
 
 pub struct Enemy {
     pub foe: Foe,
@@ -166,6 +195,8 @@ pub fn base(f: Foe) -> Base {
         Foe::Drake => b(38, 11, 2.0, 0.34, 14, "Drakeling"),
         Foe::Leafling => b(16, 6, 2.7, 0.26, 8, "Leafling"),
         Foe::Werewolf => b(52, 14, 3.0, 0.34, 18, "Werewolf"),
+        Foe::Minotaur => b(80, 17, 1.6, 0.42, 24, "Minotaur"),
+        Foe::Griffin => b(46, 13, 2.6, 0.36, 20, "Griffin"),
     }
 }
 
@@ -176,7 +207,7 @@ pub const MOTHS: usize = 2;
 pub fn flies(foe: Foe, biome: usize) -> bool {
     matches!(
         foe,
-        Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer | Foe::Leafling
+        Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer | Foe::Leafling | Foe::Griffin
     ) || (foe == Foe::Bug && biome % 6 == MOTHS)
 }
 
@@ -263,6 +294,8 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
         Foe::Drake => "Frost Drakeling",
         Foe::Leafling => "Leafling",
         Foe::Werewolf => "Werewolf",
+        Foe::Minotaur => "Minotaur",
+        Foe::Griffin => "Griffin",
     }
 }
 
@@ -350,7 +383,14 @@ impl Enemy {
             biome,
             pos: Vec2::new(x, z),
             vel: Vec2::ZERO,
-            y: if flies(foe, biome) { 0.55 } else { 0.0 },
+            // (A griffin starts out sat up on its nest.)
+            y: if foe == Foe::Griffin {
+                PERCH_Y
+            } else if flies(foe, biome) {
+                0.55
+            } else {
+                0.0
+            },
             vy: 0.0,
             hp,
             max_hp: hp,
@@ -490,7 +530,13 @@ impl Enemy {
 
     /// Too heavy to be knocked about much.
     pub fn heavy(&self) -> bool {
-        self.boss || matches!(self.foe, Foe::Golem | Foe::Brute)
+        self.boss || matches!(self.foe, Foe::Golem | Foe::Brute | Foe::Minotaur)
+    }
+
+    /// A minotaur that ran headlong into a wall, seeing stars: it can't hurt you, and your
+    /// blows land harder (see `DAZED_BLOWS`).
+    pub fn dazed(&self) -> bool {
+        self.foe == Foe::Minotaur && self.st == St::Rest && self.hops == DAZED
     }
 
     /// Does this enemy touch the ground (and so can bump the player)?
@@ -498,6 +544,9 @@ impl Enemy {
         match self.foe {
             Foe::Slime | Foe::Frog => self.y < 0.35 * self.scale(),
             Foe::Snail => !self.shelled(),
+            Foe::Minotaur => !self.dazed(),
+            // Only swooping down on you (not wheeling overhead, nor on its nest).
+            Foe::Griffin => self.alert && self.y < 0.7 * self.scale(),
             _ => true,
         }
     }
@@ -562,6 +611,15 @@ impl Enemy {
                     self.t = HOWL_SECS;
                     self.call = Some(Call::Howl);
                 }
+                if self.foe == Foe::Griffin {
+                    // Up off its nest with a screech.
+                    self.st = St::Rest;
+                    self.t = 0.8;
+                    self.call = Some(Call::Screech);
+                }
+            } else if self.foe == Foe::Griffin {
+                self.perch(dt, world);
+                return;
             } else {
                 self.idle_wander(dt, world, rng);
                 return;
@@ -700,8 +758,16 @@ impl Enemy {
             Foe::Drake => self.drake(dt, world, dirp, dist, shots, rng),
             Foe::Leafling => self.leafling(dt, world, dirp, dist, shots, rng),
             Foe::Werewolf => self.werewolf(dt, world, dirp, dist, rng),
+            Foe::Minotaur => self.minotaur(dt, world, dirp, dist, fx, rng),
+            Foe::Griffin => self.griffin(dt, world, dirp, dist, rng),
         }
-        if dist > 0.01 && self.st != St::Dash {
+        // A griffin wheeling round you, or climbing away, faces the way it flies; a dazed
+        // minotaur doesn't turn to follow you.
+        let flying_by = self.foe == Foe::Griffin && matches!(self.st, St::Chase | St::Rest);
+        if flying_by && self.dir.length_squared() > 0.0 {
+            self.yaw = self.dir.x.atan2(self.dir.y);
+        } else if self.dazed() {
+        } else if dist > 0.01 && self.st != St::Dash {
             self.yaw = dirp.x.atan2(dirp.y);
         } else if self.st == St::Dash {
             self.yaw = self.dir.x.atan2(self.dir.y);
@@ -996,6 +1062,164 @@ impl Enemy {
                 } else {
                     let lope = 0.75 + 0.45 * (self.anim * 7.0).sin().abs();
                     self.step(world, dirp * self.speed * lope * dt);
+                }
+            }
+        }
+    }
+
+    /// A minotaur stamps after you, and once it has you in its sights down a clear stretch
+    /// of corridor, lowers its horns, paws the ground and charges: on it thunders in a
+    /// straight line until it runs out of breath, or into a wall, which leaves it dazed a
+    /// good while. Up close it swings its axe.
+    fn minotaur(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        fx: &mut Fx,
+        rng: &mut Rng,
+    ) {
+        let s = self.scale();
+        match self.st {
+            St::Windup => {
+                if self.hops == CHARGING {
+                    // Pawing the ground, dust flying back off its hooves.
+                    if rng.chance(dt * 9.0) {
+                        let back = self.world_pos() - Vec3::new(dirp.x, 0.0, dirp.y) * (0.3 * s);
+                        fx.burst(back, 2, &[SAND, KHAKI], 0.8, 1.0);
+                    }
+                    self.dir = dirp;
+                }
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    if self.hops == CHARGING {
+                        self.t = CHARGE_SECS;
+                        self.call = Some(Call::Charge);
+                    } else {
+                        self.t = 0.22;
+                    }
+                }
+            }
+            St::Dash => {
+                let before = self.pos;
+                let speed = if self.hops == CHARGING {
+                    CHARGE_SPEED
+                } else {
+                    self.speed * 3.0
+                };
+                let d = self.dir * speed * dt;
+                self.step(world, d);
+                let stopped = (self.pos - before).length() < d.length() * 0.3;
+                if self.hops == CHARGING && rng.chance(dt * 14.0) {
+                    fx.burst(self.world_pos(), 2, &[SAND, KHAKI, WHITE], 1.0, 1.2);
+                }
+                if self.hops == CHARGING && stopped {
+                    // Headlong into the wall: it reels, seeing stars.
+                    self.st = St::Rest;
+                    self.t = DAZE_SECS;
+                    self.hops = DAZED;
+                    self.call = Some(Call::Crash);
+                    let ahead =
+                        self.world_pos() + Vec3::new(self.dir.x, 0.0, self.dir.y) * (0.4 * s);
+                    fx.burst(ahead + Vec3::Y * 0.5, 16, &[WHITE, SAND, KHAKI], 3.0, 2.0);
+                } else if self.t <= 0.0 || stopped {
+                    self.st = St::Rest;
+                    self.t = if self.hops == CHARGING { 0.7 } else { 0.5 };
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.hops = CHARGING;
+                    self.t = rng.range_f(0.6, 1.2);
+                }
+            }
+            _ => {
+                self.dir = dirp;
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < 1.6 * self.reach() {
+                    // Up close: the axe goes up...
+                    self.st = St::Windup;
+                    self.hops = SWINGING;
+                    self.t = 0.45;
+                } else if self.t <= 0.0 && dist < CHARGE_RANGE * self.fury.max(1.0) && sees {
+                    // ...and further off, the horns go down.
+                    self.st = St::Windup;
+                    self.hops = CHARGING;
+                    self.t = CHARGE_WINDUP;
+                } else {
+                    // A heavy stamping walk.
+                    let stamp = 0.7 + 0.5 * (self.anim * 7.5).sin().abs();
+                    self.step(world, dirp * self.speed * stamp * dt);
+                }
+            }
+        }
+    }
+
+    /// A griffin sits on its nest until it sees you (or on the ground, if it has no nest),
+    /// gliding down to it if it lost sight of you on the wing.
+    fn perch(&mut self, dt: f32, world: &World) {
+        let (x, z) = (self.pos.x.floor() as i32, self.pos.y.floor() as i32);
+        let nest = matches!(world.obj(x, z), Some(super::world::Obj::Nest));
+        self.y = approach(self.y, if nest { PERCH_Y } else { 0.0 }, dt * 1.2);
+        self.st = St::Idle;
+    }
+
+    /// A griffin wheels round above you, and every so often hangs in the air with a
+    /// screech, then stoops: diving down past you talons first, and climbing away again.
+    fn griffin(&mut self, dt: f32, world: &World, dirp: Vec2, dist: f32, rng: &mut Rng) {
+        let s = self.scale();
+        match self.st {
+            St::Windup => {
+                // Hanging in the air, wings back, eyes on you.
+                self.y = approach(self.y, (WHEEL_Y + 0.15) * s, dt * 2.0);
+                self.dir = dirp;
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    self.t = 0.75;
+                }
+            }
+            St::Dash => {
+                let before = self.pos;
+                let d = self.dir * self.speed * 3.3 * dt;
+                self.step(world, d);
+                self.y = approach(self.y, STOOP_Y * s, dt * 4.5);
+                if self.t <= 0.0 || (self.pos - before).length() < d.length() * 0.3 {
+                    self.st = St::Rest;
+                    self.t = 1.0;
+                }
+            }
+            St::Rest => {
+                // Climbing away, back up to wheel round again.
+                self.y = approach(self.y, WHEEL_Y * s, dt * 1.6);
+                self.step(world, self.dir * self.speed * 0.7 * dt);
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(1.2, 2.2);
+                }
+            }
+            _ => {
+                let bob = (self.anim * 2.2).sin() * 0.08;
+                self.y = approach(self.y, WHEEL_Y * s + bob, dt * 1.5);
+                let turn = if self.seed % 2 == 0 { 1.0 } else { -1.0 };
+                let circle = Vec2::new(-dirp.y, dirp.x) * turn;
+                let want = if dist > 4.5 {
+                    (dirp + circle * 0.4).normalize_or_zero()
+                } else if dist < 2.5 {
+                    (circle - dirp * 0.6).normalize_or_zero()
+                } else {
+                    circle
+                };
+                // It banks round gently rather than turning on the spot.
+                let turn_rate = (dt * 3.0).min(1.0);
+                self.dir = (self.dir + (want - self.dir) * turn_rate).normalize_or(want);
+                self.step(world, self.dir * self.speed * dt);
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < 5.5 && sees {
+                    self.st = St::Windup;
+                    self.t = 0.55;
+                    self.call = Some(Call::Screech);
                 }
             }
         }
@@ -1593,6 +1817,8 @@ impl Enemy {
             }
             (Foe::Leafling, _) => GREEN,
             (Foe::Werewolf, _) => KHAKI,
+            (Foe::Minotaur, _) => RUST,
+            (Foe::Griffin, _) => SAND,
         }
     }
 
@@ -2043,6 +2269,8 @@ impl Enemy {
             Foe::Drake => self.draw_drake(r, a, &o),
             Foe::Leafling => self.draw_leafling(r, a, &o),
             Foe::Werewolf => self.draw_werewolf(r, a, &o),
+            Foe::Minotaur => self.draw_minotaur(r, a, &o),
+            Foe::Griffin => self.draw_griffin(r, a, &o),
             Foe::Imp | Foe::Skeleton | Foe::Zombie | Foe::Brute | Foe::Sneak => {
                 let looks = &a.monsters;
                 let h = match self.foe {
@@ -2271,6 +2499,149 @@ impl Enemy {
             * Mat4::from_rotation_y(wag)
             * Mat4::from_rotation_x(stride * 0.5 + howl * 0.9);
         r.mesh(&a.bank, &a.monsters.wolf_tail, &m, o);
+    }
+
+    /// A minotaur stamping along with its axe. Before a charge it crouches with its horns
+    /// down and its axe up, pawing at the ground; charging, it thunders along head down;
+    /// run into a wall, it reels with stars going round its head. Up close its axe comes
+    /// down in a chop.
+    fn draw_minotaur(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        let s = self.scale() * MINOTAUR_SIZE;
+        let h = &a.monsters.minotaur;
+        let dazed = self.dazed();
+        let charge = self.hops == CHARGING && matches!(self.st, St::Windup | St::Dash);
+        let moving = if self.alert {
+            matches!(self.st, St::Chase | St::Idle) || (charge && self.st == St::Dash)
+        } else {
+            self.dir.length_squared() > 0.0
+        };
+        let pawing = charge && self.st == St::Windup;
+        let pace = if charge { 15.0 } else { 7.5 };
+        let swing = match (self.st, self.hops) {
+            (St::Windup, SWINGING) => Some((0.0, Swing::Chop)),
+            (St::Dash, SWINGING) => Some((1.0 - self.t.clamp(0.0, 0.22) / 0.22, Swing::Chop)),
+            (St::Windup, _) => Some((0.0, Swing::Chop)),
+            _ => None,
+        };
+        let stride = if pawing {
+            0.35
+        } else if moving {
+            0.9
+        } else {
+            0.0
+        };
+        let pose = Pose {
+            walk: self.anim * if pawing { 14.0 } else { pace },
+            stride,
+            swing,
+            bob: (self.anim * pace).sin().abs() * 0.04 * stride,
+            squash: self.flash * 2.0 + if pawing { 0.3 } else { 0.0 },
+            reach: 0.0,
+            grow: s - 1.0,
+            // Horns down to charge; head lolling, dazed.
+            look_up: if charge {
+                -0.45
+            } else if dazed {
+                (self.anim * 3.0).sin() * 0.25
+            } else {
+                0.0
+            },
+        };
+        let reel = if dazed {
+            (self.anim * 2.5).sin() * 0.3
+        } else {
+            0.0
+        };
+        let root = Vec3::new(self.pos.x, 0.0, self.pos.y);
+        let fit = Outfit {
+            held: Some(&a.monsters.labrys),
+            ..Default::default()
+        };
+        draw_humanoid(r, a, h, root, self.yaw + reel, &pose, o, &fit);
+        // Its tail, swishing.
+        let swish = (self.anim * if moving { 6.0 } else { 2.0 }).sin() * 0.35;
+        let (squash, widen) = (1.0 - pose.squash * 0.25, 1.0 + pose.squash * 0.2);
+        let m = Mat4::from_translation(root)
+            * Mat4::from_rotation_y(self.yaw + reel)
+            * Mat4::from_scale(Vec3::splat(1.0 + pose.grow))
+            * Mat4::from_scale(Vec3::new(widen, squash, widen))
+            * Mat4::from_translation(Vec3::new(0.0, h.hip + 0.05, -0.2))
+            * Mat4::from_rotation_y(swish)
+            * Mat4::from_rotation_x(0.3 + stride * 0.3);
+        r.mesh(&a.bank, &a.monsters.bull_tail, &m, o);
+        if dazed {
+            // Stars going round and round its head.
+            let top = root + Vec3::Y * ((h.neck + 0.4) * s);
+            for k in 0..4 {
+                let t = self.anim * 4.0 + k as f32 * std::f32::consts::TAU / 4.0;
+                let p = top
+                    + Vec3::new(
+                        t.cos() * 0.36 * s,
+                        (t * 2.0).sin() * 0.05,
+                        t.sin() * 0.28 * s,
+                    );
+                r.sparkle(p, 3, WHITE, GOLD);
+                r.point(p, 2, CREAM);
+            }
+        }
+    }
+
+    /// A griffin: sat on its nest with its wings folded, or on the wing, beating them as it
+    /// wheels round; hanging back in the air with its wings up before it dives, then
+    /// stooping with them swept back, talons first.
+    fn draw_griffin(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::beast_art::{BEAK_AT, GRIFFIN_TAIL_AT, GRIFFIN_WING_AT};
+        let s = self.scale() * GRIFFIN_SIZE;
+        let art = &a.beasts.griffin;
+        let perched = !self.alert;
+        let (lean, open, beat) = match self.st {
+            _ if perched => (0.0, 0.0, 0.0),
+            St::Windup => (-0.4, 0.75, 0.25),
+            St::Dash => (0.5, -0.1, 0.1),
+            _ => (0.12, 0.05, 1.0),
+        };
+        let body = Mat4::from_translation(Vec3::new(self.pos.x, self.y, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s))
+            * Mat4::from_rotation_x(lean);
+        r.mesh(&a.bank, &art.body, &body, o);
+        let flap = (self.anim * 10.0 + self.seed as f32).sin() * 0.4 * beat;
+        let wo = o.two_sided();
+        for side in [1.0f32, -1.0] {
+            let fold = if perched {
+                // Folded back along its flanks, the flight feathers hanging down.
+                Mat4::from_rotation_y(1.35)
+                    * Mat4::from_rotation_x(-1.2)
+                    * Mat4::from_scale(Vec3::splat(0.7))
+            } else {
+                Mat4::from_rotation_z(open + flap)
+            };
+            let m =
+                body * Mat4::from_translation(Vec3::new(
+                    GRIFFIN_WING_AT.x * side,
+                    GRIFFIN_WING_AT.y,
+                    GRIFFIN_WING_AT.z,
+                )) * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
+                    * fold;
+            r.mesh(&a.bank, &art.wing, &m, &wo);
+        }
+        let swish = (self.anim * 2.0 + self.seed as f32).sin() * 0.3;
+        let tail = body * Mat4::from_translation(GRIFFIN_TAIL_AT) * Mat4::from_rotation_y(swish);
+        r.mesh(&a.bank, &art.tail, &tail, o);
+        if self.st == St::Windup {
+            // Its screech, ringing out from its beak.
+            let beak = body.transform_point3(BEAK_AT);
+            let ahead = Vec3::new(self.yaw.sin(), 0.0, self.yaw.cos());
+            let side = Vec3::new(ahead.z, 0.0, -ahead.x);
+            for k in 0..3 {
+                let t = (self.anim * 3.0 + k as f32 / 3.0).fract();
+                for j in -2..=2 {
+                    let spread = j as f32 * 0.35 * t;
+                    let q = beak + ahead * (0.1 + t * 0.5) * s + side * spread * s;
+                    r.point(q, 1, if t < 0.5 { WHITE } else { CREAM });
+                }
+            }
+        }
     }
 
     /// A bug: its body, jointed legs on both sides scuttling in step, and wings or claws

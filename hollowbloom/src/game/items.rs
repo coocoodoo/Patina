@@ -226,6 +226,8 @@ items! {
     FrostScale = "frost_scale", "Frost Scale", "frost_scale", 99, 85, Material, "A frost drake's scale, cold as a winter morning however long you hold it.";
     CinderScale = "cinder_scale", "Cinder Scale", "cinder_scale", 99, 85, Material, "A cinder drake's scale, still warm from the fire inside.";
     WolfFang = "wolf_fang", "Werewolf Fang", "wolf_fang", 99, 120, Material, "Only ever found the morning after a full moon.";
+    MinotaurHorn = "minotaur_horn", "Minotaur Horn", "minotaur_horn", 99, 150, Material, "Broken off a minotaur's head. It still points the way out of the maze... or so they say.";
+    GriffinFeather = "griffin_feather", "Griffin Feather", "griffin_feather", 99, 130, Material, "A flight feather as long as your arm, warm from the sun that falls on the labyrinth's courtyard.";
     InkMap = "ink_map", "Ink Map", "ink_map", 20, 90, Kind::InkMap, "Read it in the Hollow and runes of glowing ink light the way to the stairs down, and hint at secrets.";
 
     // Backpacks: worn in their own slot, each adds room to the bag.
@@ -258,6 +260,8 @@ items! {
     DrakePack = "drake_pack", "Drakeling Pack", "pack_drake", 1, 0, Kind::Pack { style: 25, slots: 6 }, "A frost drakeling, wings spread and tail curling. You can almost fly.";
     LeaflingPack = "leafling_pack", "Leafling Pack", "pack_leafling", 1, 0, Kind::Pack { style: 26, slots: 6 }, "A cross little leafling, rustling as you go.";
     WolfPack = "wolf_pack", "Werewolf Pack", "pack_werewolf", 1, 0, Kind::Pack { style: 27, slots: 6 }, "A shaggy werewolf, ears up and tail swishing. It howls at the full moon.";
+    MinotaurPack = "minotaur_pack", "Minotaur Pack", "pack_minotaur", 1, 0, Kind::Pack { style: 28, slots: 6 }, "A plush minotaur, horns and nose ring and all. It never gets lost.";
+    GriffinPack = "griffin_pack", "Griffin Pack", "pack_griffin", 1, 0, Kind::Pack { style: 29, slots: 6 }, "A fluffy griffin, wings spread, beak held high.";
 
     // Gems: scroll ink, and worth a pretty coin.
     Ruby = "ruby", "Ruby", "ruby", 99, 60, GemK, "Red as a winterberry. Scribes weapon scrolls.";

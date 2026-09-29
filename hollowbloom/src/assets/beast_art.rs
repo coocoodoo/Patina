@@ -79,10 +79,27 @@ pub struct Leafling {
 /// Where a leafling's wings join its back.
 pub const LEAF_WING_AT: Vec3 = Vec3::new(0.05, 0.2, -0.07);
 
+/// A griffin: an eagle's head, chest and wings on a lion's body.
+pub struct Griffin {
+    /// Body, head, beak, legs (talons in front, paws behind).
+    pub body: Mesh,
+    /// The right wing, spread flat out along +x from the shoulder (mirrored for the left),
+    /// its flight feathers trailing back along -z.
+    pub wing: Mesh,
+    /// The lion's tail, back along -z from the rump, with a tuft at its end.
+    pub tail: Mesh,
+}
+
+/// Where a griffin's parts go, in its own space (facing +z, standing on the ground).
+pub const GRIFFIN_WING_AT: Vec3 = Vec3::new(0.12, 0.42, 0.02);
+pub const GRIFFIN_TAIL_AT: Vec3 = Vec3::new(0.0, 0.32, -0.33);
+pub const BEAK_AT: Vec3 = Vec3::new(0.0, 0.55, 0.4);
+
 pub struct Beasts {
     /// The frost drake and the cinder drake (see `DRAKES`).
     pub drakes: [Drake; 2],
     pub leafling: Leafling,
+    pub griffin: Griffin,
 }
 
 fn v(x: f32, y: f32, z: f32) -> Vec3 {
@@ -648,6 +665,46 @@ const FANG: &[&str] = &[
     "................",
 ];
 
+/// A minotaur's horn, pale and curving up to its tip from a dark root.
+const HORN: &[&str] = &[
+    "................",
+    "...........KK...",
+    "..........KwyK..",
+    ".........KwyyK..",
+    "........KwyyK...",
+    ".......KnyyK....",
+    "......KnnyK.....",
+    ".....KnnnK......",
+    "....KhnnK.......",
+    "...KhhnK........",
+    "..KRhhK.........",
+    "..KRRhK.........",
+    "..KmRRK.........",
+    "...KmmK.........",
+    "....KK..........",
+    "................",
+];
+
+/// A griffin's flight feather: a pale quill and a long russet vane.
+const FEATHER: &[&str] = &[
+    "................",
+    "............KK..",
+    "...........KyK..",
+    "..........KCyK..",
+    ".........KCuyK..",
+    "........KCuyuK..",
+    ".......KCuyuK...",
+    "......KCuyuK....",
+    ".....KCuyuK.....",
+    "....KCuyuK......",
+    "...KCuyuK.......",
+    "...KuyuK........",
+    "....KyK.........",
+    "...KwK..........",
+    "..KwK...........",
+    "..KK............",
+];
+
 /// Icons for what the beasts leave behind.
 pub fn icons(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
     use super::sprites::art;
@@ -656,12 +713,280 @@ pub fn icons(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
         m.insert(key, bank.add(art(SCALE, [light, mid, dark, CLEAR])));
     }
     m.insert("wolf_fang", bank.add(art(FANG, [CLEAR; 4])));
+    m.insert("minotaur_horn", bank.add(art(HORN, [CLEAR; 4])));
+    m.insert("griffin_feather", bank.add(art(FEATHER, [CLEAR; 4])));
+}
+
+/// Fur: short strokes on a tawny ground, darker along one side.
+fn fur([light, mid, dark]: [u8; 3]) -> Texture {
+    let mut t = Texture::new(16, 16, mid);
+    for y in 0..16 {
+        for x in 0..16 {
+            match (x * 3 + y * 5) % 11 {
+                0 => t.set(x, y, light),
+                5 if y % 2 == 0 => t.set(x, y, dark),
+                _ => {}
+            }
+        }
+    }
+    t
+}
+
+/// Feathers: rows of rounded tips, each row overlapping the one below, pale along its
+/// edge.
+fn plumage([light, mid, dark]: [u8; 3]) -> Texture {
+    let mut t = Texture::new(16, 16, mid);
+    for y in 0..16 {
+        let off = if (y / 3) % 2 == 0 { 0 } else { 2 };
+        for x in 0..16 {
+            let (fx, fy) = ((x + off) % 4, y % 3);
+            let c = match (fx, fy) {
+                (_, 2) => dark,
+                (0, _) => dark,
+                (2, 0) => light,
+                _ => mid,
+            };
+            t.set(x, y, c);
+        }
+    }
+    t
+}
+
+/// A wing's feathers, from its leading edge (the top rows) back: little coverts in scallops,
+/// then long flight feathers in bands, their tips pale.
+fn flight_feathers() -> Texture {
+    let mut t = Texture::new(16, 16, CLAY);
+    for y in 0..16 {
+        for x in 0..16 {
+            let c = if y < 5 {
+                match ((x + if y % 2 == 0 { 0 } else { 1 }) % 3, y % 2) {
+                    (0, _) => KHAKI,
+                    (_, 1) => SAND,
+                    _ => CLAY,
+                }
+            } else if y >= 13 {
+                if x % 3 == 0 { KHAKI } else { SAND }
+            } else if x % 3 == 0 {
+                MAROON
+            } else if x % 3 == 1 {
+                RUST
+            } else {
+                CLAY
+            };
+            t.set(x, y, c);
+        }
+    }
+    t
+}
+
+/// A griffin: a lion's tawny body, an eagle's white head and breast, a hooked gold beak,
+/// fierce gold eyes under a scowl, golden eagle's legs with black talons in front and a
+/// lion's paws behind.
+fn griffin(bank: &mut TexBank) -> Griffin {
+    let mut cache = HashMap::new();
+    let w4 = Texture::new(4, 4, 0);
+    let pelt = bank.add(fur([SAND, KHAKI, CLAY]));
+    let white = bank.add(plumage([WHITE, WHITE, SAND]));
+    let mut body = Mesh::new();
+    // The lion's body and haunches.
+    skin_box(
+        &mut body,
+        v(-0.15, 0.2, -0.34),
+        v(0.15, 0.42, 0.1),
+        pelt,
+        &w4,
+    );
+    for sx in [-1.0f32, 1.0] {
+        skin_box(
+            &mut body,
+            v(sx * 0.11 - 0.05, 0.0, -0.34),
+            v(sx * 0.11 + 0.05, 0.26, -0.2),
+            pelt,
+            &w4,
+        );
+        bx(
+            bank,
+            &mut cache,
+            &mut body,
+            v(sx * 0.11 - 0.055, 0.0, -0.21),
+            v(sx * 0.11 + 0.055, 0.05, -0.15),
+            SAND,
+        );
+        // Golden eagle's legs, and talons.
+        bx(
+            bank,
+            &mut cache,
+            &mut body,
+            v(sx * 0.08 - 0.028, 0.0, 0.06),
+            v(sx * 0.08 + 0.028, 0.26, 0.12),
+            GOLD,
+        );
+        for k in [-1.0f32, 0.0, 1.0] {
+            spike(
+                &mut body,
+                v(sx * 0.08 + k * 0.022, 0.012, 0.12),
+                v(k * 0.3, -0.3, 1.0),
+                0.06,
+                0.013,
+                solid(bank, &mut cache, INK),
+            );
+        }
+    }
+    // Its white breast, the neck, and the head.
+    skin_box(
+        &mut body,
+        v(-0.14, 0.22, 0.07),
+        v(0.14, 0.47, 0.2),
+        white,
+        &w4,
+    );
+    skin_box(
+        &mut body,
+        v(-0.105, 0.42, 0.1),
+        v(0.105, 0.64, 0.31),
+        white,
+        &w4,
+    );
+    // The beak: gold, and hooked at its tip.
+    bx(
+        bank,
+        &mut cache,
+        &mut body,
+        v(-0.055, 0.5, 0.31),
+        v(0.055, 0.6, 0.39),
+        GOLD,
+    );
+    bx(
+        bank,
+        &mut cache,
+        &mut body,
+        v(-0.04, 0.46, 0.37),
+        v(0.04, 0.54, 0.42),
+        ORANGE,
+    );
+    bx(
+        bank,
+        &mut cache,
+        &mut body,
+        v(-0.045, 0.47, 0.3),
+        v(0.045, 0.5, 0.36),
+        CLAY,
+    );
+    for sx in [-1.0f32, 1.0] {
+        // Fierce gold eyes, black pupils, and a dark scowl over each.
+        bx(
+            bank,
+            &mut cache,
+            &mut body,
+            v(sx * 0.066 - 0.028, 0.555, 0.305),
+            v(sx * 0.066 + 0.028, 0.6, 0.315),
+            GOLD,
+        );
+        bx(
+            bank,
+            &mut cache,
+            &mut body,
+            v(sx * 0.058 - 0.01, 0.56, 0.313),
+            v(sx * 0.058 + 0.01, 0.596, 0.317),
+            INK,
+        );
+        let mut brow = Mesh::new();
+        bx(
+            bank,
+            &mut cache,
+            &mut brow,
+            v(-0.04, -0.01, -0.02),
+            v(0.04, 0.012, 0.012),
+            SHADOW,
+        );
+        body.append(
+            &brow,
+            Mat4::from_translation(v(sx * 0.064, 0.612, 0.31)) * Mat4::from_rotation_z(sx * 0.4),
+        );
+        // A crest of feathers swept back off its head.
+        spike(
+            &mut body,
+            v(sx * 0.05, 0.62, 0.14),
+            v(sx * 0.3, 0.6, -1.0),
+            0.13,
+            0.035,
+            solid(bank, &mut cache, WHITE),
+        );
+    }
+    spike(
+        &mut body,
+        v(0.0, 0.64, 0.16),
+        v(0.0, 0.8, -1.0),
+        0.15,
+        0.035,
+        solid(bank, &mut cache, SAND),
+    );
+    // The wing: coverts along its leading edge and long flight feathers trailing back,
+    // spread flat, fanning out to a point.
+    let feathers = bank.add(flight_feathers());
+    let mut wing = Mesh::new();
+    let edge = [
+        v(0.0, 0.0, 0.05),
+        v(0.3, 0.02, 0.08),
+        v(0.52, 0.02, 0.02),
+        v(0.68, 0.0, -0.06),
+        v(0.62, 0.0, -0.17),
+        v(0.5, 0.0, -0.24),
+        v(0.34, 0.0, -0.27),
+        v(0.18, 0.0, -0.26),
+        v(0.04, 0.0, -0.16),
+    ];
+    let uv = |p: Vec3| Vec2::new(p.x / 0.68 * 15.0, (0.08 - p.z) / 0.35 * 15.0);
+    let hub = v(0.08, 0.01, -0.04);
+    for w in edge.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        wing.tri([hub, a, b], [uv(hub), uv(a), uv(b)], feathers);
+    }
+    let bone = solid(bank, &mut cache, CLAY);
+    let mut spar = Mesh::new();
+    skin_box(
+        &mut spar,
+        v(0.0, -0.014, -0.018),
+        v(0.52, 0.014, 0.018),
+        bone,
+        &w4,
+    );
+    wing.append(
+        &spar,
+        Mat4::from_translation(v(0.0, 0.01, 0.06)) * Mat4::from_rotation_y(0.1),
+    );
+    // The lion's tail: curving back and up, with a dark tuft at its end.
+    let mut tail = Mesh::new();
+    let mut at = Vec3::ZERO;
+    let mut dir = v(0.0, -0.4, -1.0).normalize();
+    for (len, w) in [(0.14f32, 0.03f32), (0.13, 0.026), (0.12, 0.022)] {
+        let mut seg = Mesh::new();
+        skin_box(&mut seg, v(-w, 0.0, -w), v(w, len, w), pelt, &w4);
+        let rot = Quat::from_rotation_arc(Vec3::Y, dir);
+        tail.append(&seg, Mat4::from_translation(at) * Mat4::from_quat(rot));
+        at += dir * len;
+        dir = (dir + v(0.0, 0.55, 0.0)).normalize();
+    }
+    let tuft = solid(bank, &mut cache, RUST);
+    let mut ball = Mesh::new();
+    lathe(
+        &mut ball,
+        Vec3::ZERO,
+        &[(0.0, -0.06), (0.05, -0.03), (0.055, 0.02), (0.0, 0.07)],
+        6,
+        0.0,
+        tuft,
+        false,
+    );
+    tail.append(&ball, Mat4::from_translation(at));
+    Griffin { body, wing, tail }
 }
 
 pub fn build(bank: &mut TexBank) -> Beasts {
     Beasts {
         drakes: [drake(bank, &DRAKES[0]), drake(bank, &DRAKES[1])],
         leafling: leafling(bank),
+        griffin: griffin(bank),
     }
 }
 

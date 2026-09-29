@@ -1,12 +1,13 @@
 //! Drawing the world: lights, chunks, objects, characters and effects.
 
-use std::f32::consts::PI;
+use std::f32::consts::{FRAC_PI_2, PI};
 
 use glam::{Mat4, Vec2, Vec3};
 
 use super::glowcave::{EAST, NORTH, cap_colour, cap_size, shelf_side};
 use super::home::{self, Furn};
 use super::items::{Item, Stack};
+use super::labyrinth::FALLEN;
 use super::play::Season;
 use super::world::{Floor, Obj, POOL_GLOW, SEWER_GLOW, WATER_Y, World};
 use crate::assets::Assets;
@@ -139,11 +140,12 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
                 _ => Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5),
             };
             if let Some((hgt, radius, power, warmth)) = o.light() {
-                let flicker = if matches!(o, Obj::Torch | Obj::Campfire) {
-                    1.0 + ((env.time * 9.0 + (x * 7 + z * 13) as f32).sin() * 0.06)
-                } else {
-                    1.0
-                };
+                let flicker =
+                    if matches!(o, Obj::Torch | Obj::Campfire | Obj::Brazier | Obj::Sconce) {
+                        1.0 + ((env.time * 9.0 + (x * 7 + z * 13) as f32).sin() * 0.06)
+                    } else {
+                        1.0
+                    };
                 out.push(PointLight {
                     pos: base + Vec3::Y * hgt,
                     radius: radius * flicker,
@@ -644,6 +646,114 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
                 let rr = 0.9 + (k % 3) as f32 * 0.4;
                 let q = mid + Vec3::new(turn.cos() * rr, 1.55 - t * 1.45, turn.sin() * rr);
                 r.point(q, 1, if t < 0.5 { GLOW[c][0] } else { GLOW[c][1] });
+            }
+        }
+        Obj::Column { var } => {
+            let l = &a.labyrinth;
+            let var = *var as usize % l.columns.len();
+            let turn = if var == FALLEN as usize {
+                small_rot(x, z)
+            } else {
+                // Square plinths stand square to the walls.
+                Mat4::from_rotation_y((hash2(x, z, 3) % 4) as f32 * FRAC_PI_2)
+            };
+            if var != FALLEN as usize {
+                r.shadow(a.tex(a.disk), base, 0.38);
+            }
+            r.mesh(&a.bank, &l.columns[var], &(at * turn), &lit);
+        }
+        Obj::Nest => {
+            r.shadow(a.tex(a.disk), base, 0.4);
+            r.mesh(&a.bank, &a.labyrinth.nest, &at, &lit);
+        }
+        Obj::Brazier => {
+            r.shadow(a.tex(a.disk), base, 0.36);
+            r.mesh(&a.bank, &a.labyrinth.brazier, &at, &lit);
+            flames(
+                r,
+                a,
+                base + Vec3::new(0.0, 0.74, 0.0),
+                0.55,
+                env.time,
+                x * 3 + z,
+            );
+            flames(
+                r,
+                a,
+                base + Vec3::new(0.12, 0.72, -0.08),
+                0.36,
+                env.time + 0.3,
+                x + z * 5,
+            );
+            let pulse = (env.time * 7.0 + (x * 5 + z) as f32).sin() * 0.5 + 0.5;
+            r.halo(base + Vec3::Y * 0.95, 0.7, ORANGE, 0.16 + pulse * 0.06);
+        }
+        Obj::Statue { var } => {
+            let l = &a.labyrinth;
+            r.shadow(a.tex(a.disk), base, 0.4);
+            r.mesh(
+                &a.bank,
+                &l.statues[*var as usize % l.statues.len()],
+                &at,
+                &lit,
+            );
+        }
+        Obj::Rubble { var } => {
+            let l = &a.labyrinth;
+            r.mesh(
+                &a.bank,
+                &l.rubble[*var as usize % l.rubble.len()],
+                &(at * small_rot(x, z)),
+                &lit,
+            );
+        }
+        Obj::Arch => r.mesh(&a.bank, &a.labyrinth.arch, &at, &lit),
+        Obj::Sconce => {
+            r.mesh(&a.bank, &a.labyrinth.sconce, &at, &lit);
+            flames(
+                r,
+                a,
+                base + Vec3::new(0.0, 0.8, -0.28),
+                0.3,
+                env.time,
+                x * 7 + z,
+            );
+        }
+        Obj::Sunbeam => {
+            // Daylight falling from far above: a shaft of added light, a pool of it on
+            // the floor, and dust drifting in it.
+            let pulse = (env.time * 0.8 + x as f32).sin() * 0.5 + 0.5;
+            r.mesh(
+                &a.bank,
+                &a.labyrinth.beam,
+                &at,
+                &DrawOpts {
+                    mode: Mode::Glow,
+                    alpha: 0.14 + pulse * 0.04,
+                    zwrite: false,
+                    cull: false,
+                    ..DrawOpts::default()
+                },
+            );
+            let lean = Vec3::new(1.3, 3.6, -1.0);
+            for k in 0..6 {
+                let up = k as f32 / 6.0;
+                r.halo(
+                    base + lean * up + Vec3::Y * 0.1,
+                    0.7,
+                    CREAM,
+                    (0.2 - up * 0.16) + pulse * 0.04,
+                );
+            }
+            r.halo(base + Vec3::Y * 0.03, 0.8, CREAM, 0.2 + pulse * 0.06);
+            for k in 0..5 {
+                let t = (env.time * 0.12 + k as f32 / 5.0 + (x * 3 + z) as f32 * 0.1).fract();
+                let turn = k as f32 * 1.3 + env.time * 0.3;
+                let up = t * 2.6;
+                let q = base
+                    + Vec3::new(turn.sin() * 0.25, up, turn.cos() * 0.25)
+                    + Vec3::new(1.3, 0.0, -1.0) * (up / 3.6);
+                r.point(q, 1, if k % 2 == 0 { CREAM } else { WHITE });
             }
         }
         Obj::House => {

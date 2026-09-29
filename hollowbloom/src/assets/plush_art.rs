@@ -13,7 +13,7 @@ use crate::palette::*;
 use crate::render::{Mesh, TexBank, Texture};
 
 /// How many monster backpacks there are, in the order of `ICONS` (and of the items).
-pub const PLUSHES: usize = 22;
+pub const PLUSHES: usize = 24;
 
 /// Their icons' names, in order.
 pub const ICONS: [&str; PLUSHES] = [
@@ -39,6 +39,8 @@ pub const ICONS: [&str; PLUSHES] = [
     "pack_drake",
     "pack_leafling",
     "pack_werewolf",
+    "pack_minotaur",
+    "pack_griffin",
 ];
 
 fn v(x: f32, y: f32, z: f32) -> Vec3 {
@@ -1796,11 +1798,155 @@ fn werewolf(k: &mut Kit, bank: &mut TexBank) -> Mesh {
     m
 }
 
+fn minotaur(k: &mut Kit, bank: &mut TexBank) -> Mesh {
+    let mut m = Mesh::new();
+    let b = (v(0.0, 0.13, -0.2), v(0.13, 0.12, 0.1));
+    ball(k, bank, &mut m, b.0, b.1, RUST);
+    // A dark forelock, and horns out to the sides and up, pale to their tips.
+    dab(k, bank, &mut m, b, (0.0, 0.22), (0.1, 0.035), 0.0, MAROON);
+    for sx in [-1.0f32, 1.0] {
+        cone(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.1, 0.2, -0.2),
+            v(sx, 0.35, 0.0),
+            0.1,
+            0.03,
+            SAND,
+        );
+        cone(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.19, 0.23, -0.2),
+            v(sx * 0.3, 1.0, 0.0),
+            0.09,
+            0.022,
+            WHITE,
+        );
+        // Floppy ears under them.
+        cone(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.12, 0.15, -0.19),
+            v(sx, -0.2, -0.1),
+            0.07,
+            0.028,
+            RUST,
+        );
+    }
+    eyes(k, bank, &mut m, b, 0.165, 0.05, 0.03);
+    // A big pink muzzle with nostrils, and a gold ring through its nose.
+    let muzzle = (v(0.0, 0.08, -0.29), v(0.08, 0.05, 0.04));
+    ball(k, bank, &mut m, muzzle.0, muzzle.1, SALMON);
+    for sx in [-1.0f32, 1.0] {
+        dab(
+            k,
+            bank,
+            &mut m,
+            muzzle,
+            (sx * 0.03, 0.09),
+            (0.018, 0.014),
+            0.0,
+            INK,
+        );
+    }
+    let gold = k.c(bank, GOLD);
+    let mut ring = Mesh::new();
+    lathe(
+        &mut ring,
+        Vec3::ZERO,
+        &[(0.022, -0.006), (0.03, 0.0), (0.022, 0.006), (0.018, 0.0)],
+        8,
+        0.0,
+        gold,
+        false,
+    );
+    m.append(
+        &ring,
+        Mat4::from_translation(v(0.0, 0.045, -0.335)) * Mat4::from_rotation_x(PI / 2.0),
+    );
+    m
+}
+
+fn griffin(k: &mut Kit, bank: &mut TexBank) -> Mesh {
+    let mut m = Mesh::new();
+    // Russet wings spread out behind, a tawny lion's body with a tufted tail, and a white
+    // eagle's head on top with a hooked gold beak.
+    for sx in [-1.0f32, 1.0] {
+        let p = |x: f32, y: f32| v(sx * x, y, -0.19);
+        fan(
+            k,
+            bank,
+            &mut m,
+            &[
+                p(0.08, 0.14),
+                p(0.14, 0.24),
+                p(0.3, 0.2),
+                p(0.34, 0.12),
+                p(0.3, 0.05),
+                p(0.22, 0.02),
+                p(0.12, 0.06),
+            ],
+            CLAY,
+        );
+        for (x, y) in [(0.26f32, 0.14f32), (0.2, 0.09)] {
+            stick(k, bank, &mut m, p(0.1, 0.14), p(x, y), 0.006, RUST);
+        }
+    }
+    let body = (v(0.0, 0.07, -0.2), v(0.12, 0.08, 0.09));
+    ball(k, bank, &mut m, body.0, body.1, SAND);
+    let pts = [
+        v(-0.05, 0.02, -0.24),
+        v(-0.12, 0.0, -0.25),
+        v(-0.17, 0.04, -0.25),
+    ];
+    for w in pts.windows(2) {
+        stick(k, bank, &mut m, w[0], w[1], 0.012, SAND);
+    }
+    ball(
+        k,
+        bank,
+        &mut m,
+        v(-0.18, 0.06, -0.25),
+        v(0.025, 0.025, 0.025),
+        RUST,
+    );
+    let head = (v(0.0, 0.2, -0.21), v(0.09, 0.085, 0.08));
+    ball(k, bank, &mut m, head.0, head.1, WHITE);
+    eyes(k, bank, &mut m, head, 0.215, 0.04, 0.026);
+    let z = face(head.0, head.1, 0.0, 0.185);
+    cone(
+        k,
+        bank,
+        &mut m,
+        v(0.0, 0.185, z + 0.01),
+        v(0.0, -0.4, -1.0),
+        0.06,
+        0.025,
+        GOLD,
+    );
+    // Its crest.
+    cone(
+        k,
+        bank,
+        &mut m,
+        v(0.0, 0.27, -0.2),
+        v(0.0, 1.0, 0.5),
+        0.06,
+        0.022,
+        SAND,
+    );
+    m
+}
+
 /// Makes monster backpack `p` (see `ICONS`), as it hangs on the back before it's grown.
 pub(super) fn plush(p: usize, k: &mut Kit, bank: &mut TexBank) -> Mesh {
     let make = [
         slime, bat, shroom, crab, wisp, beetle, imp, skeleton, golem, ghost, frog, jelly, puffer,
-        zombie, brute, sneak, bug, snail, bookworm, drake, leafling, werewolf,
+        zombie, brute, sneak, bug, snail, bookworm, drake, leafling, werewolf, minotaur, griffin,
     ];
     make[p](k, bank)
 }
@@ -2222,9 +2368,47 @@ const WEREWOLF: &[&str] = &[
     "....KKKKKKKK....",
     "................",
 ];
+const MINOTAUR: &[&str] = &[
+    "................",
+    ".Kw..........wK.",
+    ".Kyw........wyK.",
+    "..Kny......ynK..",
+    "...KnKKKKKKnK...",
+    "..KuummmmmmuuK..",
+    ".KuuuuuuuuuuuuK.",
+    "KuKuKKuuuuKKuKuK",
+    "KuKuKwuuuuKwuKuK",
+    ".KuuuuuuuuuuuuK.",
+    "..KussssssssuK..",
+    "..KsKsssssKssK..",
+    "..KssssssssssK..",
+    "...KssYYYYssK...",
+    "....KKYKKYKK....",
+    "......KYYK......",
+];
+
+const GRIFFIN: &[&str] = &[
+    "................",
+    "......KnnK......",
+    ".....KwwwwK.....",
+    "....KwwwwwwK....",
+    "KK.KwKwwwwKwK.KK",
+    "KCKKwKYwwYKwKKCK",
+    "KCCKwwwYYwwwKCCK",
+    "KCuKwwwYYwwwKuCK",
+    "KCuuKwwoowwKuuCK",
+    ".KCuKKwwwwKKuCK.",
+    ".KCuKnnnnnnKuCK.",
+    "..KKnnnnnnnnKK..",
+    "...KnnhnnhnnK...",
+    "...KnnnnnnnnKuK.",
+    "....KYK..KYK.Ku.",
+    "....KK....KK..K.",
+];
+
 const ART: [&[&str]; PLUSHES] = [
     SLIME, BAT, SHROOM, CRAB, WISP, BEETLE, IMP, SKELETON, GOLEM, GHOST, FROG, JELLY, PUFFER,
-    ZOMBIE, BRUTE, SNEAK, BUG, SNAIL, BOOKWORM, DRAKE, LEAFLING, WEREWOLF,
+    ZOMBIE, BRUTE, SNEAK, BUG, SNAIL, BOOKWORM, DRAKE, LEAFLING, WEREWOLF, MINOTAUR, GRIFFIN,
 ];
 
 /// Monster backpack `p`'s icon.

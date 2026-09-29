@@ -6,7 +6,7 @@ use glam::{Vec2, Vec3};
 
 use super::Io;
 use super::dungeon::Foe;
-use super::foes::{HIDE_SECS, SHELL_LETS_THROUGH, St};
+use super::foes::{DAZED_BLOWS, HIDE_SECS, SHELL_LETS_THROUGH, St};
 use super::fx::Drop;
 use super::gear::Stat;
 use super::items::Item;
@@ -122,6 +122,11 @@ impl Play {
         // the shell turns most of a blow aside.
         let mut hit = hit;
         let shelled = f.shelled();
+        let dazed = f.dazed();
+        if dazed {
+            // A minotaur seeing stars can't guard itself.
+            hit.dmg = (hit.dmg as f32 * DAZED_BLOWS).ceil() as i32;
+        }
         if shelled {
             hit.dmg = ((hit.dmg as f32 * SHELL_LETS_THROUGH).ceil() as i32).max(1);
         } else if f.foe == Foe::Snail {
@@ -151,7 +156,7 @@ impl Play {
         if hit.chill {
             f.chill = 2.5;
         }
-        let (text, color) = if hit.crit {
+        let (text, color) = if hit.crit || dazed {
             (format!("{}!", hit.dmg), GOLD)
         } else if shelled {
             (hit.dmg.to_string(), SKY)

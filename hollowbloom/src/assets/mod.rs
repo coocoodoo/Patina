@@ -9,6 +9,7 @@ pub mod gear_art;
 pub mod glowcave_art;
 pub mod home_art;
 pub mod item_art;
+pub mod labyrinth_art;
 pub mod logo;
 pub mod magic_art;
 pub mod models;
@@ -673,6 +674,8 @@ pub struct Assets {
     pub sewer: sewer_art::SewerArt,
     /// The glowcap caves: their rock, ruins and pools, and the glowing mushrooms.
     pub glowcave: glowcave_art::GlowcaveArt,
+    /// The marble labyrinth: its walls, floors, columns, braziers, statues and arches.
+    pub labyrinth: labyrinth_art::LabyrinthArt,
     /// Drakelings and leaflings.
     pub beasts: beast_art::Beasts,
     /// Backpacks, worn and as icons, in every style and colourway.
@@ -839,6 +842,7 @@ impl Assets {
         let deep = deep_art::build(&mut bank);
         let sewer = sewer_art::build(&mut bank);
         let glowcave = glowcave_art::build(&mut bank);
+        let labyrinth = labyrinth_art::build(&mut bank);
         let beasts = beast_art::build(&mut bank);
         Assets {
             foes,
@@ -893,6 +897,7 @@ impl Assets {
             deep,
             sewer,
             glowcave,
+            labyrinth,
             beasts,
             packs,
         }

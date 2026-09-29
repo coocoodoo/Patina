@@ -59,6 +59,11 @@ pub struct Monsters {
     /// hips).
     pub werewolf: Humanoid,
     pub wolf_tail: Mesh,
+    /// The labyrinth's minotaur, its tufted tail (hanging from the hips), and its axe
+    /// (gripped at the origin, pointing down the arm).
+    pub minotaur: Humanoid,
+    pub bull_tail: Mesh,
+    pub labrys: Mesh,
 }
 
 fn v(x: f32, y: f32, z: f32) -> Vec3 {
@@ -1900,9 +1905,247 @@ fn bug(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Bug {
     }
 }
 
+/// A horn (or any tapering spike) from `at` along `dir`: `len` long, `r0` thick at its
+/// root and `r1` at its end.
+#[allow(clippy::too_many_arguments)]
+fn taper(m: &mut Mesh, at: Vec3, dir: Vec3, len: f32, r0: f32, r1: f32, tex: TexId) {
+    let mut p = Mesh::new();
+    lathe(
+        &mut p,
+        Vec3::ZERO,
+        &[(r0, 0.0), (r1, len)],
+        6,
+        0.5,
+        tex,
+        false,
+    );
+    let rot = glam::Quat::from_rotation_arc(Vec3::Y, dir.normalize());
+    m.append(&p, Mat4::from_translation(at) * Mat4::from_quat(rot));
+}
+
+/// A minotaur: a great bull's head on a hulking body in chestnut hide, pale horns sweeping
+/// out and up, a pink muzzle with a gold ring through it, glaring red eyes under a dark
+/// forelock, and a shaggy dark mane over its shoulders; a loincloth, bronze armbands, and
+/// cloven hooves. Its tufted tail hangs down behind.
+fn minotaur(bank: &mut TexBank, k: &mut Kit) -> (Humanoid, Mesh) {
+    let (hide, dark, light) = (RUST, MAROON, CLAY);
+    let (muzzle, cloth, belt) = (ROSEWOOD, KHAKI, SHADOW);
+    let legend = [
+        ('h', hide),
+        ('d', dark),
+        ('l', light),
+        ('r', RED),
+        ('k', INK),
+        ('c', cloth),
+        ('b', belt),
+    ];
+    let head = head_tex(
+        &[
+            "dddddddd", "hddhhddh", "hrkhhkrh", "hhhhhhhh", "hhhhhhhh", "hhhhhhhh", "hhhhhhhh",
+        ],
+        &legend,
+        hide,
+        dark,
+        dark,
+        light,
+    );
+    let body = body_tex(
+        &["hllllh", "hlhhlh", "hhllhh", "bbbbbb", "cccccc"],
+        &legend,
+        hide,
+        belt,
+        dark,
+    );
+    let arm = limb(hide, dark, dark);
+    let leg = limb(hide, dark, INK);
+    let b = Build {
+        head: v(0.17, 0.25, 0.16),
+        body: v(0.3, 0.4, 0.2),
+        arm: Vec2::new(0.09, 0.4),
+        leg: Vec2::new(0.1, 0.26),
+    };
+    let bull = assemble(bank, [head, body, arm, leg], &b, &mut |bank, parts| {
+        let h = &mut parts[HEAD];
+        // A broad pink muzzle, dark nostrils, and a gold ring through its nose.
+        k.bx(bank, h, v(-0.12, 0.0, 0.14), v(0.12, 0.13, 0.26), muzzle);
+        k.bx(bank, h, v(-0.1, 0.12, 0.14), v(0.1, 0.16, 0.22), hide);
+        for sx in [-1.0f32, 1.0] {
+            k.bx(
+                bank,
+                h,
+                v(sx * 0.055 - 0.022, 0.065, 0.259),
+                v(sx * 0.055 + 0.022, 0.1, 0.263),
+                INK,
+            );
+        }
+        // A pale lip over its jaw.
+        k.bx(bank, h, v(-0.1, 0.0, 0.2), v(0.1, 0.02, 0.262), SALMON);
+        let gold = k.c(bank, GOLD);
+        let mut ring = Mesh::new();
+        lathe(
+            &mut ring,
+            Vec3::ZERO,
+            &[(0.035, -0.012), (0.05, 0.0), (0.035, 0.012), (0.03, 0.0)],
+            8,
+            0.0,
+            gold,
+            false,
+        );
+        h.append(
+            &ring,
+            Mat4::from_translation(v(0.0, 0.02, 0.27)) * Mat4::from_rotation_x(PI / 2.0),
+        );
+        // Horns out from the sides of its head and up, pale, and white at the tips.
+        let horn = k.c(bank, SAND);
+        let tip = k.c(bank, WHITE);
+        for sx in [-1.0f32, 1.0] {
+            taper(
+                h,
+                v(sx * 0.15, 0.2, 0.02),
+                v(sx, 0.25, 0.12),
+                0.17,
+                0.05,
+                0.036,
+                horn,
+            );
+            taper(
+                h,
+                v(sx * 0.31, 0.24, 0.05),
+                v(sx * 0.35, 1.0, 0.25),
+                0.15,
+                0.036,
+                0.0,
+                tip,
+            );
+            // Ears sticking out under them, pink inside.
+            let (x0, x1) = if sx < 0.0 {
+                (-0.26, -0.16)
+            } else {
+                (0.16, 0.26)
+            };
+            k.bx(bank, h, v(x0, 0.12, -0.03), v(x1, 0.17, 0.04), hide);
+            k.bx(
+                bank,
+                h,
+                v(x0 + 0.015, 0.13, 0.04),
+                v(x1 - 0.015, 0.16, 0.045),
+                muzzle,
+            );
+        }
+        // A dark forelock tumbling between its horns.
+        k.bx(bank, h, v(-0.09, 0.2, 0.1), v(0.09, 0.28, 0.18), dark);
+        // The mane: shaggy down the back of its head and over its shoulders.
+        k.bx(bank, h, v(-0.15, 0.02, -0.19), v(0.15, 0.26, -0.15), dark);
+        k.bx(
+            bank,
+            &mut parts[BODY],
+            v(-0.22, 0.3, -0.23),
+            v(0.22, 0.43, 0.06),
+            dark,
+        );
+        // A loincloth hanging front and back from its belt.
+        k.bx(
+            bank,
+            &mut parts[BODY],
+            v(-0.13, -0.14, 0.2),
+            v(0.13, 0.1, 0.215),
+            cloth,
+        );
+        k.bx(
+            bank,
+            &mut parts[BODY],
+            v(-0.15, -0.12, -0.215),
+            v(0.15, 0.1, -0.2),
+            cloth,
+        );
+        // Bronze bands on its arms.
+        for i in [ARM_L, ARM_R] {
+            k.bx(
+                bank,
+                &mut parts[i],
+                v(-0.097, -0.16, -0.097),
+                v(0.097, -0.12, 0.097),
+                GOLD,
+            );
+        }
+        // Cloven hooves.
+        for i in [LEG_L, LEG_R] {
+            for (x0, x1) in [(-0.11f32, -0.012f32), (0.012, 0.11)] {
+                k.bx(
+                    bank,
+                    &mut parts[i],
+                    v(x0, -0.27, -0.1),
+                    v(x1, -0.2, 0.14),
+                    INK,
+                );
+            }
+        }
+    });
+    // The tail: a rope of hide, hanging down, with a dark tuft at the end.
+    let mut tail = Mesh::new();
+    k.bx(
+        bank,
+        &mut tail,
+        v(-0.022, -0.3, -0.022),
+        v(0.022, 0.0, 0.022),
+        hide,
+    );
+    k.bx(
+        bank,
+        &mut tail,
+        v(-0.05, -0.43, -0.05),
+        v(0.05, -0.29, 0.05),
+        dark,
+    );
+    (bull, tail)
+}
+
 // ------------------------------------------------------------------------------------------
 // Weapons
 // ------------------------------------------------------------------------------------------
+
+/// A minotaur's axe: a long haft bound in bronze, and a pair of crescent blades at its
+/// head, one either way. Gripped at the origin and pointing down the arm.
+fn labrys(bank: &mut TexBank, k: &mut Kit) -> Mesh {
+    let mut m = Mesh::new();
+    let wood = speck(bank, [CLAY, RUST, MAROON]);
+    tiled_box(
+        &mut m,
+        v(-0.026, -0.74, -0.026),
+        v(0.026, 0.12, 0.026),
+        wood,
+        0,
+    );
+    for y in [0.02f32, -0.58] {
+        k.bx(
+            bank,
+            &mut m,
+            v(-0.034, y - 0.04, -0.034),
+            v(0.034, y, 0.034),
+            GOLD,
+        );
+    }
+    // (Out to either side, so they show whichever way the arm swings.)
+    let steel = speck(bank, [WHITE, SKY, SLATE]);
+    let mid = -0.66;
+    for side in [-1.0f32, 1.0] {
+        for (x0, x1, half) in [
+            (0.03f32, 0.09f32, 0.07f32),
+            (0.09, 0.15, 0.1),
+            (0.15, 0.2, 0.13),
+        ] {
+            let (a, b) = if side > 0.0 { (x0, x1) } else { (-x1, -x0) };
+            tiled_box(
+                &mut m,
+                v(a, mid - half, -0.012),
+                v(b, mid + half, 0.012),
+                steel,
+                0,
+            );
+        }
+    }
+    m
+}
 
 /// A fat goblin's club, gripped at the origin and pointing down the arm.
 fn club(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Mesh {
@@ -1988,6 +2231,8 @@ pub fn build(bank: &mut TexBank) -> Monsters {
         );
     }
     let (werewolf, wolf_tail) = werewolf(bank, &mut k);
+    let (minotaur, bull_tail) = minotaur(bank, &mut k);
+    let labrys = labrys(bank, &mut k);
     let ghost_pals = [
         [MINT, LIME, GREEN],
         [WHITE, SKY, AQUA],
@@ -2011,6 +2256,9 @@ pub fn build(bank: &mut TexBank) -> Monsters {
         bug: (0..LOOKS).map(|b| bug(bank, &mut k, b)).collect(),
         werewolf,
         wolf_tail,
+        minotaur,
+        bull_tail,
+        labrys,
     }
 }
 

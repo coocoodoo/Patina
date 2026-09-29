@@ -3816,6 +3816,8 @@ fn drakelings_leaflings_and_werewolves_drop_their_bits() {
         (Foe::Drake, 4, Item::FrostScale),
         (Foe::Leafling, 0, Item::Heartleaf),
         (Foe::Werewolf, 2, Item::WolfFang),
+        (Foe::Minotaur, 1, Item::MinotaurHorn),
+        (Foe::Griffin, 4, Item::GriffinFeather),
     ] {
         let mut got = 0;
         for _ in 0..200 {
@@ -4034,6 +4036,8 @@ fn every_monster_leaves_a_backpack_in_its_own_shape() {
         Foe::Drake,
         Foe::Leafling,
         Foe::Werewolf,
+        Foe::Minotaur,
+        Foe::Griffin,
     ];
     let mut looks = std::collections::HashSet::new();
     for foe in foes {
@@ -4062,4 +4066,192 @@ fn every_monster_leaves_a_backpack_in_its_own_shape() {
         "{plain} slime packs from 400 slimes"
     );
     assert!(boss > 120, "{boss} from 400 King Slimes");
+}
+
+/// Down into the first marble labyrinth on this save.
+fn into_the_labyrinth(s: &mut Sim) -> u32 {
+    use super::labyrinth::is_labyrinth;
+    let depth = (8..400)
+        .find(|&d| is_labyrinth(s.play.seed, d, s.play.biome_at(d)))
+        .expect("a labyrinth floor");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    // (Nothing stirs till the fade's done.)
+    s.frames(60);
+    depth
+}
+
+#[test]
+fn the_labyrinth_keeps_minotaurs_and_a_griffin_on_its_nest() {
+    use super::dungeon::Foe;
+    use super::foes::PERCH_Y;
+    use super::labyrinth::minotaurs;
+    use super::world::Wall;
+    let mut s = Sim::new();
+    let depth = into_the_labyrinth(&mut s);
+    assert!(s.play.world().labyrinth);
+    let banner = s.play.banner.as_ref().expect("the floor's banner");
+    assert!(
+        banner.sub.ends_with("the marble labyrinth"),
+        "{}",
+        banner.sub
+    );
+    // Pale marble, lit warm.
+    assert!(s.play.env().ambient > 0.5);
+    let bulls = s
+        .play
+        .foes
+        .iter()
+        .filter(|f| f.foe == Foe::Minotaur)
+        .count();
+    assert_eq!(bulls, minotaurs(depth));
+    let griffin = s
+        .play
+        .foes
+        .iter()
+        .find(|f| f.foe == Foe::Griffin)
+        .expect("a griffin");
+    // Sat on its nest up on its column until it sees you.
+    let (x, z) = (griffin.pos.x as i32, griffin.pos.y as i32);
+    assert!(matches!(s.play.world().obj(x, z), Some(Obj::Nest)));
+    assert!(!griffin.alert);
+    assert!((griffin.y - PERCH_Y).abs() < 1e-3);
+    assert!(!griffin.grounded(), "harmless up there");
+    // The marble stands up to a pickaxe.
+    s.play.foes.clear();
+    let w = s.play.world();
+    let wall = (1..w.h - 1)
+        .flat_map(|z| (1..w.w - 1).map(move |x| (x, z)))
+        .find(|&(x, z)| matches!(w.wall(x, z), Wall::Marble(_)) && !w.blocked(x, z + 1))
+        .expect("marble");
+    s.stand(wall.0, wall.1 + 1, Vec2::new(0.0, -1.0));
+    s.select(4);
+    for _ in 0..8 {
+        s.tap(KeyCode::KeyJ, 30);
+    }
+    assert!(matches!(
+        s.play.world().wall(wall.0, wall.1),
+        Wall::Marble(_)
+    ));
+}
+
+#[test]
+fn a_minotaur_charges_down_the_corridor_and_is_dazed_by_the_wall() {
+    use super::combat::Hit;
+    use super::dungeon::Foe;
+    use super::foes::{CHARGE_WINDUP, DAZED, Enemy, St};
+    let mut s = Sim::new();
+    let depth = into_the_labyrinth(&mut s);
+    // A straight run of corridor with a wall across its north end.
+    let w = s.play.world();
+    let (x, z) = (1..w.h - 7)
+        .flat_map(|z| (1..w.w - 1).map(move |x| (x, z)))
+        .find(|&(x, z)| {
+            w.wall(x, z - 1) != super::world::Wall::None
+                && (0..7).all(|k| !w.blocked(x, z + k) && w.obj(x, z + k).is_none())
+                && (0..7).all(|k| !w.blocked(x + 1, z + k))
+        })
+        .expect("a straight corridor");
+    s.play.foes.clear();
+    s.play.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+    let mut bull = Enemy::new(
+        Foe::Minotaur,
+        x as f32 + 0.5,
+        z as f32 + 5.5,
+        depth,
+        0,
+        false,
+        4,
+    );
+    bull.alert = true;
+    bull.t = 0.0;
+    s.play.foes.push(bull);
+    // It lowers its horns and paws the ground...
+    s.frames(2);
+    assert_eq!(s.play.foes[0].st, St::Windup);
+    s.frames((CHARGE_WINDUP * 60.0) as usize + 2);
+    assert_eq!(s.play.foes[0].st, St::Dash, "and charges");
+    // ...and you step aside: on it thunders, into the wall.
+    s.play.player.pos.x += 1.2;
+    let hp = s.play.player.hp;
+    let mut dazed = false;
+    for _ in 0..90 {
+        s.frames(1);
+        if s.play.foes[0].dazed() {
+            dazed = true;
+            break;
+        }
+    }
+    assert!(dazed, "it never hit the wall");
+    let f = &s.play.foes[0];
+    assert_eq!(f.hops, DAZED);
+    assert!(
+        f.pos.y < z as f32 + 1.5,
+        "it ran the length of the corridor"
+    );
+    assert!(!f.grounded(), "seeing stars, it can't hurt you");
+    assert_eq!(s.play.player.hp, hp);
+    // And your blows land harder meanwhile.
+    let before = f.hp;
+    let hit = Hit {
+        dmg: 10,
+        crit: false,
+        burn: false,
+        chill: false,
+        shock: false,
+        knock: 0.0,
+    };
+    let from = s.play.player.pos;
+    s.play.strike(0, hit, from);
+    assert_eq!(before - s.play.foes[0].hp, 15);
+    // Then it comes round.
+    s.frames(200);
+    assert!(!s.play.foes[0].dazed());
+}
+
+#[test]
+fn a_griffin_takes_wing_wheels_round_and_dives() {
+    use super::dungeon::Foe;
+    use super::foes::{St, WHEEL_Y};
+    let mut s = Sim::new();
+    into_the_labyrinth(&mut s);
+    let i = s
+        .play
+        .foes
+        .iter()
+        .position(|f| f.foe == Foe::Griffin)
+        .expect("a griffin");
+    s.play.foes.retain(|f| f.foe == Foe::Griffin);
+    let i = i.min(s.play.foes.len() - 1);
+    let nest = s.play.foes[i].pos;
+    // Walk into the courtyard in sight of it.
+    let w = s.play.world();
+    let spot = [(0, 3), (0, -3), (3, 0), (-3, 0), (2, 2), (-2, 2)]
+        .into_iter()
+        .map(|(dx, dz)| (nest.x as i32 + dx, nest.y as i32 + dz))
+        .find(|&(x, z)| !w.blocked(x, z))
+        .expect("open ground by the nest");
+    s.play.player.pos = Vec2::new(spot.0 as f32 + 0.5, spot.1 as f32 + 0.5);
+    s.frames(3);
+    assert!(s.play.foes[i].alert, "it sees you");
+    // Up it goes, to wheel round overhead...
+    s.frames(120);
+    let g = &s.play.foes[i];
+    assert!(g.y > WHEEL_Y * 0.8, "only {} up", g.y);
+    assert!(!g.grounded());
+    // ...and down it comes, talons first.
+    let mut dived = false;
+    for _ in 0..900 {
+        s.frames(1);
+        s.play.player.hp = s.play.player.max_hp();
+        let g = &s.play.foes[i];
+        if g.st == St::Dash && g.grounded() {
+            dived = true;
+            break;
+        }
+    }
+    assert!(dived, "it never stooped to dive");
 }

@@ -48,6 +48,12 @@ pub enum Foe {
     /// A werewolf: out only under a full moon, from floor 5 down. It howls to bring the
     /// whole floor running, then pounces.
     Werewolf,
+    /// A minotaur, roaming the marble labyrinth with its axe. It lowers its horns and
+    /// charges down the corridors, and running into a wall leaves it dazed.
+    Minotaur,
+    /// A griffin, nesting in the labyrinth's sunlit courtyard. It wheels round overhead and
+    /// dives at you talons first.
+    Griffin,
 }
 
 /// The first floor the lantern snails and book-worms live on.
@@ -432,6 +438,9 @@ pub fn generate(seed: u64, depth: u32, biome: usize, via_waystone: bool) -> Leve
     }
     if super::glowcave::is_glowcave(seed, depth, biome) {
         return super::glowcave::generate(seed, depth, biome);
+    }
+    if super::labyrinth::is_labyrinth(seed, depth, biome) {
+        return super::labyrinth::generate(seed, depth, biome);
     }
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x9E37_79B9));
     let grow = depth.min(30) as i32;

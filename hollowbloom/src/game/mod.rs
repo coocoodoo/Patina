@@ -19,6 +19,7 @@ pub mod home;
 pub mod hud;
 pub mod ink;
 pub mod items;
+pub mod labyrinth;
 pub mod loot;
 pub mod magic;
 pub mod menus;

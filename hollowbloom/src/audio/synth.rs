@@ -85,6 +85,12 @@ pub enum Sfx {
     Howl,
     /// A drakeling breathing out a roar of fire or frost.
     Breath,
+    /// A minotaur's bellow as it charges.
+    Bellow,
+    /// Something heavy running headlong into a wall.
+    Crash,
+    /// A griffin's screech.
+    Screech,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -148,6 +154,9 @@ pub const ALL: &[Sfx] = &[
     Sfx::Discover,
     Sfx::Howl,
     Sfx::Breath,
+    Sfx::Bellow,
+    Sfx::Crash,
+    Sfx::Screech,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -796,6 +805,55 @@ pub fn make(s: Sfx) -> Vec<f32> {
             });
             lowpass(&mut out, 0.6);
             out
+        }
+        Sfx::Bellow => {
+            // A deep, rough bull's roar, swelling up and falling away.
+            let secs = 0.95;
+            let (mut a, mut b, mut lp) = (0.0, 0.0, 0.0);
+            let mut out = render(secs, |t, n| {
+                let k = t / secs;
+                let pitch = 95.0 + 40.0 * (k * std::f32::consts::PI).sin() - 20.0 * k;
+                a += pitch / RATE;
+                b += pitch * 1.5 / RATE;
+                lp += (n - lp) * 0.08;
+                // Growling: the voice judders as it goes.
+                let rough = 0.75 + 0.25 * square(t * 31.0, 0.5);
+                let env = (t * 10.0).min(1.0) * (1.0 - k).powf(0.8);
+                ((square(a, 0.35) * 0.35 + tri(b) * 0.2) * rough + lp * 0.4) * env
+            });
+            lowpass(&mut out, 0.35);
+            out
+        }
+        Sfx::Crash => {
+            // A thump into stone, and grit pattering down after it.
+            let secs = 0.7;
+            let (mut phase, mut lp) = (0.0, 0.0);
+            let mut out = render(secs, |t, n| {
+                phase += (80.0 - t * 60.0).max(30.0) / RATE;
+                lp += (n - lp) * 0.3;
+                let thump = sine(phase) * (-t * 9.0).exp() * 0.9;
+                let grit = if (t * 53.0).sin() > 0.6 {
+                    n * 0.35
+                } else {
+                    lp * 0.15
+                };
+                thump + grit * (-t * 4.0).exp()
+            });
+            lowpass(&mut out, 0.45);
+            out
+        }
+        Sfx::Screech => {
+            // A high, piercing cry sliding down, with a rasp in it.
+            let secs = 0.6;
+            let (mut a, mut lp) = (0.0, 0.0);
+            render(secs, |t, n| {
+                let k = t / secs;
+                let pitch = 1900.0 - 700.0 * k + sine(t * 28.0) * 60.0;
+                a += pitch / RATE;
+                lp += (n - lp) * 0.5;
+                let env = (t * 30.0).min(1.0) * (1.0 - k).powf(1.5);
+                (square(a, 0.3) * 0.3 + sine(a) * 0.25 + lp * 0.15) * env * 0.8
+            })
         }
         Sfx::Piano => {
             // A little tune on a slightly out-of-tune upright.

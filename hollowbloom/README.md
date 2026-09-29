@@ -468,6 +468,26 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   and the **shroomlings glow** like the caps. Take a **sickle** to the glowcaps and shelf
   fungi for glowcaps, glow spores and now and then glowcap spores to grow your own; the
   pools hold the Fungal Hollow's fish.
+* **The Marble Labyrinth.** Now and then (from floor 8, never on a guardian's floor) a floor
+  is an old **maze of white marble**: corridors three wide between walls banded in **gold**,
+  with a **pier** and its gilded capital at every corner, **arches** springing over the
+  doorways, niches, gilded shields, cracks and moss on the walls, and **mosaics** and
+  cracked flagstones underfoot. Braziers of old green bronze and torches in brackets light
+  the way; columns stand (or lie broken) in the rooms, marble statues keep watch, rubble
+  lies where the roof came down, and the **dead ends hide treasure**. Somewhere in it an
+  open **courtyard** lies in shafts of daylight, with a **griffin's nest** on a broken
+  column in the middle. The stairs down are as long a walk from where you come in as the
+  maze allows, and the map fills in as you go. Marble can't be mined.
+* **Minotaurs** roam the labyrinth's corridors (more of them deeper down) with a
+  double-headed axe. Get close and the axe comes down; get further off, down a clear stretch
+  of corridor, and it **lowers its horns, paws the ground and charges**, bellowing, in a
+  straight line: **step aside and let it run into a wall**, and it's left **dazed**, seeing
+  stars, harmless, and taking harder blows for a couple of seconds. They drop **minotaur
+  horns**, and iron and gold ore.
+* **Griffins** nest in the courtyard (a pair of them, from floor 30). One sits on its nest
+  until it sees you, then takes wing with a screech, **wheels round overhead** out of reach,
+  and every so often hangs back in the air, screeches, and **dives at you talons first**
+  before climbing away again. They drop **griffin feathers**.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -562,7 +582,8 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   shroomling, a crystal crab, a wisp, a beetle, an imp, a skull and crossbones, a golem's
   block, a ghost, a bog frog, a drift jelly, a spiny puffer, a stitched zombie, both goblins,
   a moss spider, a stained-glass snail shell, a book with its book-worm, a drakeling, a
-  leafling and a werewolf). Found backpacks roll their size (roomier deeper down): in
+  leafling, a werewolf, a minotaur with its nose ring, and a griffin with its wings spread).
+  Found backpacks roll their size (roomier deeper down): in
   treasure chests (often, in gleaming ones), from guardians, from goblins now and then, and
   every creature once in a while drops the one in its own shape. Rowan's guild sells plain
   ones in town. You wear yours on your back, where everyone can see it. Taking one off (or
@@ -644,6 +665,7 @@ hollowbloom --season-shots DIR    # the farm and town in every season, day and n
 hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and the snail lamp
 hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
+hollowbloom --labyrinth-shots DIR # the marble labyrinth: maze, arches, courtyard, minotaur, griffin
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV

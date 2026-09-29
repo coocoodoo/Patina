@@ -1619,6 +1619,40 @@ pub fn bench() {
             draw_time * 1000.0 / frames as f64
         );
     }
+    // The marble labyrinth, stood in its courtyard among the columns, braziers and shafts
+    // of daylight, with the griffin wheeling overhead.
+    let maze = {
+        let p = play(&mut game);
+        (8..200).find(|&d| crate::game::labyrinth::is_labyrinth(p.seed, d, p.biome_at(d)))
+    };
+    if let Some(depth) = maze {
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            let w = &p.level.as_ref().unwrap().world;
+            let nest = (0..w.h)
+                .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+                .find(|&(x, z)| matches!(w.obj(x, z), Some(crate::game::world::Obj::Nest)));
+            if let Some((x, z)) = nest {
+                let (x, z) = w.nearest_open(x, z + 3);
+                p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+            }
+        }
+        let t0 = Instant::now();
+        let mut draw_time = 0.0;
+        for _ in 0..frames {
+            tick(&mut game, &input, &audio, 1);
+            let t = Instant::now();
+            game.draw(&mut r, &input);
+            draw_time += t.elapsed().as_secs_f64();
+        }
+        let total = t0.elapsed().as_secs_f64();
+        println!(
+            "marble labyrinth (floor {depth}): {:.2} ms/frame total, {:.2} ms/frame drawing",
+            total * 1000.0 / frames as f64,
+            draw_time * 1000.0 / frames as f64
+        );
+    }
     // The busiest place: the plaza at noon, everyone out and about.
     {
         let p = play(&mut game);
@@ -4949,6 +4983,7 @@ pub fn glowcave_shots(dir: &str) {
                 && !crate::game::dungeon::is_waystone_floor(d)
                 && !crate::game::sewer::is_sewer(p.seed, d)
                 && !is_glowcave(p.seed, d, 2)
+                && !crate::game::labyrinth::is_labyrinth(p.seed, d, 2)
         })
     };
     if let Some(depth) = plain {
@@ -4991,12 +5026,16 @@ pub fn beast_shots(dir: &str) {
         p.player.level = 30;
         p.player.refresh();
     }
-    // A plain floor of a biome (no sewers, no glowcaps) from band `from` on.
+    // A plain floor of a biome (no sewers, glowcaps or labyrinth) from band `from` on.
     let plain = |game: &mut Game, from: u32, biome: usize| {
         let base = floor_in(game, from, biome, 0);
         let seed = play(game).seed;
         (base + 2..base + 10)
-            .find(|&d| !is_sewer(seed, d) && !is_glowcave(seed, d, biome))
+            .find(|&d| {
+                !is_sewer(seed, d)
+                    && !is_glowcave(seed, d, biome)
+                    && !crate::game::labyrinth::is_labyrinth(seed, d, biome)
+            })
             .unwrap_or(base + 4)
     };
     let middle = |p: &Play| {
@@ -5385,4 +5424,405 @@ pub fn pack_shots(dir: &str) {
         (d + p.player.world_pos()) * 0.5 + glam::Vec3::Y * 0.4
     };
     close(&mut game, &mut r, &input, dir, "k31_dropped", focus, 7.0);
+}
+
+/// `--labyrinth-shots DIR`: a floor of the marble labyrinth: coming in, the whole maze from
+/// high above, its corridors, arches and torches, the sunlit courtyard and the griffin's
+/// nest, a room, a dead end's treasure, and close looks at what stands about in it.
+pub fn labyrinth_shots(dir: &str) {
+    use crate::game::labyrinth::is_labyrinth;
+    use crate::game::world::{Obj, Wall, World};
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261201);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+        p.player.level = 30;
+        p.player.refresh();
+    }
+    let depth = {
+        let p = play(&mut game);
+        (8..200)
+            .find(|&d| is_labyrinth(p.seed, d, p.biome_at(d)))
+            .expect("a labyrinth floor")
+    };
+    descend(&mut game, &input, &audio, depth, false);
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.toasts.clear();
+        let biome = p.hollow_biome(depth);
+        p.banner = Some(crate::game::play::Banner {
+            title: format!("Floor {depth}"),
+            sub: format!(
+                "{} - the marble labyrinth",
+                crate::assets::BIOME_STYLES[biome].name
+            ),
+            t: 0.0,
+        });
+    }
+    tick(&mut game, &input, &audio, 30);
+    snap(&mut game, &mut r, &input, dir, "l01_arrival");
+    let find = |game: &mut Game, want: &dyn Fn(&World, i32, i32) -> bool| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (sx, sz) = p.player.tile();
+        let mut best = None;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if want(w, x, z) {
+                    let d = (x - sx).abs() + (z - sz).abs();
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, (x, z)));
+                    }
+                }
+            }
+        }
+        best.map(|(_, t)| t)
+    };
+    let tile = |(x, z): (i32, i32)| Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+    let stand = |game: &mut Game, at: (i32, i32)| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (x, z) = w.nearest_open(at.0, at.1);
+        p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    };
+    // The whole maze from high above.
+    let mid = {
+        let p = play(&mut game);
+        p.banner = None;
+        let w = &p.level.as_ref().unwrap().world;
+        Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5)
+    };
+    play(&mut game).cam.dist = 46.0;
+    snap_on(&mut game, &mut r, &input, dir, "l02_overview", Some(mid));
+    play(&mut game).cam.dist = 15.5;
+    // Down a corridor, under an arch, past the torches on the walls.
+    if let Some(a) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Arch))
+            && (-3..=3).any(|dx| matches!(w.obj(x + dx, z + 1), Some(Obj::Sconce)))
+    })
+    .or_else(|| find(&mut game, &|w, x, z| matches!(w.obj(x, z), Some(Obj::Arch))))
+    {
+        stand(&mut game, (a.0, a.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(&mut game, &mut r, &input, dir, "l03_arch", tile(a), 10.0);
+    }
+    // The courtyard, in shafts of daylight round the griffin's nest.
+    if let Some(n) = find(&mut game, &|w, x, z| matches!(w.obj(x, z), Some(Obj::Nest))) {
+        stand(&mut game, (n.0, n.1 + 3));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l04_courtyard",
+            tile(n),
+            14.0,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l05_nest",
+            tile(n) + Vec3::new(0.0, 0.8, 0.0),
+            6.0,
+        );
+    }
+    // A room with a statue, and its mosaic.
+    if let Some(s) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Statue { .. }))
+            && w.floor(x, z) == crate::game::world::Floor::Tiles
+    }) {
+        stand(&mut game, (s.0, s.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(&mut game, &mut r, &input, dir, "l06_room", tile(s), 11.0);
+    }
+    // A dead end's treasure.
+    if let Some(c) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::LootChest { .. }))
+    }) {
+        stand(&mut game, (c.0, c.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(&mut game, &mut r, &input, dir, "l07_treasure", tile(c), 9.0);
+    }
+    // A brazier at a crossing.
+    if let Some(b) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Brazier)) && (1..3).all(|dz| !w.blocked(x, z + dz))
+    }) {
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l08_brazier",
+            tile(b) + Vec3::new(0.0, 0.5, 0.0),
+            5.0,
+        );
+    }
+    // The walls up close: a niche, a shield, the piers.
+    if let Some(n) = find(&mut game, &|w, x, z| {
+        w.wall(x, z) == Wall::Marble(crate::game::labyrinth::NICHE) && !w.blocked(x, z + 1)
+    }) {
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l09_niche",
+            tile(n) + Vec3::new(0.0, 0.5, 1.0),
+            6.0,
+        );
+    }
+    // Everything that stands about, in a row across the courtyard (cleared for it).
+    let nest = find(&mut game, &|w, x, z| matches!(w.obj(x, z), Some(Obj::Nest)));
+    let spot = nest.map(|(nx, nz)| {
+        let p = play(&mut game);
+        let w = &mut p.level.as_mut().unwrap().world;
+        for z in nz - 2..nz + 4 {
+            for x in nx - 4..nx + 5 {
+                if w.wall(x, z) == Wall::None {
+                    w.set_obj(x, z, None);
+                }
+            }
+        }
+        (nx - 3, nz - 1)
+    });
+    if let Some((x0, z0)) = spot {
+        {
+            let p = play(&mut game);
+            let w = &mut p.level.as_mut().unwrap().world;
+            let row = [
+                Obj::Column { var: 0 },
+                Obj::Column { var: 1 },
+                Obj::Column { var: 2 },
+                Obj::Brazier,
+                Obj::Statue { var: 0 },
+                Obj::Statue { var: 1 },
+                Obj::Rubble { var: 2 },
+            ];
+            for (k, o) in row.into_iter().enumerate() {
+                w.set_obj(x0 + k as i32, z0 + 1, Some(o));
+            }
+            w.set_obj(x0 + 1, z0 + 2, Some(Obj::Rubble { var: 0 }));
+            w.set_obj(x0 + 5, z0 + 2, Some(Obj::Rubble { var: 1 }));
+            p.player.pos = Vec2::new(x0 as f32 + 3.5, z0 as f32 + 3.5);
+        }
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l10_props",
+            Vec3::new(x0 as f32 + 3.5, 0.5, z0 as f32 + 1.8),
+            8.5,
+        );
+    }
+
+    // The minotaur, in a straight run of corridor with a wall across its end.
+    use crate::game::dungeon::Foe;
+    use crate::game::foes::{CHARGING, DAZED, Enemy, SWINGING, St, WHEEL_Y};
+    let run = {
+        let p = play(&mut game);
+        let w = &p.level.as_ref().unwrap().world;
+        (1..w.h - 7)
+            .flat_map(|z| (2..w.w - 2).map(move |x| (x, z)))
+            .find(|&(x, z)| {
+                w.wall(x, z - 1) != Wall::None
+                    && (0..6).all(|k| (-1..=1).all(|dx| !w.blocked(x + dx, z + k)))
+            })
+    };
+    if let Some((x, z)) = run {
+        let bull = |game: &mut Game, at: Vec2, st: St, hops: u32, t: f32| {
+            let p = play(game);
+            p.foes.clear();
+            p.fx.pops.clear();
+            let mut f = Enemy::new(Foe::Minotaur, at.x, at.y, depth, 0, false, 5);
+            f.alert = true;
+            f.st = st;
+            f.hops = hops;
+            f.t = t;
+            f.yaw = 0.35;
+            f.anim = 0.4;
+            p.foes.push(f);
+            p.player.pos = Vec2::new(x as f32 + 1.5, z as f32 + 5.3);
+            p.player.facing = Vec2::new(-0.4, -1.0).normalize();
+        };
+        let at = Vec2::new(x as f32 + 0.5, z as f32 + 2.5);
+        let focus = Vec3::new(at.x, 0.6, at.y);
+        bull(&mut game, at, St::Chase, CHARGING, 5.0);
+        play(&mut game).foes[0].anim = 0.0;
+        close(&mut game, &mut r, &input, dir, "l11_minotaur", focus, 4.8);
+        // Horns down, pawing the ground, axe up...
+        bull(&mut game, at, St::Windup, CHARGING, 0.4);
+        {
+            let p = play(&mut game);
+            p.foes[0].yaw = 0.0;
+            let back = Vec3::new(at.x, 0.05, at.y - 0.4);
+            p.fx.burst(
+                back,
+                10,
+                &[crate::palette::SAND, crate::palette::KHAKI],
+                0.8,
+                1.0,
+            );
+            p.fx.update(0.1);
+        }
+        close(&mut game, &mut r, &input, dir, "l12_pawing", focus, 4.8);
+        // ...and the charge.
+        bull(&mut game, at, St::Dash, CHARGING, 0.8);
+        {
+            let p = play(&mut game);
+            p.foes[0].yaw = std::f32::consts::PI;
+            p.foes[0].dir = Vec2::new(0.0, -1.0);
+            for k in 0..4 {
+                let q = Vec3::new(at.x, 0.1, at.y + 0.3 + k as f32 * 0.35);
+                p.fx.burst(
+                    q,
+                    4,
+                    &[
+                        crate::palette::SAND,
+                        crate::palette::KHAKI,
+                        crate::palette::WHITE,
+                    ],
+                    0.6,
+                    0.8,
+                );
+            }
+            p.fx.update(0.05);
+        }
+        close(&mut game, &mut r, &input, dir, "l13_charge", focus, 4.8);
+        // Into the wall: dazed, seeing stars.
+        let wall = Vec2::new(x as f32 + 0.5, z as f32 + 0.45);
+        bull(&mut game, wall, St::Rest, DAZED, 1.5);
+        {
+            let p = play(&mut game);
+            p.foes[0].yaw = std::f32::consts::PI * 0.9;
+            p.foes[0].anim = 1.3;
+            p.fx.popup(
+                Vec3::new(wall.x, 1.4, wall.y),
+                "Dazed!",
+                crate::palette::GOLD,
+            );
+        }
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l14_dazed",
+            Vec3::new(wall.x, 0.6, wall.y + 0.6),
+            4.8,
+        );
+        // Up close, the axe comes down.
+        bull(&mut game, at, St::Windup, SWINGING, 0.2);
+        play(&mut game).foes[0].yaw = 0.25;
+        close(&mut game, &mut r, &input, dir, "l15_chop", focus, 4.8);
+    }
+
+    // The griffin: on its nest, on the wing, screeching, and diving.
+    if let Some(n) = nest {
+        let griffin = |game: &mut Game, alert: bool, st: St, y: f32, yaw: f32, anim: f32| {
+            let p = play(game);
+            p.foes.clear();
+            p.fx.pops.clear();
+            let mut f = Enemy::new(
+                Foe::Griffin,
+                n.0 as f32 + 0.5,
+                n.1 as f32 + 0.5,
+                depth,
+                0,
+                false,
+                6,
+            );
+            f.alert = alert;
+            f.st = st;
+            f.t = 0.3;
+            f.y = y;
+            f.yaw = yaw;
+            f.anim = anim;
+            p.foes.push(f);
+            let w = &p.level.as_ref().unwrap().world;
+            let (px, pz) = w.nearest_open(n.0, n.1 + 3);
+            p.player.pos = Vec2::new(px as f32 + 0.5, pz as f32 + 0.5);
+            p.player.facing = Vec2::new(0.0, -1.0);
+        };
+        // (Its nest cleared of anything the props row left.)
+        {
+            let p = play(&mut game);
+            let w = &mut p.level.as_mut().unwrap().world;
+            w.set_obj(n.0, n.1, Some(Obj::Nest));
+        }
+        griffin(
+            &mut game,
+            false,
+            St::Idle,
+            crate::game::foes::PERCH_Y,
+            0.4,
+            0.0,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l16_griffin_nest",
+            tile(n) + Vec3::new(0.0, 1.1, 0.0),
+            4.6,
+        );
+        griffin(&mut game, true, St::Chase, WHEEL_Y, 1.2, 0.15);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l17_griffin_flight",
+            tile(n) + Vec3::new(0.0, 1.2, 0.0),
+            5.0,
+        );
+        griffin(&mut game, true, St::Windup, WHEEL_Y + 0.15, 0.3, 0.5);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l18_griffin_screech",
+            tile(n) + Vec3::new(0.0, 1.3, 0.0),
+            5.0,
+        );
+        griffin(&mut game, true, St::Dash, 0.6, 0.2, 0.0);
+        {
+            let p = play(&mut game);
+            p.foes[0].pos.y += 1.2;
+        }
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "l19_griffin_dive",
+            tile(n) + Vec3::new(0.0, 0.6, 1.4),
+            5.0,
+        );
+    }
 }

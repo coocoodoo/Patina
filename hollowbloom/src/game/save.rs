@@ -127,6 +127,7 @@ fn wall_char(w: Wall) -> char {
         Wall::Hedge => 'h',
         Wall::Paper(_) => '.',
         Wall::Sewer => 'x',
+        Wall::Marble(_) => 'm',
     }
 }
 
@@ -139,6 +140,7 @@ fn char_wall(c: char) -> Wall {
         'W' => Wall::Timber,
         'h' => Wall::Hedge,
         'x' => Wall::Sewer,
+        'm' => Wall::Marble(0),
         d if d.is_ascii_digit() => Wall::Ore(d as u8 - b'0'),
         _ => Wall::None,
     }

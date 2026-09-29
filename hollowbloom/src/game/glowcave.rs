@@ -148,7 +148,7 @@ fn curve(a: (f32, f32), b: (f32, f32), c: (f32, f32), d: (f32, f32), t: f32) -> 
 }
 
 /// Open ground you can see (not rock, not the dark).
-fn open(w: &World, x: i32, z: i32) -> bool {
+pub(super) fn open(w: &World, x: i32, z: i32) -> bool {
     w.wall(x, z) == Wall::None && w.floor(x, z) != Floor::Void
 }
 
@@ -193,7 +193,7 @@ fn reach(w: &World, from: (i32, i32)) -> usize {
 }
 
 /// Walking distance from a tile to every tile (u32::MAX where you can't get to).
-fn walk(w: &World, from: (i32, i32)) -> Vec<u32> {
+pub(super) fn walk(w: &World, from: (i32, i32)) -> Vec<u32> {
     let mut dist = vec![u32::MAX; (w.w * w.h) as usize];
     let mut q = std::collections::VecDeque::new();
     dist[w.idx(from.0, from.1)] = 0;
@@ -212,7 +212,7 @@ fn walk(w: &World, from: (i32, i32)) -> Vec<u32> {
 }
 
 /// Sets something solid down only if everywhere you could walk to before, you still can.
-fn place_solid(w: &mut World, x: i32, z: i32, o: Obj, from: (i32, i32)) -> bool {
+pub(super) fn place_solid(w: &mut World, x: i32, z: i32, o: Obj, from: (i32, i32)) -> bool {
     if w.blocked(x, z) || w.obj(x, z).is_some() {
         return false;
     }
