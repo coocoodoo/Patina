@@ -315,6 +315,8 @@ impl Play {
             self.stats.kills += 1;
             self.on_kill(f.foe, f.boss, depth, at);
             if f.boss {
+                // Its song plays out to its own ending before the floor's comes back.
+                io.audio.finish_song();
                 self.toast(format!("{} defeated!", f.name()), None, 0);
                 let chests = self.guardian_hoard(f.pos);
                 self.banner = Some(Banner {

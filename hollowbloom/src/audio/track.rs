@@ -27,6 +27,9 @@ pub struct Track {
     /// Or, for a track with an ending of its own: frames of quiet after the end before it
     /// starts again from `start` (with no blending).
     pub rest: usize,
+    /// A looping track's tempo (four beats to a bar): told to finish, it waits for the next
+    /// bar to leave the loop for what follows its end, and plays on to the finish.
+    pub bpm: f32,
     /// How much to turn it down to sit with the rest of the game's sound.
     pub gain: f32,
 }
@@ -35,9 +38,9 @@ pub struct Track {
 /// left after its last sound).
 const REST: usize = 22_050;
 
-/// The songs that have a recorded track (made with Google's Lyria 3). Most are played all
-/// the way through (from their first sound to a second after their last) and then started
-/// again; one with a long stretch that repeats cleanly loops over it instead.
+/// The songs' recorded tracks (made with Google's Lyria 3). Each is played all the way
+/// through (from its first sound to a second after its last) and then started again, but
+/// for the guardians', which loops seamlessly so a fight never stops for an ending.
 pub const TRACKS: &[Track] = &[
     // "The First Day of Spring"
     Track {
@@ -46,6 +49,7 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 6_703_200,
         rest: REST,
+        bpm: 0.0,
         gain: 0.655,
     },
     // "Seven AM Dew"
@@ -55,6 +59,7 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 6_174_000,
         rest: REST,
+        bpm: 0.0,
         gain: 0.596,
     },
     // "Golden Hour at the Orchard"
@@ -64,6 +69,7 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 7_904_925,
         rest: REST,
+        bpm: 0.0,
         gain: 0.655,
     },
     // "Moonlit Fence Posts"
@@ -73,6 +79,7 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 6_989_850,
         rest: REST,
+        bpm: 0.0,
         gain: 0.643,
     },
     // "Cobblestone Promenade"
@@ -82,6 +89,7 @@ pub const TRACKS: &[Track] = &[
         start: 70_560,
         end: 7_860_825,
         rest: REST,
+        bpm: 0.0,
         gain: 0.673,
     },
     // "Sunday Morning Curio"
@@ -91,6 +99,7 @@ pub const TRACKS: &[Track] = &[
         start: 103_635,
         end: 7_750_575,
         rest: REST,
+        bpm: 0.0,
         gain: 0.629,
     },
     // "The Keeper's Hearth"
@@ -100,6 +109,7 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 6_857_550,
         rest: REST,
+        bpm: 0.0,
         gain: 0.653,
     },
     // "Beneath the Glowing Cap"
@@ -109,17 +119,18 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 6_714_225,
         rest: REST,
+        bpm: 0.0,
         gain: 0.668,
     },
-    // "Below the Glacial Line": loops from the end of its quiet middle back to the end of
-    // its quiet opening, where the full band comes in.
+    // "Below the Glacial Line"
     Track {
         song: Song::Glimmer,
         mp3: include_bytes!("../../music/glimmer.mp3"),
-        start: 775_988,
-        end: 5_828_608,
-        rest: 0,
-        gain: 0.631,
+        start: 0,
+        end: 7_089_075,
+        rest: REST,
+        bpm: 0.0,
+        gain: 0.666,
     },
     // "Beneath the Burning Spire"
     Track {
@@ -128,7 +139,19 @@ pub const TRACKS: &[Track] = &[
         start: 0,
         end: 7_982_100,
         rest: REST,
+        bpm: 0.0,
         gain: 0.641,
+    },
+    // "The Seventh Gate": loops over its middle, breakdown and all, so a fight never stops
+    // for an ending; once the guardian falls it plays on from the loop's end to its own.
+    Track {
+        song: Song::Boss,
+        mp3: include_bytes!("../../music/boss.mp3"),
+        start: 2_232_024,
+        end: 5_763_072,
+        rest: 0,
+        bpm: 144.0,
+        gain: 0.700,
     },
 ];
 
@@ -242,6 +265,14 @@ pub struct TrackPlayer {
     rest: usize,
     seam: usize,
     gain: f32,
+    bpm: f32,
+    /// Frames to a bar, for leaving the loop in time (none known: straight away).
+    bar: f64,
+    /// Where it leaves the loop for its ending, once told to finish.
+    leave_at: Option<usize>,
+    finishing: bool,
+    /// It has played its ending to the last frame.
+    pub done: bool,
 }
 
 impl TrackPlayer {
@@ -272,6 +303,11 @@ impl TrackPlayer {
             rest: t.rest,
             seam: SEAM,
             gain: t.gain,
+            bpm: t.bpm,
+            bar: 0.0,
+            leave_at: None,
+            finishing: false,
+            done: false,
         };
         if let Some(pcm) = pcm {
             p.take(pcm);
@@ -288,6 +324,15 @@ impl TrackPlayer {
             0
         } else {
             SEAM.min(self.start).min(self.end - self.start)
+        };
+        // The loop holds a whole number of bars: take the bar from that, so leaving on a bar
+        // lands on the same beat as the loop's own seam.
+        self.bar = if self.bpm > 0.0 && self.rest == 0 {
+            let len = (self.end - self.start) as f64;
+            let guess = 4.0 * 60.0 / self.bpm as f64 * RATE as f64;
+            len / (len / guess).round().max(1.0)
+        } else {
+            0.0
         };
         self.pcm = Some(pcm);
     }
@@ -334,11 +379,72 @@ impl TrackPlayer {
         self.pos = pos.min(self.end + self.rest - 1);
     }
 
+    /// Whether it has an ending to play when told to finish (a looping track does).
+    pub fn has_ending(&self) -> bool {
+        self.rest == 0 && !self.done
+    }
+
+    /// Leaves the loop for the track's own ending: at the next bar (in step with the loop) it
+    /// blends into the loop's end and plays on from there to the finish.
+    pub fn finish(&mut self) {
+        if !self.has_ending() || self.finishing {
+            return;
+        }
+        self.finishing = true;
+        let leave = if self.pos >= self.end {
+            self.pos
+        } else if self.bar > 0.0 {
+            // The next bar with room for the blend before it.
+            let from = (self.pos + self.seam) as f64 - self.start as f64;
+            let bars = (from / self.bar).ceil();
+            (self.start as f64 + bars * self.bar).round() as usize
+        } else {
+            self.pos + self.seam
+        };
+        self.leave_at = Some(leave.clamp(self.pos + self.seam, self.end.max(self.pos)));
+    }
+
+    /// On the way out of the loop, and then through the ending to the last frame.
+    fn play_ending(&mut self, pcm: Arc<Pcm>) -> (f32, f32) {
+        let frames = pcm.frames();
+        if self.pos >= frames {
+            self.done = true;
+            return (0.0, 0.0);
+        }
+        let at = |i: usize| (pcm.data[i * 2] as f32, pcm.data[i * 2 + 1] as f32);
+        let (mut l, mut r) = at(self.pos);
+        if let Some(j) = self.leave_at {
+            if self.seam > 0 && self.pos + self.seam >= j && j < self.end {
+                let k = self.pos + self.seam - j;
+                let t = k as f32 / self.seam as f32;
+                let w = 0.5 - 0.5 * (t * std::f32::consts::PI).cos();
+                let (l2, r2) = at(self.end - self.seam + k);
+                l += (l2 - l) * w;
+                r += (r2 - r) * w;
+            }
+        }
+        self.pos += 1;
+        if let Some(j) = self.leave_at {
+            if self.pos >= j {
+                self.pos = self.pos.max(self.end);
+                self.leave_at = None;
+            }
+        }
+        let g = self.gain / 32768.0;
+        (l * g, r * g)
+    }
+
     /// Next stereo frame (silence until it's decoded).
     pub fn next(&mut self) -> (f32, f32) {
         let Some(pcm) = &self.pcm else {
             return (0.0, 0.0);
         };
+        if self.done {
+            return (0.0, 0.0);
+        }
+        if self.finishing {
+            return self.play_ending(pcm.clone());
+        }
         if self.pos >= self.end {
             // A rest after the track's ending, before it starts again.
             self.pos += 1;
@@ -408,6 +514,7 @@ mod tests {
             start: 300,
             end: 900,
             rest: 0,
+            bpm: 0.0,
             gain: 1.0,
         }));
         let mut p = TrackPlayer::new(t, Some(Arc::new(Pcm { data })));
@@ -425,6 +532,71 @@ mod tests {
     }
 
     #[test]
+    fn a_finished_loop_leaves_on_the_next_bar_and_plays_its_ending() {
+        // Frames count up from 1. The loop is 2000..18000, four bars of 4000 frames; the
+        // ending runs on to 20000.
+        let data: Vec<i16> = (0..20000)
+            .flat_map(|i| [i as i16 + 1, i as i16 + 1])
+            .collect();
+        let t = Box::leak(Box::new(Track {
+            song: Song::Boss,
+            mp3: &[],
+            start: 2000,
+            end: 18000,
+            rest: 0,
+            bpm: 4.0 * 60.0 * RATE / 4000.0,
+            gain: 1.0,
+        }));
+        let mut p = TrackPlayer::new(t, Some(Arc::new(Pcm { data })));
+        let mut out = Vec::new();
+        for _ in 0..3000 {
+            out.push((p.next().0 * 32768.0).round() as i32);
+        }
+        // Told to finish a quarter of the way into the loop's first bar...
+        p.finish();
+        for _ in 0..5100 {
+            out.push((p.next().0 * 32768.0).round() as i32);
+        }
+        assert_eq!(out[2999], 3000);
+        // ...it blends into what leads up to the loop's end over the moments before the next
+        // bar (at 6000), carries on from the loop's end there, plays the ending to its last
+        // frame and falls silent.
+        assert!((out[5999] - 18000).abs() <= 1, "{}", out[5999]);
+        assert_eq!(out[6000], 18001);
+        assert_eq!(out[7999], 20000);
+        assert!(p.done && out[8099] == 0);
+    }
+
+    #[test]
+    fn leaving_right_before_a_bar_waits_for_the_one_after() {
+        let data: Vec<i16> = (0..20000)
+            .flat_map(|i| [i as i16 + 1, i as i16 + 1])
+            .collect();
+        let t = Box::leak(Box::new(Track {
+            song: Song::Boss,
+            mp3: &[],
+            start: 2000,
+            end: 18000,
+            rest: 0,
+            bpm: 4.0 * 60.0 * RATE / 4000.0,
+            gain: 1.0,
+        }));
+        let mut p = TrackPlayer::new(t, Some(Arc::new(Pcm { data })));
+        for _ in 0..5500 {
+            p.next();
+        }
+        // Too close to the bar at 6000 to blend: it leaves at 10000 instead.
+        p.finish();
+        let mut out = Vec::new();
+        for _ in 0..4600 {
+            out.push((p.next().0 * 32768.0).round() as i32);
+        }
+        assert_eq!(out[1000 - 1000], 5501);
+        assert!((out[4499] - 18000).abs() <= 1, "{}", out[4499]);
+        assert_eq!(out[4500], 18001);
+    }
+
+    #[test]
     fn a_track_with_an_ending_rests_then_starts_over() {
         let data: Vec<i16> = (0..100)
             .flat_map(|i| [i as i16 + 1, i as i16 + 1])
@@ -435,6 +607,7 @@ mod tests {
             start: 0,
             end: 100,
             rest: 50,
+            bpm: 0.0,
             gain: 1.0,
         }));
         let mut p = TrackPlayer::new(t, Some(Arc::new(Pcm { data })));

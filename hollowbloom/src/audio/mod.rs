@@ -22,6 +22,8 @@ const FRAMES: usize = 512;
 enum Cmd {
     Play(Sfx, f32, f32),
     Music(Option<(Song, i32, f32)>),
+    /// Let the song playing finish with its own ending before the next one starts.
+    Finish,
     Volume(f32, f32),
 }
 
@@ -73,6 +75,12 @@ impl Audio {
         }
         self.current.set(key);
         self.send(Cmd::Music(song.map(|s| (s, transpose, tempo))));
+    }
+
+    /// Lets the song playing finish with its own ending (a guardian's, once it falls) before
+    /// whatever's asked for next starts.
+    pub fn finish_song(&self) {
+        self.send(Cmd::Finish);
     }
 
     pub fn set_volume(&self, music: f32, sfx: f32) {
@@ -136,6 +144,9 @@ struct Mixer {
     decoded: Vec<(Song, Arc<track::Pcm>)>,
     /// Where tracks got to when they stopped, and when.
     left_off: Vec<(Song, usize, std::time::Instant)>,
+    /// A song asked for while the one playing finishes with its ending.
+    queued: Option<Option<(Song, i32, f32)>>,
+    finishing: bool,
     music_vol: f32,
     sfx_vol: f32,
 }
@@ -149,6 +160,8 @@ impl Mixer {
             fading: None,
             decoded: Vec::new(),
             left_off: Vec::new(),
+            queued: None,
+            finishing: false,
             music_vol: 0.7,
             sfx_vol: 0.8,
         }
@@ -185,9 +198,12 @@ impl Mixer {
         }
     }
 
-    /// Notes where a song that's stopped had got to.
+    /// Notes where a song that's stopped had got to (unless it played through its ending).
     fn retire(&mut self, p: Playing) {
         if let Source::Track(t) = p.src {
+            if t.done {
+                return;
+            }
             self.left_off.retain(|(s, _, _)| *s != t.song);
             self.left_off
                 .push((t.song, t.pos(), std::time::Instant::now()));
@@ -233,6 +249,7 @@ impl Mixer {
                     });
                 }
             }
+            Cmd::Music(next) if self.finishing => self.queued = Some(next),
             Cmd::Music(next) => {
                 if let Some(mut old) = self.music.take() {
                     old.target = 0.0;
@@ -241,6 +258,18 @@ impl Mixer {
                     }
                 }
                 self.music = next.map(|(s, tr, tempo)| self.start(s, tr, tempo));
+            }
+            Cmd::Finish => {
+                if let Some(Playing {
+                    src: Source::Track(t),
+                    ..
+                }) = &mut self.music
+                {
+                    if t.ready() && t.has_ending() {
+                        t.finish();
+                        self.finishing = true;
+                    }
+                }
             }
             Cmd::Volume(m, s) => {
                 self.music_vol = m.clamp(0.0, 1.0);
@@ -292,6 +321,17 @@ impl Mixer {
         {
             if let Some(gone) = self.fading.take() {
                 self.retire(gone);
+            }
+        }
+        // A song that's played its ending: on to whatever was asked for meanwhile.
+        let ended = matches!(&self.music, Some(Playing { src: Source::Track(t), .. }) if t.done);
+        if self.finishing && (ended || self.music.is_none()) {
+            self.finishing = false;
+            if ended {
+                self.music = None;
+            }
+            if let Some(next) = self.queued.take() {
+                self.apply(Cmd::Music(next));
             }
         }
     }
@@ -363,6 +403,38 @@ mod tests {
         }
         assert!(peak > 2000, "expected the night track, peak {peak}");
         assert!(wide, "expected stereo");
+    }
+
+    #[test]
+    fn a_fallen_guardians_song_plays_its_ending_before_the_next() {
+        let mut m = Mixer::new();
+        m.apply(Cmd::Music(Some((Song::Boss, 0, 1.0))));
+        let mut buf = vec![0i16; FRAMES * 2];
+        for _ in 0..3000 {
+            m.render(&mut buf);
+            if m.music.as_ref().is_some_and(|p| p.ready()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(
+            m.music.as_ref().is_some_and(|p| p.ready()),
+            "boss track decoded"
+        );
+        // The guardian falls, and the game moves on to the floor's own song...
+        m.apply(Cmd::Finish);
+        m.apply(Cmd::Music(Some((Song::Burrows, 0, 1.0))));
+        // ...which waits while the guardian's song plays out to its end.
+        m.render(&mut buf);
+        let playing = |m: &Mixer, song: Song| matches!(&m.music, Some(Playing { src: Source::Track(t), .. }) if t.song == song);
+        assert!(m.finishing && playing(&m, Song::Boss));
+        let mut chunks = 0;
+        while m.finishing && chunks < 20_000 {
+            m.render(&mut buf);
+            chunks += 1;
+        }
+        assert!(!m.finishing, "the ending finished");
+        assert!(playing(&m, Song::Burrows));
     }
 
     #[test]
