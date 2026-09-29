@@ -9,7 +9,7 @@ use super::items::{Crop, Item, Stack};
 use super::town::Place;
 use crate::assets::models::TALL_TUFTS;
 use crate::assets::{Assets, BIOMES, tiles};
-use crate::render::{Mesh, TexId, UvRect};
+use crate::render::{BoxUv, Mesh, TexId, UvRect};
 use crate::util::hash2;
 
 pub const CHUNK: i32 = 16;
@@ -41,6 +41,12 @@ pub enum Floor {
     Tiles,
     /// Soft carpet.
     Carpet,
+    /// A sewer's stone walkway along its channels.
+    Walkway,
+    /// A plank bridge over a sewer channel.
+    Bridge,
+    /// A bridge of old copper plate, gone green with age.
+    CopperBridge,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
@@ -58,6 +64,8 @@ pub enum Wall {
     Hedge,
     /// A tall papered wall inside a building, by style.
     Paper(u8),
+    /// Old sewer brickwork.
+    Sewer,
 }
 
 impl Wall {
@@ -242,6 +250,10 @@ pub enum Obj {
     Egg {
         laid: u32,
     },
+    /// A drain pipe coming out of the sewer wall behind, trickling onto the walkway.
+    Drain,
+    /// A round grate in a sewer walkway.
+    Grate,
 }
 
 impl Obj {
@@ -256,6 +268,8 @@ impl Obj {
                 | Obj::Torch
                 | Obj::StairsDown
                 | Obj::Crack
+                | Obj::Drain
+                | Obj::Grate
         )
     }
 
@@ -314,6 +328,8 @@ pub struct World {
     pub wall_dmg: std::collections::HashMap<usize, i16>,
     /// Winter: snow lies on the lawns and hedges (see `set_snow`).
     snow: bool,
+    /// An old sewer floor of the Hollow: its water is murky green (see `sewer`).
+    pub sewer: bool,
     chunks: Vec<Mesh>,
     /// Tufts of grass on the open lawn, in `TUFTS`-tile blocks, drawn swaying in the breeze.
     grass: Vec<Mesh>,
@@ -346,6 +362,7 @@ impl World {
             style: 0,
             wall_dmg: Default::default(),
             snow: false,
+            sewer: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
             dirty: vec![true; (cw * ch) as usize],
@@ -903,7 +920,11 @@ impl World {
                     a.tilled
                 }
             }
+            Floor::Water if self.sewer => a.sewer.water[0],
             Floor::Water => a.water[0],
+            Floor::Walkway => a.sewer.walk[self.curb(x, z) as usize],
+            Floor::Bridge => a.sewer.wood[self.deck_turn(x, z)],
+            Floor::CopperBridge => a.sewer.copper[self.deck_turn(x, z)],
             Floor::Cave => {
                 let b = &a.biomes[self.biome];
                 b.floor[if h % 5 == 0 { 1 } else { (h % 2) as usize * 2 }]
@@ -929,8 +950,25 @@ impl World {
             Wall::Timber => (a.wood_wall_side, a.wood_wall_top),
             Wall::Hedge => (a.hedge_side, a.hedge_top),
             Wall::Paper(k) => (a.wallpaper[k as usize % a.wallpaper.len()], a.beam),
+            Wall::Sewer => (a.sewer.wall_side, a.sewer.wall_top),
             Wall::None => (b.side, b.top),
         }
+    }
+
+    /// Which sides of a walkway meet the water (see `sewer_art::NORTH` and so on).
+    fn curb(&self, x: i32, z: i32) -> u8 {
+        use crate::assets::sewer_art::{EAST, NORTH, SOUTH, WEST};
+        [(0, -1, NORTH), (1, 0, EAST), (0, 1, SOUTH), (-1, 0, WEST)]
+            .iter()
+            .filter(|(dx, dz, _)| self.floor(x + dx, z + dz) == Floor::Water)
+            .fold(0, |m, (_, _, bit)| m | bit)
+    }
+
+    /// Which way a bridge's boards run: across the way over it (0 along z, when the water
+    /// runs north and south of it; 1 along x).
+    fn deck_turn(&self, x: i32, z: i32) -> usize {
+        let wet = |tx: i32, tz: i32| self.floor(tx, tz) == Floor::Water;
+        if wet(x, z - 1) || wet(x, z + 1) { 0 } else { 1 }
     }
 
     fn floor_y(f: Floor) -> f32 {
@@ -1046,17 +1084,24 @@ impl World {
                     tex,
                     corners,
                 );
+                if matches!(f, Floor::Bridge | Floor::CopperBridge) {
+                    self.bridge(a, &mut m, x, z, f);
+                }
                 // Banks where recessed floors (water, lava) meet higher ground.
                 if y < 0.0 {
                     // Earthy banks up top; the cave's own rock underground.
-                    let bank = if f == Floor::Water && !matches!(self.area, Area::Hollow { .. }) {
+                    let bank = if self.sewer {
+                        a.sewer.bank
+                    } else if f == Floor::Water && !matches!(self.area, Area::Hollow { .. }) {
                         a.soil
                     } else {
                         a.biomes[self.biome].side
                     };
                     let higher = |tx: i32, tz: i32| {
                         let nf = self.floor(tx, tz);
-                        !solid(tx, tz) && Self::floor_y(nf) > y && nf != Floor::Void
+                        !solid(tx, tz)
+                            && Self::floor_y(nf) > y
+                            && !matches!(nf, Floor::Void | Floor::Bridge | Floor::CopperBridge)
                     };
                     if higher(x, z - 1) {
                         m.quad(
@@ -1098,6 +1143,80 @@ impl World {
             }
         }
         m
+    }
+
+    /// A bridge's underside: the channel running on beneath the deck, a beam along each
+    /// edge over the water, and a railing on posts standing up out of it.
+    fn bridge(&self, a: &Assets, m: &mut Mesh, x: i32, z: i32, f: Floor) {
+        let (fx, fz) = (x as f32, z as f32);
+        let beam = if f == Floor::Bridge {
+            a.sewer.wood_beam
+        } else {
+            a.sewer.copper_beam
+        };
+        let water = self.floor_tex(a, x, z, Floor::Water);
+        m.quad(
+            [
+                Vec3::new(fx, WATER_Y, fz + 1.0),
+                Vec3::new(fx + 1.0, WATER_Y, fz + 1.0),
+                Vec3::new(fx + 1.0, WATER_Y, fz),
+                Vec3::new(fx, WATER_Y, fz),
+            ],
+            UvRect::new(0.0, 0.0, 16.0, 16.0),
+            water,
+        );
+        let uv = BoxUv::all(UvRect::new(0.0, 0.0, 16.0, 4.0));
+        let post_uv = BoxUv::all(UvRect::new(0.0, 0.0, 4.0, 16.0));
+        let (t, rail_lo, rail_hi, top) = (0.07, 0.3, 0.37, 0.42);
+        let mut post = |px: f32, pz: f32| {
+            m.cube(
+                Vec3::new(px - t * 0.5, WATER_Y - 0.05, pz - t * 0.5),
+                Vec3::new(px + t * 0.5, top, pz + t * 0.5),
+                &post_uv,
+                beam,
+                0,
+            );
+        };
+        let wet = |tx: i32, tz: i32| self.floor(tx, tz) == Floor::Water;
+        let (x0, x1, z0, z1) = (fx, fx + 1.0, fz, fz + 1.0);
+        let i = t * 0.5;
+        // Posts at the corners over the water.
+        if wet(x, z - 1) {
+            post(x0 + i, z0 + i);
+            post(x1 - i, z0 + i);
+        }
+        if wet(x, z + 1) {
+            post(x0 + i, z1 - i);
+            post(x1 - i, z1 - i);
+        }
+        if wet(x - 1, z) {
+            post(x0 + i, z0 + i);
+            post(x0 + i, z1 - i);
+        }
+        if wet(x + 1, z) {
+            post(x1 - i, z0 + i);
+            post(x1 - i, z1 - i);
+        }
+        // The deck's edge beam and the rail above it, along each side over the water.
+        let mut side = |lo: Vec3, hi: Vec3| {
+            m.cube(lo, hi, &uv, beam, 0);
+        };
+        if wet(x, z - 1) {
+            side(Vec3::new(x0, -0.1, z0), Vec3::new(x1, 0.02, z0 + t));
+            side(Vec3::new(x0, rail_lo, z0), Vec3::new(x1, rail_hi, z0 + t));
+        }
+        if wet(x, z + 1) {
+            side(Vec3::new(x0, -0.1, z1 - t), Vec3::new(x1, 0.02, z1));
+            side(Vec3::new(x0, rail_lo, z1 - t), Vec3::new(x1, rail_hi, z1));
+        }
+        if wet(x - 1, z) {
+            side(Vec3::new(x0, -0.1, z0), Vec3::new(x0 + t, 0.02, z1));
+            side(Vec3::new(x0, rail_lo, z0), Vec3::new(x0 + t, rail_hi, z1));
+        }
+        if wet(x + 1, z) {
+            side(Vec3::new(x1 - t, -0.1, z0), Vec3::new(x1, 0.02, z1));
+            side(Vec3::new(x1 - t, rail_lo, z0), Vec3::new(x1, rail_hi, z1));
+        }
     }
 
     /// Finds the nearest open floor tile to a position (spawning, landing).

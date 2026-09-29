@@ -27,6 +27,7 @@ pub mod player;
 pub mod quests;
 pub mod save;
 pub mod scene;
+pub mod sewer;
 pub mod shops;
 pub mod sky;
 pub mod spellery;

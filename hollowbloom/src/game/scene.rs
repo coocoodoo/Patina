@@ -455,7 +455,49 @@ impl Play {
                 r.point(p, if broad && i % 3 == 0 { 2 } else { 1 }, col);
             }
         }
+        if let Some(level) = &self.level {
+            if level.world.sewer && matches!(self.area, Area::Hollow { .. }) {
+                self.draw_sewer_mist(r, &level.world);
+            }
+        }
         r.fb.outline_with(INK, super::foes::MOONLIT_TAG, RED);
+    }
+
+    /// Mist curling up off a sewer's channels, and bubbles rising through the murk.
+    fn draw_sewer_mist(&self, r: &mut Renderer, w: &super::world::World) {
+        use super::world::{Floor, WATER_Y};
+        let c = self.cam.target;
+        let (cx, cz) = (c.x as i32, c.z as i32);
+        for z in cz - 9..=cz + 9 {
+            for x in cx - 13..=cx + 13 {
+                if w.floor(x, z) != Floor::Water {
+                    continue;
+                }
+                let h = hash2(x, z, 11);
+                let (fx, fz) = (x as f32 + 0.5, z as f32 + 0.5);
+                if h % 5 == 0 {
+                    let t = self.time * 0.25 + (h % 100) as f32 * 0.07;
+                    let p = Vec3::new(
+                        fx + t.sin() * 0.3,
+                        0.1 + (t * 1.3).sin().abs() * 0.14,
+                        fz + (t * 0.8).cos() * 0.25,
+                    );
+                    let pulse = (t * 2.0).sin() * 0.5 + 0.5;
+                    r.halo(p, 0.55 + pulse * 0.15, MINT, 0.1 + pulse * 0.06);
+                }
+                if h % 11 == 3 {
+                    let k = (self.time * 0.6 + (h % 37) as f32 * 0.1).fract();
+                    if k < 0.5 {
+                        let b = Vec3::new(
+                            fx - 0.2 + (h % 3) as f32 * 0.2,
+                            WATER_Y + 0.02 + k * 0.1,
+                            fz,
+                        );
+                        r.point(b, 1, MINT);
+                    }
+                }
+            }
+        }
     }
 
     /// Snowflakes drifting down around the camera, big soft ones nearest.

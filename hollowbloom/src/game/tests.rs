@@ -263,8 +263,9 @@ fn mining_walls_yields_ore() {
     let mut spot = None;
     'find: for z in 3..w.h - 3 {
         for x in 3..w.w - 3 {
-            if w.wall(x, z) == Wall::Rock && w.wall(x, z - 1) == Wall::None && !w.blocked(x, z - 1)
-            {
+            // Cave rock, or the brickwork of a sewer floor.
+            let diggable = matches!(w.wall(x, z), Wall::Rock | Wall::Sewer);
+            if diggable && w.wall(x, z - 1) == Wall::None && !w.blocked(x, z - 1) {
                 spot = Some((x, z));
                 break 'find;
             }

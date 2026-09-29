@@ -700,6 +700,7 @@ impl Play {
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
         self.revealed = vec![false; (level.world.w * level.world.h) as usize];
+        let sewer = level.world.sewer;
         self.level = Some(level);
         self.area = Area::Hollow { depth };
         self.cam_pos = self.player.world_pos();
@@ -717,6 +718,8 @@ impl Play {
                     "{} - full moon: the Hollow is wild!",
                     BIOME_STYLES[biome].name
                 )
+            } else if sewer {
+                format!("{} - the old sewers", BIOME_STYLES[biome].name)
             } else {
                 BIOME_STYLES[biome].name.to_string()
             },
@@ -1460,7 +1463,7 @@ impl Play {
                 Class::Pickaxe => {
                     matches!(
                         w.wall(x, z),
-                        Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Timber
+                        Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Timber | Wall::Sewer
                     ) || w.obj(x, z).is_some_and(|o| {
                         matches!(
                             o,
@@ -2591,7 +2594,7 @@ impl Play {
         let w = self.world();
         let hard_wall = matches!(
             w.wall(x, z),
-            Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Bedrock | Wall::Cliff
+            Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Bedrock | Wall::Cliff | Wall::Sewer
         ) && w.inside(x, z);
         let hard_obj = w.obj(x, z).is_some_and(|o| {
             matches!(
@@ -2624,9 +2627,12 @@ impl Play {
         let at = tile_center(x, z);
         let depth = self.depth();
         let wall = self.world().wall(x, z);
-        if matches!(wall, Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Timber) {
+        if matches!(
+            wall,
+            Wall::Rock | Wall::Ore(_) | Wall::Brick | Wall::Timber | Wall::Sewer
+        ) {
             let hard = match wall {
-                Wall::Rock => 3 + depth as i32 / 6,
+                Wall::Rock | Wall::Sewer => 3 + depth as i32 / 6,
                 Wall::Ore(o) => 5 + depth as i32 / 6 + o as i32,
                 _ => 4,
             };
@@ -2671,7 +2677,7 @@ impl Play {
                             self.fx.motes(at + Vec3::Y * 0.5, 8, &[WHITE, CREAM], 0.3);
                         }
                     }
-                    Wall::Rock => {
+                    Wall::Rock | Wall::Sewer => {
                         if self.rng.chance(0.55) {
                             let n = 1 + u16::from(self.bounty());
                             self.drops

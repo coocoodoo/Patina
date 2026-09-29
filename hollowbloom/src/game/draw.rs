@@ -202,6 +202,9 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     r.remap.push((a.water[0], a.water[frame]));
     r.remap
         .push((a.lava[0], a.lava[((env.time * 2.0) as usize) % 2]));
+    if w.sewer {
+        r.remap.push((a.sewer.water[0], a.sewer.water[frame]));
+    }
     if let Some(s) = env.season {
         r.remap.extend_from_slice(&a.props.seasons[s as usize]);
     }
@@ -438,6 +441,30 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             r.mesh(&a.bank, &p.torch_stick, &at, &lit);
             flames(r, a, base + Vec3::new(0.0, 0.7, 0.0), 0.3, env.time, x + z);
         }
+        Obj::Drain => {
+            // Out of the wall behind, a trickle running out onto the walkway.
+            let mouth = Vec3::new(base.x, 0.42, z as f32);
+            r.mesh(
+                &a.bank,
+                &a.sewer.drain,
+                &Mat4::from_translation(mouth),
+                &lit,
+            );
+            let lip = mouth + Vec3::new(0.0, -0.1, 0.27);
+            for k in 0..5 {
+                let t = (env.time * 1.8 + k as f32 * 0.2 + (x * 7 + z) as f32 * 0.13).fract();
+                let p =
+                    lip + Vec3::new(((k * 5) % 3) as f32 * 0.02 - 0.02, -t * t * 0.32, t * 0.06);
+                r.point(p, 1, if k % 2 == 0 { SKY } else { AQUA });
+            }
+            // Where it lands: a little splash and a puddle.
+            let pool = Vec3::new(base.x, 0.02, z as f32 + 0.36);
+            r.halo(pool, 0.18, TEAL, 0.3);
+            if (env.time * 5.0 + x as f32).sin() > 0.3 {
+                r.point(pool + Vec3::new(0.06, 0.03, 0.0), 1, WHITE);
+            }
+        }
+        Obj::Grate => r.mesh(&a.bank, &a.sewer.grate, &at, &lit),
         Obj::House => {
             r.mesh(&a.bank, &p.house, &at, &DrawOpts::default());
             let mode = if env.night > 0.3 {

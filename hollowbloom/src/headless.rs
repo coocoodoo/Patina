@@ -3983,3 +3983,192 @@ pub fn deep_shots(dir: &str) {
     };
     close(&mut game, &mut r, &input, dir, "d11_lamp_close", lamp, 5.0);
 }
+
+/// Sewer floors: arriving, the lay of the channels from above, the plank and copper
+/// bridges up close, a drain, and sewers in other biomes.
+pub fn sewer_shots(dir: &str) {
+    use crate::game::sewer::is_sewer;
+    use crate::game::world::Floor;
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261201);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+        p.player.level = 30;
+        p.player.refresh();
+    }
+    let seed = play(&mut game).seed;
+    // The first sewer floor in each of a few biomes.
+    let mut floors = Vec::new();
+    for b in [0u32, 1, 2, 3, 4, 5] {
+        if let Some(d) = (b * 10 + 1..b * 10 + 10).find(|&d| is_sewer(seed, d)) {
+            floors.push(d);
+        }
+    }
+    let find = |game: &mut Game, f: Floor| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (sx, sz) = p.player.tile();
+        let mut best = None;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if w.floor(x, z) == f {
+                    let d = (x - sx).abs() + (z - sz).abs();
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, (x, z)));
+                    }
+                }
+            }
+        }
+        best.map(|(_, t)| t)
+    };
+    for (k, &depth) in floors.iter().enumerate() {
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            p.foes.clear();
+            p.banner = None;
+            p.toasts.clear();
+        }
+        tick(&mut game, &input, &audio, 10);
+        if k == 0 {
+            // Arriving (with the floor's banner, as the game shows it), and the whole floor
+            // from above.
+            {
+                let p = play(&mut game);
+                let biome = crate::game::dungeon::biome_for(depth);
+                p.banner = Some(crate::game::play::Banner {
+                    title: format!("Floor {depth}"),
+                    sub: format!(
+                        "{} - the old sewers",
+                        crate::assets::BIOME_STYLES[biome].name
+                    ),
+                    t: 0.0,
+                });
+            }
+            tick(&mut game, &input, &audio, 30);
+            snap(&mut game, &mut r, &input, dir, "w01_arrival");
+            let mid = {
+                let p = play(&mut game);
+                p.banner = None;
+                let w = &p.level.as_ref().unwrap().world;
+                p.cam.dist = 34.0;
+                Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5)
+            };
+            snap_on(&mut game, &mut r, &input, dir, "w02_overview", Some(mid));
+            play(&mut game).cam.dist = 15.5;
+            // The bridges up close.
+            for (name, f) in [
+                ("w03_plank_bridge", Floor::Bridge),
+                ("w04_copper_bridge", Floor::CopperBridge),
+            ] {
+                if let Some((x, z)) = find(&mut game, f) {
+                    let at = Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+                    {
+                        let p = play(&mut game);
+                        p.player.pos = Vec2::new(at.x, at.z);
+                    }
+                    tick(&mut game, &input, &audio, 2);
+                    close(&mut game, &mut r, &input, dir, name, at, 7.0);
+                }
+            }
+            if let Some((x, z)) = (|| {
+                let p = play(&mut game);
+                let w = &p.level.as_ref().unwrap().world;
+                for z in 0..w.h {
+                    for x in 0..w.w {
+                        if matches!(w.obj(x, z), Some(crate::game::world::Obj::Drain)) {
+                            return Some((x, z));
+                        }
+                    }
+                }
+                None
+            })() {
+                let at = Vec3::new(x as f32 + 0.5, 0.3, z as f32 + 0.5);
+                close(&mut game, &mut r, &input, dir, "w05_drain", at, 5.0);
+            }
+            // A crossroads of channels, a lantern snail lighting it and a book-worm reading
+            // on the walkway.
+            let cross = {
+                let p = play(&mut game);
+                let w = &p.level.as_ref().unwrap().world;
+                let wet = |x: i32, z: i32| w.floor(x, z) == Floor::Water;
+                let mut found = None;
+                'find: for z in 3..w.h - 3 {
+                    for x in 3..w.w - 3 {
+                        if wet(x, z)
+                            && wet(x - 1, z)
+                            && wet(x, z - 1)
+                            && wet(x + 3, z)
+                            && wet(x - 4, z)
+                            && wet(x, z + 3)
+                            && wet(x, z - 4)
+                        {
+                            found = Some((x, z));
+                            break 'find;
+                        }
+                    }
+                }
+                found
+            };
+            if let Some((x, z)) = cross {
+                {
+                    use crate::game::dungeon::Foe;
+                    use crate::game::foes::Enemy;
+                    let p = play(&mut game);
+                    p.foes.clear();
+                    let biome = crate::game::dungeon::biome_for(depth);
+                    for (foe, dx, dz, yaw) in [
+                        (Foe::Snail, 2.0, -2.0, 2.2),
+                        (Foe::Bookworm, -2.0, 2.0, 0.4),
+                    ] {
+                        let (fx, fz) = (x as f32 + dx, z as f32 + dz);
+                        let mut f = Enemy::new(foe, fx, fz, depth, biome, false, 7);
+                        f.yaw = yaw;
+                        p.foes.push(f);
+                    }
+                    p.player.pos = Vec2::new(x as f32 - 2.0, z as f32 - 2.5);
+                    p.player.facing = Vec2::new(1.0, 1.0);
+                }
+                tick(&mut game, &input, &audio, 2);
+                {
+                    let p = play(&mut game);
+                    for f in p.foes.iter_mut() {
+                        f.alert = false;
+                        f.dir = Vec2::ZERO;
+                    }
+                }
+                let at = Vec3::new(x as f32, 0.0, z as f32);
+                close(&mut game, &mut r, &input, dir, "w06_junction", at, 11.0);
+                play(&mut game).foes.clear();
+            }
+        } else {
+            let name = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"]
+                [crate::game::dungeon::biome_for(depth)];
+            snap(
+                &mut game,
+                &mut r,
+                &input,
+                dir,
+                &format!("w{:02}_{name}_sewer_floor_{depth}", k + 10),
+            );
+        }
+    }
+    println!("sewer floors: {floors:?}");
+}

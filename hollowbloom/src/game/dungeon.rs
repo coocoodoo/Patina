@@ -264,7 +264,7 @@ pub fn biome_seeds(biome: usize) -> &'static [(Item, f32)] {
 }
 
 /// Ore indices available at a depth with weights (see `assets::ORE_COLORS`).
-fn ore_weights(depth: u32, biome: usize) -> [f32; 6] {
+pub(crate) fn ore_weights(depth: u32, biome: usize) -> [f32; 6] {
     let d = depth as f32;
     let mut w = [
         (1.0 - (d - 15.0).max(0.0) / 30.0).max(0.15) * 4.0,
@@ -330,6 +330,9 @@ impl Room {
 }
 
 pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
+    if super::sewer::is_sewer(seed, depth) {
+        return super::sewer::generate(seed, depth);
+    }
     let biome = biome_for(depth);
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x9E37_79B9));
     let grow = depth.min(30) as i32;

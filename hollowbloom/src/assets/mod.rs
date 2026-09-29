@@ -14,6 +14,7 @@ pub mod monster_art;
 pub mod pet_art;
 pub mod quest_art;
 pub mod season_art;
+pub mod sewer_art;
 pub mod sprites;
 pub mod tiles;
 pub mod town_art;
@@ -429,6 +430,8 @@ pub struct Assets {
     pub pets: pet_art::PetArt,
     /// Lantern snails, book-worms and their ink runes.
     pub deep: deep_art::DeepArt,
+    /// The old sewers: walkways, brickwork, murky water and bridges.
+    pub sewer: sewer_art::SewerArt,
 }
 
 impl Assets {
@@ -587,6 +590,7 @@ impl Assets {
         let delve = delve_art::build(&mut bank);
         let pets = pet_art::build(&mut bank);
         let deep = deep_art::build(&mut bank);
+        let sewer = sewer_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -638,6 +642,7 @@ impl Assets {
             delve,
             pets,
             deep,
+            sewer,
         }
     }
 

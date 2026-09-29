@@ -607,7 +607,11 @@ impl Play {
                 let col = match (wld.wall(x, z), wld.obj(x, z)) {
                     (Wall::None, Some(Obj::StairsDown)) => GOLD,
                     (Wall::None, Some(Obj::Waystone)) => MINT,
+                    (Wall::None, _) if wld.floor(x, z) == Floor::Void => continue,
                     (Wall::None, _) if wld.floor(x, z) == Floor::Lava => ORANGE,
+                    (Wall::None, _) if wld.floor(x, z) == Floor::Water => TEAL,
+                    (Wall::None, _) if wld.floor(x, z) == Floor::Bridge => CLAY,
+                    (Wall::None, _) if wld.floor(x, z) == Floor::CopperBridge => AQUA,
                     (
                         Wall::None,
                         Some(Obj::LootChest {

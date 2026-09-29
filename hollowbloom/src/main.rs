@@ -38,6 +38,7 @@ OPTIONS:
     --pet-shots DIR  render the cat, the jumping spider, its egg and the candy rocks
     --season-shots DIR  render the farm and town in every season
     --deep-shots DIR  render the lantern snails, book-worms and their ink runes
+    --sewer-shots DIR  render the sewer floors: walkways, channels and bridges
     --music DIR     render every song to WAV files
     --decode IN OUT decode a track (Ogg or MP3) to WAV just as the game does (for loop points)
     --bench         measure rendering speed
@@ -96,6 +97,10 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--pet-shots") {
         headless::pet_shots(args.get(i + 1).map(String::as_str).unwrap_or("pets"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--sewer-shots") {
+        headless::sewer_shots(args.get(i + 1).map(String::as_str).unwrap_or("sewers"));
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--deep-shots") {

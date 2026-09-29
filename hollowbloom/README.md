@@ -403,6 +403,14 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   to a secret room the floor still hides). Snails drop **stained glass** (make a **Snail
   Lamp** for the house), book-worms drop **glow ink** and scrolls, and the ink makes **Ink
   Maps**: read one in the Hollow and a line of runes lights the way down.
+* **The old sewers.** Now and then (from floor 3, never on a guardian's floor) a floor is a
+  stretch of sewer instead of caves: murky green channels, misty and bubbling, run between
+  **stone walkways two lanes wide on each side**, curbed along the water, meeting at
+  junctions and ending in rounded chambers, all standing alone in the dark. Every stretch
+  of channel has a **bridge** across it, of weathered **planks** or of **copper plate gone
+  green with rust**, railed on both sides. Drain pipes trickle onto the walkways, grates
+  sit in the floor, torches line the walls, frogs and jellies live along the water, and
+  the dead ends hide chests. The old brickwork can be mined like rock.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -561,6 +569,7 @@ hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs a
 hollowbloom --pet-shots DIR       # the cat, the jumping spider, its egg, autumn and candy rocks
 hollowbloom --season-shots DIR    # the farm and town in every season, day and night
 hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and the snail lamp
+hollowbloom --sewer-shots DIR     # sewer floors: walkways, channels, plank and copper bridges
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
