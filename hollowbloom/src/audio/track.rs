@@ -35,8 +35,9 @@ pub struct Track {
 /// left after its last sound).
 const REST: usize = 22_050;
 
-/// The songs that have a recorded track (made with Google's Lyria 3), each played all the
-/// way through (from its first sound to a second after its last) and then started again.
+/// The songs that have a recorded track (made with Google's Lyria 3). Most are played all
+/// the way through (from their first sound to a second after their last) and then started
+/// again; one with a long stretch that repeats cleanly loops over it instead.
 pub const TRACKS: &[Track] = &[
     // "The First Day of Spring"
     Track {
@@ -109,6 +110,16 @@ pub const TRACKS: &[Track] = &[
         end: 6_714_225,
         rest: REST,
         gain: 0.668,
+    },
+    // "Below the Glacial Line": loops from the end of its quiet middle back to the end of
+    // its quiet opening, where the full band comes in.
+    Track {
+        song: Song::Glimmer,
+        mp3: include_bytes!("../../music/glimmer.mp3"),
+        start: 775_988,
+        end: 5_828_608,
+        rest: 0,
+        gain: 0.631,
     },
 ];
 
