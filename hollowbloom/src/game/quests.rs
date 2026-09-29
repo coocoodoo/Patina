@@ -2685,6 +2685,62 @@ pub static QUESTS: &[QuestDef] = &[
         charm: 25,
         ..Q
     },
+    // The deeper Hollow's folk: lantern snails and book-worm bibliomancers.
+    QuestDef {
+        key: "rowan_snails",
+        giver: V::Rowan,
+        title: "Lanterns in the Dark",
+        ask: "Delvers past floor ten keep seeing lights where no lamp should be. Snails, it \
+              turns out, under shells of glowing glass. Slow, but they hide when you hit \
+              them - be patient. Ten of them for the Guild.",
+        thanks: "Ten lantern snails! And you kept a few panes of glass, I hope? Here's your \
+                 pay, and a lamp of our own to light your way.",
+        goal: Slay(Some(Foe::Snail), 10, 11),
+        reward: &[Coins(3500), Marks(40), item(Item::StainedGlass, 3)],
+        after: "rowan_slimes",
+        depth: 11,
+        ..Q
+    },
+    QuestDef {
+        key: "quill_ink",
+        giver: V::Quill,
+        title: "Ink That Knows the Way",
+        ask: "Caterpillars in spectacles, spitting ink that writes the way out of the Hollow! \
+              I must study it. Six drops of their glow ink, if you'd be so kind.",
+        thanks: "Remarkable - it's still trying to point somewhere! I've copied the old delvers' \
+                 trick. Read one of these maps down there and the ink will show you the way.",
+        goal: Bring(Item::GlowInk, 6),
+        reward: &[Coins(3500), item(Item::InkMap, 4)],
+        depth: 11,
+        ..Q
+    },
+    QuestDef {
+        key: "opal_glass",
+        giver: V::Opal,
+        title: "Glass That Glows",
+        ask: "They say the snails below floor ten wear shells of stained glass that glow \
+              without a flame. I have to see it. Eight panes, and I'll make you something \
+              lovely.",
+        thanks: "It's still warm with light! I set a whole shell of it on a stand for you - \
+                 put it somewhere you'll see it every night.",
+        goal: Bring(Item::StainedGlass, 8),
+        reward: &[Coins(4500), item(Item::SnailLamp, 1)],
+        depth: 11,
+        ..Q
+    },
+    QuestDef {
+        key: "mira_worms",
+        giver: V::Mira,
+        title: "Reading Between the Lines",
+        ask: "Those bookish caterpillars below floor ten read the same book over and over, \
+              and spit ink at anyone who interrupts. Rude! Interrupt eight of them for me.",
+        thanks: "And they dropped their bookmarks! Well, scrolls. You keep them - I've read \
+                 enough for one night.",
+        goal: Slay(Some(Foe::Bookworm), 8, 11),
+        reward: &[Coins(3000), item(Item::GlowInk, 4), item(Item::InkMap, 2)],
+        depth: 11,
+        ..Q
+    },
     // The Hollow's newer residents: the walking dead, goblins fat and skinny, and bugs.
     QuestDef {
         key: "rowan_zombies",
@@ -3002,6 +3058,8 @@ pub fn foe_name(f: Foe) -> &'static str {
         Foe::Brute => "fat goblin",
         Foe::Sneak => "skinny goblin",
         Foe::Bug => "bug",
+        Foe::Snail => "lantern snail",
+        Foe::Bookworm => "book-worm",
     }
 }
 
@@ -3578,9 +3636,9 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
     let scale = 1.0 + deepest as f32 / 12.0;
     let (title, text, goal, coins) = if guild || r.chance(0.3) {
         // Monsters.
-        let foes = super::dungeon::biome_foes(r.range(0, biome as i32 + 1) as usize);
-        let foe = foes[r.below(foes.len())].0;
         let floor = (r.range(0, biome as i32 + 1) as u32) * 10 + 1;
+        let foes = super::dungeon::floor_foes(r.range(0, biome as i32 + 1) as usize, floor);
+        let foe = foes[r.below(foes.len())].0;
         let n = r.range(8, 20) as u16;
         let coins = (n as f32 * 45.0 * (1.0 + floor as f32 / 8.0)) as u64;
         (

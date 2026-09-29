@@ -1,5 +1,6 @@
 //! Every texture, sprite, font and model the game uses, generated at start-up.
 
+pub mod deep_art;
 pub mod delve_art;
 pub mod fish_art;
 pub mod font;
@@ -426,6 +427,8 @@ pub struct Assets {
     pub delve: delve_art::DelveArt,
     /// The cat, the jumping spider, its egg, and candy rocks.
     pub pets: pet_art::PetArt,
+    /// Lantern snails, book-worms and their ink runes.
+    pub deep: deep_art::DeepArt,
 }
 
 impl Assets {
@@ -436,6 +439,7 @@ impl Assets {
         let gear = gear_art::build(&mut bank, &mut icons);
         quest_art::build(&mut bank, &mut icons);
         season_art::build(&mut bank, &mut icons);
+        deep_art::icons(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
         fish_art::build(&mut bank, &mut icons);
         let home = home_art::build(&mut bank, &mut icons);
@@ -582,6 +586,7 @@ impl Assets {
         let monsters = monster_art::build(&mut bank);
         let delve = delve_art::build(&mut bank);
         let pets = pet_art::build(&mut bank);
+        let deep = deep_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -632,6 +637,7 @@ impl Assets {
             monsters,
             delve,
             pets,
+            deep,
         }
     }
 

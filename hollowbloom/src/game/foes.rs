@@ -63,7 +63,18 @@ pub struct Enemy {
     pub named: f32,
     /// Seconds until a guardian next calls for help.
     pub summon: f32,
+    /// Seconds a lantern snail has left hiding in its shell.
+    pub hide: f32,
+    /// A lantern snail's glowing slime: where it has been, and how long ago.
+    pub trail: Vec<(Vec2, f32)>,
 }
+
+/// How long a lantern snail hides in its shell once struck, and how much of a blow the
+/// shell lets through meanwhile.
+pub const HIDE_SECS: f32 = 1.4;
+pub const SHELL_LETS_THROUGH: f32 = 0.35;
+/// How long a snail's glowing slime trail lasts.
+pub const TRAIL_SECS: f32 = 5.0;
 
 /// The outline tag for creatures maddened by the full moon (outlined in red).
 pub const MOONLIT_TAG: u8 = 6;
@@ -115,6 +126,8 @@ pub fn base(f: Foe) -> Base {
         Foe::Brute => b(44, 13, 1.5, 0.4, 12, "Goblin Brute"),
         Foe::Sneak => b(15, 7, 3.0, 0.26, 7, "Goblin Sneak"),
         Foe::Bug => b(11, 6, 3.0, 0.26, 5, "Bug"),
+        Foe::Snail => b(34, 9, 0.8, 0.3, 11, "Lantern Snail"),
+        Foe::Bookworm => b(22, 8, 1.7, 0.28, 10, "Bibliomancer"),
     }
 }
 
@@ -180,6 +193,22 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
             "Ember Ghost",
             "Snow Ghost",
             "Tomb Ghost",
+        ][b],
+        Foe::Snail => [
+            "Moss Lantern Snail",
+            "Crystal Lantern Snail",
+            "Spore Lantern Snail",
+            "Ember Lantern Snail",
+            "Frost Lantern Snail",
+            "Sunstone Lantern Snail",
+        ][b],
+        Foe::Bookworm => [
+            "Moss Bibliomancer",
+            "Crystal Bibliomancer",
+            "Spore Bibliomancer",
+            "Cinder Bibliomancer",
+            "Frost Bibliomancer",
+            "Tomb Bibliomancer",
         ][b],
         Foe::Slime => "Slime",
         Foe::Bat => "Bat",
@@ -287,6 +316,8 @@ impl Enemy {
             moonlit: false,
             named: 0.0,
             summon: 6.0,
+            hide: 0.0,
+            trail: Vec::new(),
         }
     }
 
@@ -336,12 +367,18 @@ impl Enemy {
         matches!(self.foe, Foe::Slime | Foe::Ghost | Foe::Jelly)
     }
 
-    /// Hard shells and bones strike sparks.
+    /// Hard shells and bones strike sparks (a lantern snail's, while it hides in it).
     pub fn armored(&self) -> bool {
         matches!(
             self.foe,
             Foe::Crab | Foe::Beetle | Foe::Golem | Foe::Skeleton
         ) || (self.foe == Foe::Bug && self.biome % 6 != MOTHS)
+            || self.shelled()
+    }
+
+    /// A lantern snail tucked away in its shell.
+    pub fn shelled(&self) -> bool {
+        self.foe == Foe::Snail && self.hide > 0.0
     }
 
     /// Too heavy to be knocked about much.
@@ -353,6 +390,7 @@ impl Enemy {
     pub fn grounded(&self) -> bool {
         match self.foe {
             Foe::Slime | Foe::Frog => self.y < 0.35 * self.scale(),
+            Foe::Snail => !self.shelled(),
             _ => true,
         }
     }
@@ -387,6 +425,10 @@ impl Enemy {
     ) {
         self.anim += dt;
         self.named = (self.named - dt).max(0.0);
+        self.hide = (self.hide - dt).max(0.0);
+        if self.foe == Foe::Snail {
+            self.lay_trail(dt);
+        }
         self.flash = (self.flash - dt).max(0.0);
         self.hurt_cd = (self.hurt_cd - dt).max(0.0);
         self.squash = approach(self.squash, 0.0, dt * 3.0);
@@ -531,11 +573,125 @@ impl Enemy {
             Foe::Brute => self.brute(dt, world, dirp, dist, shots, fx),
             Foe::Sneak => self.sneak(dt, world, dirp, dist, shots, rng),
             Foe::Bug => self.bug(dt, world, dirp, dist, shots, rng),
+            Foe::Snail => self.snail(dt, world, dirp, dist),
+            Foe::Bookworm => self.bookworm(dt, world, dirp, dist, shots, rng),
         }
         if dist > 0.01 && self.st != St::Dash {
             self.yaw = dirp.x.atan2(dirp.y);
         } else if self.st == St::Dash {
             self.yaw = self.dir.x.atan2(self.dir.y);
+        }
+    }
+
+    /// Glowing slime where a lantern snail has crawled, fading as it dries.
+    fn lay_trail(&mut self, dt: f32) {
+        for p in &mut self.trail {
+            p.1 += dt;
+        }
+        self.trail.retain(|p| p.1 < TRAIL_SECS);
+        let moved = self
+            .trail
+            .last()
+            .is_none_or(|p| (p.0 - self.pos).length() > 0.16);
+        if moved && !self.shelled() {
+            self.trail.push((self.pos, 0.0));
+        }
+    }
+
+    /// A lantern snail glides after you, slow and steady, and once it's close draws back
+    /// and lunges. Struck, it hides in its shell a moment (see `hide`).
+    fn snail(&mut self, dt: f32, world: &World, dirp: Vec2, dist: f32) {
+        if self.shelled() {
+            return;
+        }
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    self.t = 0.2;
+                }
+            }
+            St::Dash => {
+                let d = self.dir * self.speed * 6.5 * dt;
+                self.step(world, d);
+                if self.t <= 0.0 {
+                    self.st = St::Rest;
+                    self.t = 1.1;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                }
+            }
+            _ => {
+                self.dir = dirp;
+                // The foot ripples it along in waves.
+                let wave = 0.55 + 0.45 * (self.anim * 3.2).sin().max(0.0);
+                self.step(world, dirp * self.speed * wave * dt);
+                if dist < 1.2 * self.reach() {
+                    self.st = St::Windup;
+                    self.t = 0.55;
+                }
+            }
+        }
+    }
+
+    /// A book-worm bibliomancer keeps a reading distance, rears up over its book and spits
+    /// a gob of glowing ink, which dries into a rune pointing the way on.
+    fn bookworm(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    let color = crate::assets::deep_art::INK_COLORS[self.biome % 6][1];
+                    let spread: &[f32] = if self.boss {
+                        &[-0.4, -0.2, 0.0, 0.2, 0.4]
+                    } else {
+                        &[0.0]
+                    };
+                    for a in spread {
+                        let d = Vec2::from_angle(*a).rotate(dirp);
+                        shots.push(Shot {
+                            pos: self.pos + d * 0.35,
+                            vel: d * 3.9,
+                            dmg: self.dmg,
+                            life: 2.4,
+                            color,
+                            radius: 0.17,
+                            ink: true,
+                        });
+                    }
+                    self.st = St::Rest;
+                    self.t = rng.range_f(1.9, 2.8);
+                }
+            }
+            _ => {
+                let strafe =
+                    Vec2::new(-dirp.y, dirp.x) * (self.anim * 0.6 + self.seed as f32).sin();
+                let want = if dist < 3.2 {
+                    -dirp
+                } else if dist > 6.5 {
+                    dirp
+                } else {
+                    strafe * 0.5
+                };
+                // Caterpillars crawl in ripples.
+                let ripple = 0.4 + 0.6 * (self.anim * 5.0).sin().abs();
+                self.step(world, want * self.speed * ripple * dt);
+                if self.t <= 0.0 && dist < 8.5 && world.clear_line(self.pos, self.pos + dirp * dist)
+                {
+                    self.st = St::Windup;
+                    self.t = 0.65;
+                }
+            }
         }
     }
 
@@ -647,6 +803,7 @@ impl Enemy {
                                 life: 1.2,
                                 color: SKY,
                                 radius: 0.18,
+                                ink: false,
                             });
                         }
                         self.st = St::Rest;
@@ -714,6 +871,7 @@ impl Enemy {
                             life: 2.5,
                             color,
                             radius: 0.16,
+                            ink: false,
                         });
                     }
                     self.st = St::Chase;
@@ -780,6 +938,7 @@ impl Enemy {
                         life: 2.0,
                         color: SKY,
                         radius: 0.17,
+                        ink: false,
                     });
                     self.st = St::Idle;
                     self.t = rng.range_f(0.5, 1.0);
@@ -832,6 +991,7 @@ impl Enemy {
                             life,
                             color,
                             radius: 0.15,
+                            ink: false,
                         });
                     }
                     if jelly {
@@ -905,6 +1065,7 @@ impl Enemy {
                             life: if self.boss { 0.9 } else { 0.4 },
                             color: skin[0],
                             radius: 0.2,
+                            ink: false,
                         });
                     }
                     self.st = St::Rest;
@@ -992,6 +1153,7 @@ impl Enemy {
                                 life: 1.6,
                                 color: DAGGERS[self.biome % 6],
                                 radius: 0.12,
+                                ink: false,
                             });
                         }
                         self.t = rng.range_f(1.8, 2.8);
@@ -1034,6 +1196,7 @@ impl Enemy {
                             life: 2.4,
                             color: PINK,
                             radius: 0.2,
+                            ink: false,
                         });
                     }
                 }
@@ -1105,6 +1268,8 @@ impl Enemy {
             (Foe::Zombie, b) => [GREEN, BLUE, PURPLE, SHADOW, SKY, SAND][b % 6],
             (Foe::Brute | Foe::Sneak, b) => GOBLIN_DUST[b % 6][1],
             (Foe::Bug, b) => [GREEN, AQUA, LAVENDER, RED, SKY, GOLD][b % 6],
+            (Foe::Snail, b) => crate::assets::deep_art::GLASS[b % 6][1],
+            (Foe::Bookworm, b) => crate::assets::deep_art::INK_COLORS[b % 6][1],
         }
     }
 
@@ -1142,6 +1307,20 @@ impl Enemy {
                 radius: 1.8 * self.scale(),
                 power: 0.3,
                 warmth: 7.0,
+            }),
+            // A lantern snail lights up the dark all round it, brightest tucked in its shell.
+            Foe::Snail => Some(PointLight {
+                pos: self.world_pos() + Vec3::Y * 0.35,
+                radius: 3.8 * self.scale(),
+                power: if self.shelled() { 0.75 } else { 0.55 },
+                warmth: [3.5, 2.0, 4.5, 7.5, 1.0, 6.5][self.biome % 6],
+            }),
+            // A book-worm's pages glow as it gathers its ink.
+            Foe::Bookworm if self.st == St::Windup => Some(PointLight {
+                pos: self.world_pos() + Vec3::Y * 0.4,
+                radius: 1.8,
+                power: 0.35,
+                warmth: 3.0,
             }),
             _ => None,
         }
@@ -1432,6 +1611,8 @@ impl Enemy {
                 }
             }
             Foe::Bug => self.draw_bug(r, a, &o, b),
+            Foe::Snail => self.draw_snail(r, a, &o, b),
+            Foe::Bookworm => self.draw_worm(r, a, &o, b),
             Foe::Imp | Foe::Skeleton | Foe::Zombie | Foe::Brute | Foe::Sneak => {
                 let looks = &a.monsters;
                 let h = match self.foe {
@@ -1519,6 +1700,155 @@ impl Enemy {
 
     /// A bug: its body, jointed legs on both sides scuttling in step, and wings or claws
     /// for those that have them.
+    /// A lantern snail: soft body, waggling eye stalks and a shell of stained glass that
+    /// glows like a lantern, over a trail of shining slime. Struck, it pulls itself in.
+    fn draw_snail(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts, b: usize) {
+        use crate::assets::deep_art::{SHELL_AT, STALK_AT};
+        let s = self.scale();
+        let art = &a.deep.snails[b];
+        // Its slime, sparkling where it's fresh.
+        for (k, &(p, age)) in self.trail.iter().enumerate() {
+            let fade = 1.0 - age / TRAIL_SECS;
+            let c = art.glass[k % 3];
+            let at = Vec3::new(p.x, 0.02, p.y);
+            if fade > 0.35 || (k % 2 == 0 && fade > 0.1) {
+                r.point(at, 1, c);
+            }
+            if k % 3 == 0 && fade > 0.3 {
+                r.halo(at, 0.16 * s, c, 0.22 * fade);
+            }
+        }
+        // How far into its shell it has pulled (a quick tuck, a slow peek out).
+        let tuck = (self.hide / 0.3).min(1.0);
+        let lunge = match self.st {
+            St::Windup => -0.07 * (1.0 - self.t / 0.55).clamp(0.0, 1.0),
+            St::Dash => 0.09,
+            _ => 0.0,
+        };
+        let ripple = if self.alert || self.dir.length_squared() > 0.0 {
+            (self.anim * 3.2).sin() * 0.04
+        } else {
+            0.0
+        };
+        let m = Mat4::from_translation(Vec3::new(self.pos.x, 0.0, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s));
+        if tuck < 0.98 {
+            let out = 1.0 - tuck;
+            let body = m
+                * Mat4::from_translation(Vec3::new(0.0, 0.0, lunge * out + SHELL_AT.z * tuck))
+                * Mat4::from_scale(Vec3::new(
+                    0.5 + 0.5 * out,
+                    0.4 + 0.6 * out,
+                    (1.0 + ripple) * (0.3 + 0.7 * out),
+                ));
+            r.mesh(&a.bank, &art.body, &body, o);
+            for side in [-1.0f32, 1.0] {
+                let wag = (self.anim * 2.3 + side * 1.3).sin() * 0.22;
+                let perk = if self.st == St::Windup { 0.35 } else { 0.0 };
+                let stalk = body
+                    * Mat4::from_translation(Vec3::new(side * STALK_AT.x, STALK_AT.y, STALK_AT.z))
+                    * Mat4::from_rotation_z(-side * (0.3 + wag * 0.5))
+                    * Mat4::from_rotation_x(0.25 + wag * 0.3 - perk)
+                    * Mat4::from_scale(Vec3::new(1.0, out, 1.0));
+                r.mesh(&a.bank, &art.stalk, &stalk, o);
+            }
+        }
+        // The shell, lit from within; it rattles as the snail hides.
+        let rattle = if self.shelled() {
+            (self.anim * 34.0).sin() * 0.06 * (self.hide / HIDE_SECS)
+        } else {
+            0.0
+        };
+        let shell = m
+            * Mat4::from_translation(SHELL_AT - Vec3::Y * 0.035 * tuck)
+            * Mat4::from_rotation_z(rattle);
+        let glass = if self.flash > 0.0 {
+            *o
+        } else {
+            o.with_mode(Mode::Unlit)
+        };
+        r.mesh(&a.bank, &art.shell, &shell, &glass);
+        let pulse = (self.anim * 2.0).sin() * 0.5 + 0.5;
+        let c = shell.transform_point3(Vec3::ZERO);
+        r.halo(
+            c,
+            (0.4 + pulse * 0.06 + tuck * 0.12) * s,
+            art.glass[0],
+            0.26 + pulse * 0.1 + tuck * 0.2,
+        );
+    }
+
+    /// A book-worm bibliomancer: a caterpillar in spectacles rippling along behind its head,
+    /// its little book floating open beside it. It rears back to spit.
+    fn draw_worm(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts, b: usize) {
+        use crate::assets::deep_art::{HEAD_AT, SEG_GAP, SEG_R, SEGMENTS};
+        let s = self.scale();
+        let art = &a.deep.worms[b];
+        let m = Mat4::from_translation(Vec3::new(self.pos.x, 0.0, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s));
+        let moving = self.alert || self.dir.length_squared() > 0.0;
+        let rear = if self.st == St::Windup {
+            (1.0 - self.t / 0.65).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        // Humps travel down the body from head to tail.
+        for i in 1..=SEGMENTS {
+            let k = i as f32;
+            let hump = if moving {
+                (self.anim * 9.0 - k * 1.2).sin().max(0.0) * 0.05
+            } else {
+                ((self.anim * 1.6 - k).sin() * 0.5 + 0.5) * 0.012
+            };
+            let lift = if i == 1 { rear * 0.06 } else { 0.0 };
+            let size = 1.0 - k * 0.05;
+            let at =
+                m * Mat4::from_translation(Vec3::new(
+                    0.0,
+                    SEG_R * size + hump + lift,
+                    -k * SEG_GAP + 0.02,
+                )) * Mat4::from_scale(Vec3::splat(size));
+            r.mesh(&a.bank, &art.segs[i % 2], &at, o);
+        }
+        let nod = if moving {
+            (self.anim * 9.0).sin() * 0.06
+        } else {
+            (self.anim * 1.4).sin() * 0.08
+        };
+        let head = m
+            * Mat4::from_translation(HEAD_AT + Vec3::new(0.0, rear * 0.14, 0.04 - rear * 0.05))
+            * Mat4::from_rotation_x(-rear * 0.55 + nod);
+        r.mesh(&a.bank, &art.head, &head, o);
+        // The book, open, bobbing at its side; its pages shine as the ink gathers.
+        let bob = (self.anim * 2.2).sin() * 0.03;
+        let book = m
+            * Mat4::from_translation(Vec3::new(0.24, 0.36 + bob + rear * 0.08, -0.02))
+            * Mat4::from_rotation_y(-0.6)
+            * Mat4::from_rotation_x(0.45);
+        r.mesh(&a.bank, &art.book, &book, o);
+        let pages = if rear > 0.0 && self.flash <= 0.0 {
+            o.with_mode(Mode::Unlit)
+        } else {
+            *o
+        };
+        r.mesh(&a.bank, &art.pages, &book, &pages);
+        if rear > 0.0 {
+            let c = book.transform_point3(Vec3::Y * 0.03);
+            r.halo(c, (0.2 + rear * 0.15) * s, art.ink[1], 0.35 + rear * 0.3);
+            for k in 0..3 {
+                let t = (self.anim * 1.5 + k as f32 * 0.33).fract();
+                let ang = self.anim * 2.0 + k as f32 * 2.1;
+                let q = c + Vec3::new(ang.cos() * 0.08, t * 0.25, ang.sin() * 0.08);
+                r.point(q, 1, if k == 0 { art.ink[0] } else { art.ink[1] });
+            }
+            // A bead of ink swelling at its lips.
+            let lips = head.transform_point3(Vec3::new(0.0, -0.05, 0.13));
+            r.point(lips, 1 + (rear * 2.0) as i32, art.ink[1]);
+        }
+    }
+
     fn draw_bug(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts, b: usize) {
         let s = self.scale();
         let bug = &a.monsters.bug[b];

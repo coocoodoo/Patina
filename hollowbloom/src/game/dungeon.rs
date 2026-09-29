@@ -32,6 +32,25 @@ pub enum Foe {
     /// The biome's bug: moss spiders, glass mantises, spore moths, fire ants, frost
     /// spiders and scarabs.
     Bug,
+    /// A lantern snail: soft and slow under a glowing stained-glass shell that lights up the
+    /// dark round it. Struck, it hides in its shell for a moment. Floor 11 and down.
+    Snail,
+    /// A book-worm bibliomancer: a caterpillar in spectacles that keeps its distance and
+    /// spits glowing ink, which dries into runes pointing the way on. Floor 11 and down.
+    Bookworm,
+}
+
+/// The first floor the lantern snails and book-worms live on.
+pub const DEEP_FOLK: u32 = 11;
+
+/// Everyone living on a floor: the biome's folk, and from floor 11 down the lantern snails
+/// and book-worm bibliomancers as well.
+pub fn floor_foes(biome: usize, depth: u32) -> Vec<(Foe, f32)> {
+    let mut v = biome_foes(biome).to_vec();
+    if depth >= DEEP_FOLK {
+        v.extend([(Foe::Snail, 1.3), (Foe::Bookworm, 1.1)]);
+    }
+    v
 }
 
 pub struct Spawn {
@@ -681,7 +700,7 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
 
     // Enemies.
     let mut spawns = Vec::new();
-    let foes = biome_foes(biome);
+    let foes = floor_foes(biome, depth);
     let weights: Vec<f32> = foes.iter().map(|f| f.1).collect();
     let cap = (6 + depth as usize / 2).min(28);
     let mut order: Vec<usize> = (0..n).filter(|&i| i != start_room).collect();
@@ -837,7 +856,7 @@ pub fn vault(seed: u64, depth: u32, crack: (i32, i32)) -> Level {
         }
     }
     // Its keepers: a handful of the biome's creatures, back from the rope.
-    let foes = biome_foes(biome);
+    let foes = floor_foes(biome, depth);
     let weights: Vec<f32> = foes.iter().map(|f| f.1).collect();
     let n = (3 + depth as usize / 12).min(7);
     let mut spawns = Vec::new();

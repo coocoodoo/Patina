@@ -574,6 +574,57 @@ impl World {
     }
 
     /// Straight line check between two points (for enemy sight and projectiles).
+    /// The shortest walk from one tile to another, four ways round walls and whatever
+    /// else is in the way: the tiles after `from`, ending at `to`. Empty when there's no
+    /// way through (or `from` is `to`).
+    pub fn path(&self, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+        if from == to || !self.inside(from.0, from.1) || !self.inside(to.0, to.1) {
+            return Vec::new();
+        }
+        let idx = |x: i32, z: i32| (z * self.w + x) as usize;
+        let mut dist = vec![u32::MAX; (self.w * self.h) as usize];
+        let mut q = std::collections::VecDeque::new();
+        dist[idx(to.0, to.1)] = 0;
+        q.push_back(to);
+        const WAYS: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        // Out from the goal until the walk reaches `from`.
+        while let Some((x, z)) = q.pop_front() {
+            if (x, z) == from {
+                break;
+            }
+            let d = dist[idx(x, z)];
+            for (dx, dz) in WAYS {
+                let (nx, nz) = (x + dx, z + dz);
+                if self.inside(nx, nz)
+                    && dist[idx(nx, nz)] == u32::MAX
+                    && (!self.blocked(nx, nz) || (nx, nz) == from)
+                {
+                    dist[idx(nx, nz)] = d + 1;
+                    q.push_back((nx, nz));
+                }
+            }
+        }
+        if dist[idx(from.0, from.1)] == u32::MAX {
+            return Vec::new();
+        }
+        // Then back downhill to it.
+        let mut out = Vec::new();
+        let mut at = from;
+        while at != to {
+            let d = dist[idx(at.0, at.1)];
+            let Some(next) = WAYS
+                .iter()
+                .map(|(dx, dz)| (at.0 + dx, at.1 + dz))
+                .find(|&(x, z)| self.inside(x, z) && dist[idx(x, z)] < d)
+            else {
+                break;
+            };
+            out.push(next);
+            at = next;
+        }
+        out
+    }
+
     pub fn clear_line(&self, a: Vec2, b: Vec2) -> bool {
         let d = b - a;
         let steps = ((d.length() / 0.25).ceil() as i32).max(1);

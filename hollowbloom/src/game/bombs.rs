@@ -210,6 +210,7 @@ impl Play {
             at: self.player.pos,
         };
         self.shots.clear();
+        self.runes.clear();
         self.bolts.clear();
         self.bombs.clear();
         match self.vault.take() {
@@ -273,6 +274,7 @@ impl Play {
         self.vault = Some(Box::new(here));
         let above = *above;
         self.shots.clear();
+        self.runes.clear();
         self.bolts.clear();
         self.bombs.clear();
         self.player.pos = above.at;

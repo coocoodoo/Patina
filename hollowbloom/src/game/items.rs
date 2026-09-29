@@ -90,6 +90,8 @@ pub enum Kind {
     Flooring(u8),
     /// Thrown, fizzes, and goes off: monsters, pots and cracked floors beware.
     Bomb,
+    /// Read in the Hollow: runes of glowing ink light the way to the stairs down.
+    InkMap,
 }
 
 pub struct ItemDef {
@@ -183,6 +185,9 @@ items! {
     GraveDust = "grave_dust", "Grave Dust", "grave_dust", 99, 16, Material, "Shaken out of a zombie's pockets. Mostly zombie.";
     GoblinTooth = "goblin_tooth", "Goblin Tooth", "goblin_tooth", 99, 20, Material, "A goblin lost this. It will want it back.";
     Chitin = "chitin", "Bug Chitin", "chitin", 99, 12, Material, "A tough, glossy plate off a Hollow bug.";
+    StainedGlass = "stained_glass", "Stained Glass", "stained_glass", 99, 60, Material, "A pane of a lantern snail's shell. It never quite stops glowing.";
+    GlowInk = "glow_ink", "Glow Ink", "glow_ink", 99, 45, Material, "Book-worm ink. It glows, and it always seems to know the way.";
+    InkMap = "ink_map", "Ink Map", "ink_map", 20, 90, Kind::InkMap, "Read it in the Hollow and runes of glowing ink light the way to the stairs down, and hint at secrets.";
 
     // Gems: scroll ink, and worth a pretty coin.
     Ruby = "ruby", "Ruby", "ruby", 99, 60, GemK, "Red as a winterberry. Scribes weapon scrolls.";
@@ -638,6 +643,7 @@ items! {
     Wardrobe = "wardrobe", "Wardrobe", "wardrobe", 5, 330, Kind::Place(P::Furniture(Furn::Wardrobe)), "No, there's no secret kingdom in the back. Probably.";
     Dresser = "dresser", "Dresser", "dresser", 10, 200, Kind::Place(P::Furniture(Furn::Dresser)), "Drawers for socks and secrets.";
     FloorLamp = "floor_lamp", "Floor Lamp", "floor_lamp", 10, 150, Kind::Place(P::Furniture(Furn::FloorLamp)), "A warm pool of light for reading corners.";
+    SnailLamp = "snail_lamp", "Snail Lamp", "snail_lamp", 10, 900, Kind::Place(P::Furniture(Furn::SnailLamp)), "A lantern snail's stained-glass shell, lit from within. It throws colours on the walls.";
     Candelabra = "candelabra", "Candelabra", "candelabra", 10, 320, Kind::Place(P::Furniture(Furn::Candelabra)), "Three little flames, very elegant.";
     Fireplace = "fireplace", "Stone Fireplace", "fireplace", 5, 1600, Kind::Place(P::Furniture(Furn::Fireplace)), "Crackles all night. Warm your hands for a while.";
     PottedFern = "potted_fern", "Potted Fern", "potted_fern", 20, 60, Kind::Place(P::Furniture(Furn::Fern)), "Green, leafy and easy to please.";
@@ -1665,6 +1671,8 @@ recipes! {
     Kitchen: EelKebab x 1 <= [LavaEel 1, EmberPepper 1];
     Kitchen: FishTacos x 1 <= [RainbowTrout 1, Corn 1, Tomato 1];
     Kitchen: EmperorPlatter x 1 <= [GoldenCarp 1, Truffle 1];
+    Tools: InkMap x 2 <= [GlowInk 3, Fiber 2];
+    Home: SnailLamp x 1 <= [StainedGlass 6, IronOre 2];
     Kitchen: CherryTart x 1 <= [SweetCherry 3, Wheat 1];
     Kitchen: SpringSalad x 1 <= [ButterLettuce 1, SpringOnion 1, BabyCarrot 1];
     Kitchen: LavenderTea x 1 <= [Lavender 2];

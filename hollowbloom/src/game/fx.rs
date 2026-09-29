@@ -442,7 +442,27 @@ pub struct Shot {
     pub life: f32,
     pub color: u8,
     pub radius: f32,
+    /// Book-worm ink: where it lands it dries into a rune (see `Rune`).
+    pub ink: bool,
 }
+
+/// A splash of book-worm ink dried into a glowing rune on the floor. Its arrow points the
+/// way on to the stairs down (or, in gold, towards a secret), and it fades after a while.
+#[derive(Clone, Copy, Debug)]
+pub struct Rune {
+    pub pos: Vec2,
+    pub dir: Vec2,
+    /// Seconds since it landed (below zero, it's still to come), and how long it lasts.
+    pub age: f32,
+    pub life: f32,
+    /// Whose ink: the biome's colour (see `deep_art::INK_COLORS`).
+    pub biome: usize,
+    /// Points to a secret rather than the stairs.
+    pub secret: bool,
+}
+
+/// How long an ink rune glows on the floor.
+pub const RUNE_SECS: f32 = 14.0;
 
 impl Shot {
     pub fn update(&mut self, dt: f32, world: &World) -> bool {

@@ -3534,3 +3534,239 @@ pub fn season_shots(dir: &str) {
     tick(&mut game, &input, &audio, 5);
     snap(&mut game, &mut r, &input, dir, "s15_spring_town");
 }
+
+/// The deeper Hollow's folk: lantern snails and book-worm bibliomancers in every biome's
+/// look, a snail hiding in its shell, a book-worm spitting ink, the runes the ink dries into,
+/// an Ink Map read, and a snail lamp at home.
+pub fn deep_shots(dir: &str) {
+    use crate::game::dungeon::Foe;
+    use crate::game::foes::St;
+    use crate::game::home::Furn;
+    use crate::game::world::Area;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261111);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+    }
+    // Every biome's pair, by the first floor of it that they live on.
+    let names = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"];
+    for (biome, name) in names.iter().enumerate() {
+        let depth = if biome == 0 {
+            64
+        } else {
+            biome as u32 * 10 + 4
+        };
+        descend(&mut game, &input, &audio, depth, false);
+        lineup(
+            play(&mut game),
+            &[Foe::Snail, Foe::Bookworm, Foe::Snail, Foe::Bookworm],
+            biome,
+            depth,
+        );
+        tick(&mut game, &input, &audio, 20);
+        let focus = {
+            let p = play(&mut game);
+            hold_still(p);
+            for f in p.foes.iter_mut() {
+                f.yaw = 0.3;
+            }
+            p.cam.dist = 5.6;
+            let mid =
+                p.foes.iter().map(|f| f.world_pos()).sum::<glam::Vec3>() / p.foes.len() as f32;
+            mid + glam::Vec3::new(0.3, 0.0, 0.0)
+        };
+        snap_on(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("d{:02}_{name}", biome + 1),
+            Some(focus),
+        );
+    }
+    // Close-ups on the ember floor: a snail gliding, one hiding, and a book-worm rearing up
+    // to spit.
+    descend(&mut game, &input, &audio, 34, false);
+    lineup(
+        play(&mut game),
+        &[Foe::Snail, Foe::Snail, Foe::Bookworm],
+        3,
+        34,
+    );
+    tick(&mut game, &input, &audio, 30);
+    let focus = {
+        let p = play(&mut game);
+        hold_still(p);
+        p.foes[0].yaw = 1.2;
+        p.foes[1].hide = 1.2;
+        p.foes[1].yaw = -0.8;
+        p.foes[2].st = St::Windup;
+        p.foes[2].t = 0.2;
+        p.foes[2].yaw = 0.4;
+        p.cam.dist = 5.0;
+        p.foes.iter().map(|f| f.world_pos()).sum::<glam::Vec3>() / p.foes.len() as f32
+    };
+    snap_on(&mut game, &mut r, &input, dir, "d07_close", Some(focus));
+    // Closer still: a book-worm's spectacles, and a snail's stained glass.
+    let focus = {
+        let p = play(&mut game);
+        p.foes[2].st = St::Chase;
+        p.foes[2].yaw = 0.3;
+        p.cam.dist = 2.6;
+        p.foes[2].world_pos() + glam::Vec3::new(0.0, 0.15, -0.1)
+    };
+    snap_on(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "d07b_worm_face",
+        Some(focus),
+    );
+    let focus = {
+        let p = play(&mut game);
+        p.foes[0].yaw = 1.57;
+        p.cam.dist = 2.6;
+        p.foes[0].world_pos() + glam::Vec3::new(0.0, 0.15, 0.0)
+    };
+    snap_on(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "d07c_snail_side",
+        Some(focus),
+    );
+    play(&mut game).cam.dist = 15.5;
+    // Ink in flight, and the runes it dries into, pointing to the stairs.
+    {
+        let p = play(&mut game);
+        let at = p.player.pos;
+        p.foes.truncate(1);
+        p.foes[0].pos = at + Vec2::new(3.0, 2.5);
+        for k in 0..5 {
+            let q = at + Vec2::new(-2.0 + k as f32 * 1.1, 1.2 + (k % 2) as f32 * 0.8);
+            p.splash_ink(q);
+        }
+        for rune in p.runes.iter_mut() {
+            rune.age = 3.0;
+        }
+        p.shots.push(crate::game::fx::Shot {
+            pos: at + Vec2::new(1.6, 1.9),
+            vel: Vec2::new(-2.4, -2.0),
+            dmg: 1,
+            life: 2.0,
+            color: crate::assets::deep_art::INK_COLORS[3][1],
+            radius: 0.17,
+            ink: true,
+        });
+    }
+    snap(&mut game, &mut r, &input, dir, "d08_runes");
+    // An Ink Map lighting the way.
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.shots.clear();
+        p.runes.clear();
+        p.player.inv.slots[9] = Some(Stack::new(Item::InkMap, 3));
+        p.player.sel = 9;
+        p.nag = 0.0;
+    }
+    {
+        let mut io = Io {
+            dt: 1.0 / 60.0,
+            input: &input,
+            audio: &audio,
+            view: (W, H),
+            quit: false,
+            toggle_fullscreen: false,
+        };
+        play(&mut game).read_ink_map(&mut io);
+    }
+    tick(&mut game, &input, &audio, 90);
+    let focus = {
+        let p = play(&mut game);
+        p.cam.dist = 22.0;
+        // Frame the whole line of runes.
+        let n = p.runes.len().max(1) as f32;
+        let mid = p.runes.iter().map(|r| r.pos).sum::<Vec2>() / n;
+        glam::Vec3::new(mid.x, 0.0, mid.y)
+    };
+    snap_on(&mut game, &mut r, &input, dir, "d09_ink_map", Some(focus));
+    play(&mut game).cam.dist = 15.5;
+    // A snail lamp at home, at night.
+    {
+        let p = play(&mut game);
+        p.fade = None;
+        p.start_fade(Trans::Home);
+    }
+    tick(&mut game, &input, &audio, 60);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.clock.min = 1300.0;
+        p.fade = None;
+        p.start_fade(Trans::House { enter: true });
+    }
+    tick(&mut game, &input, &audio, 60);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        let (x, z) = p.player.tile();
+        let w = &mut p.house.world;
+        for (dx, dz) in [(1, -1), (-1, -1), (2, 0)] {
+            let (tx, tz) = (x + dx, z + dz);
+            if !w.blocked(tx, tz) && w.obj(tx, tz).is_none() {
+                w.set_obj(
+                    tx,
+                    tz,
+                    Some(Obj::Furniture {
+                        f: Furn::SnailLamp,
+                        rot: 0,
+                        fish: Vec::new(),
+                    }),
+                );
+                break;
+            }
+        }
+        assert_eq!(p.area, Area::Home);
+    }
+    tick(&mut game, &input, &audio, 5);
+    snap(&mut game, &mut r, &input, dir, "d10_snail_lamp");
+    let lamp = {
+        let p = play(&mut game);
+        let w = &p.house.world;
+        let mut at = glam::Vec3::ZERO;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if matches!(
+                    w.obj(x, z),
+                    Some(Obj::Furniture {
+                        f: Furn::SnailLamp,
+                        ..
+                    })
+                ) {
+                    at = glam::Vec3::new(x as f32 + 0.5, 0.7, z as f32 + 0.5);
+                }
+            }
+        }
+        at
+    };
+    close(&mut game, &mut r, &input, dir, "d11_lamp_close", lamp, 5.0);
+}

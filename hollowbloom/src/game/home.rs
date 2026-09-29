@@ -39,6 +39,7 @@ pub enum Furn {
     Wardrobe,
     Dresser,
     FloorLamp,
+    SnailLamp,
     Candelabra,
     Fireplace,
     Fern,
@@ -53,7 +54,7 @@ pub enum Furn {
     FishTank,
 }
 
-pub const FURNS: [Furn; 27] = [
+pub const FURNS: [Furn; 28] = [
     Furn::Bed,
     Furn::CanopyBed,
     Furn::Stove,
@@ -69,6 +70,7 @@ pub const FURNS: [Furn; 27] = [
     Furn::Wardrobe,
     Furn::Dresser,
     Furn::FloorLamp,
+    Furn::SnailLamp,
     Furn::Candelabra,
     Furn::Fireplace,
     Furn::Fern,
@@ -143,6 +145,7 @@ impl Furn {
             Wardrobe => d((1, 1), 5, Use::Tidy),
             Dresser => d((1, 1), 3, Use::Tidy),
             FloorLamp => lit((1, 1), 3, Use::Nothing, (1.3, 4.0, 0.45, 5.0)),
+            SnailLamp => lit((1, 1), 9, Use::Nothing, (1.0, 4.4, 0.5, 3.0)),
             Candelabra => lit((1, 1), 5, Use::Nothing, (1.0, 3.5, 0.4, 6.0)),
             Fireplace => lit((2, 1), 12, Use::Warm, (0.5, 4.5, 0.5, 6.5)),
             Fern => d((1, 1), 2, Use::Nothing),

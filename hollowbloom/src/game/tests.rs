@@ -3093,3 +3093,141 @@ fn snow_comes_with_winter_and_melts_in_spring() {
     s.frames(1);
     assert!(!s.play.farm.snowy() && !s.play.town.snowy());
 }
+
+#[test]
+fn lantern_snails_and_book_worms_live_from_floor_eleven_down() {
+    use super::dungeon::{DEEP_FOLK, Foe, generate};
+    let deep = |f: &Foe| matches!(f, Foe::Snail | Foe::Bookworm);
+    let mut seen = [0usize; 2];
+    for seed in 0..12u64 {
+        for depth in [1, 5, 9, 10] {
+            let l = generate(seed, depth, false);
+            assert!(
+                !l.spawns.iter().any(|s| deep(&s.foe)),
+                "a deep creature on floor {depth}"
+            );
+        }
+        for depth in [DEEP_FOLK, 25, 47, 63] {
+            let l = generate(seed, depth, false);
+            for s in &l.spawns {
+                match s.foe {
+                    Foe::Snail => seen[0] += 1,
+                    Foe::Bookworm => seen[1] += 1,
+                    _ => {}
+                }
+            }
+        }
+    }
+    assert!(seen[0] > 5 && seen[1] > 5, "hardly any turn up: {seen:?}");
+}
+
+#[test]
+fn a_lantern_snail_hides_in_its_shell_and_lights_the_dark() {
+    use super::combat::Hit;
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, HIDE_SECS};
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 14, 1.2);
+    let p = s.play.player.pos;
+    s.play.foes[0] = Enemy::new(Foe::Snail, p.x, p.y + 1.2, 14, 1, false, 3);
+    let snail = &s.play.foes[0];
+    assert!(snail.light().is_some(), "its shell glows");
+    assert!(!snail.shelled());
+    let hp = snail.hp;
+    // The first blow lands in full, and in it goes...
+    s.play.strike(0, Hit::plain(10), p);
+    let snail = &s.play.foes[0];
+    assert_eq!(snail.hp, hp - 10);
+    assert!(snail.shelled() && snail.armored() && !snail.grounded());
+    // ...so the next glances off the glass.
+    s.play.strike(0, Hit::plain(10), p);
+    let snail = &s.play.foes[0];
+    assert!(hp - 10 - snail.hp < 5, "the shell barely helped");
+    // It peeks out again, and leaves shining slime where it crawls.
+    s.play.foes[0].speed = 0.8;
+    s.play.foes[0].hurt_cd = 0.0;
+    s.frames((HIDE_SECS * 60.0) as usize + 5);
+    assert!(!s.play.foes[0].shelled());
+    s.play.player.pos = p + Vec2::new(0.0, 8.0);
+    s.frames(120);
+    assert!(s.play.foes[0].trail.len() > 1, "no trail");
+}
+
+#[test]
+fn book_worm_ink_dries_into_runes_pointing_the_way() {
+    use super::dungeon::Foe;
+    use super::foes::Enemy;
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 23, 3.0);
+    let p = s.play.player.pos;
+    // Somewhere open, a few steps from the hero.
+    let spot = [
+        Vec2::new(0.0, 4.0),
+        Vec2::new(0.0, -4.0),
+        Vec2::new(4.0, 0.0),
+        Vec2::new(-4.0, 0.0),
+    ]
+    .into_iter()
+    .map(|d| p + d)
+    .find(|q| {
+        let w = &s.play.level.as_ref().unwrap().world;
+        w.clear_line(p, *q) && !w.blocked(q.x as i32, q.y as i32)
+    })
+    .expect("room to stand");
+    let mut worm = Enemy::new(Foe::Bookworm, spot.x, spot.y, 23, 2, false, 5);
+    worm.alert = true;
+    worm.t = 0.0;
+    s.play.foes[0] = worm;
+    s.play.player.hurt = 0.0;
+    let hp = s.play.player.hp;
+    for _ in 0..600 {
+        s.frames(1);
+        s.play.player.pos = p;
+        s.play.player.hp = hp.max(s.play.player.hp);
+        if !s.play.runes.is_empty() {
+            break;
+        }
+    }
+    assert!(!s.play.runes.is_empty(), "the worm never spat");
+    // Every rune points along the way to the stairs (or towards a secret).
+    let level = s.play.level.as_ref().unwrap();
+    for r in &s.play.runes {
+        assert!((r.dir.length() - 1.0).abs() < 0.01);
+        if !r.secret {
+            let want = super::ink::way(&level.world, r.pos, level.stairs);
+            assert!(r.dir.dot(want) > 0.9, "points the wrong way");
+        }
+    }
+    // And they fade away in time.
+    s.play.update_runes(60.0);
+    assert!(s.play.runes.is_empty());
+}
+
+#[test]
+fn an_ink_map_lights_the_way_down() {
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 12, 3.0);
+    s.play.foes.clear();
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::InkMap, 2));
+    s.select(5);
+    s.tap(KeyCode::KeyE, 30);
+    assert_eq!(s.play.player.inv.count(Item::InkMap), 1);
+    let level = s.play.level.as_ref().unwrap();
+    let path = level.world.path(s.play.player.tile(), level.stairs);
+    assert!(!path.is_empty());
+    let line: Vec<_> = s.play.runes.iter().filter(|r| !r.secret).collect();
+    assert!(!line.is_empty(), "no runes");
+    // They lie along the way, pointing on down it.
+    for r in &line {
+        let t = (r.pos.x as i32, r.pos.y as i32);
+        assert!(path.contains(&t), "a rune off the path");
+    }
+    // Up on the farm the ink knows nothing.
+    s.play.start_fade(Trans::Home);
+    s.frames(60);
+    s.play.menu = Menu::None;
+    s.play.player.inv.slots[5] = Some(Stack::new(Item::InkMap, 1));
+    s.play.nag = 0.0;
+    s.tap(KeyCode::KeyE, 5);
+    assert_eq!(s.play.player.inv.count(Item::InkMap), 1);
+}

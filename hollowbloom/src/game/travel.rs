@@ -185,6 +185,7 @@ impl Play {
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
+        self.runes.clear();
         self.bolts.clear();
         self.player.act = None;
         let (area, pos, dir, stop, facing) = if to_town {

@@ -350,6 +350,16 @@ impl Play {
                 ));
                 lines.push(line("Opens cracked floors in the Hollow", GOLD));
             }
+            Kind::InkMap => {
+                lines.push(line(
+                    format!(
+                        "Read it ({}) in the Hollow",
+                        self.key(crate::input::Action::Interact)
+                    ),
+                    AQUA,
+                ));
+                lines.push(line("Glowing runes show the way down", MINT));
+            }
             _ => lines.push(line("Special", LAVENDER)),
         }
         lines

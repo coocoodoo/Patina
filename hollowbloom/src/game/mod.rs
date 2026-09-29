@@ -16,6 +16,7 @@ pub mod fx;
 pub mod gear;
 pub mod home;
 pub mod hud;
+pub mod ink;
 pub mod items;
 pub mod loot;
 pub mod magic;

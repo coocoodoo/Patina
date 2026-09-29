@@ -351,6 +351,14 @@ fn foe_bits(foe: Foe, biome: usize, rng: &mut Rng) -> Vec<Stack> {
             ][biome % 6];
             roll(o, rng, extra, p, 1, 1);
         }
+        Foe::Snail => {
+            roll(o, rng, Item::StainedGlass, 0.55, 1, 2);
+            roll(o, rng, Item::SlimeGel, 0.3, 1, 1);
+        }
+        Foe::Bookworm => {
+            roll(o, rng, Item::GlowInk, 0.55, 1, 2);
+            roll(o, rng, Item::WispDust, 0.2, 1, 1);
+        }
     }
     out
 }
@@ -390,7 +398,8 @@ pub fn foe_loot(
         out.push(Stack::new(seed, if boss { 5 } else { 1 }));
     }
     let gear_p = 0.05 + f.luck * 0.08;
-    let scroll_p = 0.03 + f.luck * 0.05;
+    // Book-worms carry scrolls about with them.
+    let scroll_p = 0.03 + f.luck * 0.05 + if foe == Foe::Bookworm { 0.12 } else { 0.0 };
     if boss {
         // A guardian's hoard: a heap of gear (one piece always finely made), scrolls,
         // gems, relics, potions and a pile of whatever its kind carries.

@@ -808,6 +808,16 @@ fn draw_furniture(
     let seed = x * 7 + z * 3;
     match f {
         Furn::FloorLamp => r.mesh(&a.bank, &h.lamp_shade, &at, &glow),
+        Furn::SnailLamp => {
+            r.mesh(&a.bank, &h.snail_shade, &at, &glow);
+            let pulse = (env.time * 1.6 + seed as f32).sin() * 0.5 + 0.5;
+            r.halo(
+                here(Vec3::new(0.0, 0.98, 0.0)),
+                0.65,
+                PINK,
+                0.2 + pulse * 0.1,
+            );
+        }
         Furn::Candelabra => {
             for (lx, ly) in [(-0.22f32, 1.1f32), (0.0, 1.18), (0.22, 1.1)] {
                 flames(

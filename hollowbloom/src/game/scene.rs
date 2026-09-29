@@ -352,7 +352,21 @@ impl Play {
             }
         }
 
+        for rune in &self.runes {
+            super::ink::draw_rune(r, a, rune, self.time);
+        }
         for s in &self.shots {
+            if s.ink {
+                // A gob of glowing ink, dripping as it flies.
+                let p = s.world_pos();
+                let back = Vec3::new(s.vel.x, 0.0, s.vel.y) * 0.04;
+                r.halo(p, 0.3, s.color, 0.75);
+                r.point(p, 4, s.color);
+                r.point(p + Vec3::Y * 0.03, 2, WHITE);
+                r.point(p - back, 2, s.color);
+                r.point(p - back * 2.2 - Vec3::Y * 0.05, 1, s.color);
+                continue;
+            }
             let c = shot_colors(s.color);
             r.halo(s.world_pos(), 0.28, c[1], 0.7);
             r.point(s.world_pos(), 3, c[1]);

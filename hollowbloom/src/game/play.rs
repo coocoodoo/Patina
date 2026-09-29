@@ -7,7 +7,7 @@ use super::draw::Env;
 use super::dungeon::{self, Level, biome_for, is_waystone_floor, ore_item};
 use super::farm::{self, MARKS, tillable};
 use super::foes::{Enemy, St};
-use super::fx::{Drop, Fx, Shot};
+use super::fx::{Drop, Fx, Rune, Shot};
 use super::gear::{Class, Rarity, Stat};
 use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack};
 use super::loot::{self, Fortune};
@@ -213,6 +213,8 @@ pub struct Play {
     pub foes: Vec<Enemy>,
     pub drops: Vec<Drop>,
     pub shots: Vec<Shot>,
+    /// Book-worm ink dried into runes on the floor (see `ink`).
+    pub runes: Vec<Rune>,
     /// The hero's wand bolts.
     pub bolts: Vec<Bolt>,
     /// Brief flashes of light from magic.
@@ -339,6 +341,7 @@ impl Play {
             foes: Vec::new(),
             drops: Vec::new(),
             shots: Vec::new(),
+            runes: Vec::new(),
             bolts: Vec::new(),
             flashes: Vec::new(),
             spells: Default::default(),
@@ -656,6 +659,7 @@ impl Play {
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
+        self.runes.clear();
         self.bolts.clear();
         self.erupting.clear();
         let biome = biome_for(depth);
@@ -760,6 +764,7 @@ impl Play {
         self.foes.clear();
         self.drops.clear();
         self.shots.clear();
+        self.runes.clear();
         self.bolts.clear();
         self.area = Area::Farm;
         let (x, z) = MARKS.hollow;
@@ -831,6 +836,7 @@ impl Play {
         self.cooking = None;
         self.foes.clear();
         self.shots.clear();
+        self.runes.clear();
         self.bolts.clear();
         self.stars.clear();
         self.zaps.clear();
@@ -1077,6 +1083,7 @@ impl Play {
         self.update_doors(io);
         self.update_folk(dt, true);
         self.update_foes(io);
+        self.update_runes(dt);
         self.update_statuses(dt, io);
         self.update_bolts(dt, io);
         self.update_spells(dt, io);
@@ -1799,6 +1806,7 @@ impl Play {
                 self.toast("Bind scrolls at an enchanting table.", None, 0);
             }
             Kind::Bomb => self.throw_bomb(io),
+            Kind::InkMap => self.read_ink_map(io),
             Kind::Fish => {
                 if self.nag <= 0.0 {
                     self.nag = 2.0;
@@ -3074,17 +3082,28 @@ impl Play {
             }
         }
         let world = &self.level.as_ref().unwrap().world;
+        let mut splats = Vec::new();
         shots.retain_mut(|s| {
             if !s.update(dt, world) {
+                // Ink splashes where it lands (just short of any wall it hit).
+                if s.ink {
+                    splats.push(s.pos - s.vel * dt);
+                }
                 return false;
             }
             if (s.pos - ppos).length() < s.radius + RADIUS {
                 hurt = Some((s.dmg, s.vel.normalize_or_zero(), None));
+                if s.ink {
+                    splats.push(ppos);
+                }
                 return false;
             }
             true
         });
         self.shots = shots;
+        for at in splats {
+            self.splash_ink(at);
+        }
         if let Some((dmg, dir, from)) = hurt {
             self.hurt_player(dmg, dir, from, io);
             self.reap(io);

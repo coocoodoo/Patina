@@ -24,6 +24,8 @@ pub struct HomeArt {
     pub bowl_water: Mesh,
     /// The floor lamp's shade, which glows.
     pub lamp_shade: Mesh,
+    /// The snail lamp's stained-glass shell, which glows.
+    pub snail_shade: Mesh,
     /// Swings inside the grandfather clock.
     pub pendulum: Mesh,
     /// Spins on the globe's stand.
@@ -518,6 +520,26 @@ fn furniture(bank: &mut TexBank, k: &mut Kit, f: Furn) -> Mesh {
                 &mirror,
                 Mat4::from_translation(v(0.0, 1.0, -0.18)) * Mat4::from_rotation_x(FRAC_PI_2),
             );
+        }
+        Furn::SnailLamp => {
+            // A round wooden foot and a brass stem holding up the shell.
+            lathe(
+                &mut m,
+                Vec3::ZERO,
+                &[(0.22, 0.0), (0.2, 0.06), (0.05, 0.1)],
+                8,
+                0.0,
+                dark,
+                true,
+            );
+            k.paint(
+                bank,
+                &mut m,
+                v(-0.022, 0.08, -0.022),
+                v(0.022, 0.6, 0.022),
+                GOLD,
+            );
+            k.paint(bank, &mut m, v(-0.1, 0.58, -0.06), v(0.1, 0.64, 0.06), CLAY);
         }
         Furn::FloorLamp => {
             lathe(
@@ -1459,6 +1481,26 @@ const DRESSER: &[&str] = &[
     "................",
 ];
 
+/// A spiral of stained glass on a brass stand.
+const SNAIL_LAMP: &[&str] = &[
+    "................",
+    ".....KKKKKK.....",
+    "...KKPPbwLLKK...",
+    "..KPPKKKKKLLLK..",
+    "..KPKaaMMKKLLK..",
+    ".KPKaKKKKaKLLSK.",
+    ".KPKaKYYKaKLSSK.",
+    ".KPKMKYwKaKSSSK.",
+    ".KPKMMKKKaKSSK..",
+    "..KPKKMMaaKSSK..",
+    "..KKYYKKKKSSKK..",
+    "...KKYYYYSSKK...",
+    ".....KKKKKK.....",
+    ".......KYK......",
+    ".....KKuuKK.....",
+    "....KKKKKKKK....",
+];
+
 const FLOOR_LAMP: &[&str] = &[
     ".....KKKKKK.....",
     "....KyyyyyyK....",
@@ -1741,6 +1783,7 @@ fn furniture_icon(f: Furn) -> &'static [&'static str] {
         Furn::Wardrobe => WARDROBE,
         Furn::Dresser => DRESSER,
         Furn::FloorLamp => FLOOR_LAMP,
+        Furn::SnailLamp => SNAIL_LAMP,
         Furn::Candelabra => CANDELABRA,
         Furn::Fireplace => FIREPLACE,
         Furn::Fern => FERN,
@@ -1870,6 +1913,15 @@ pub fn build(bank: &mut TexBank, icons: &mut HashMap<&'static str, TexId>) -> Ho
         shade,
         false,
     );
+    // The snail lamp's shell: every colour of the Hollow's glass, lit from within.
+    let mut snail_shade = Mesh::new();
+    snail_shade.append(
+        &super::deep_art::shell_mesh(bank, [PINK, AQUA, GOLD]),
+        // Turned so its spiral window faces the room.
+        Mat4::from_translation(v(0.0, 0.98, 0.0))
+            * Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2)
+            * Mat4::from_scale(Vec3::splat(2.1)),
+    );
     let mut pendulum = Mesh::new();
     k.paint(
         bank,
@@ -1985,6 +2037,7 @@ pub fn build(bank: &mut TexBank, icons: &mut HashMap<&'static str, TexId>) -> Ho
         bowl_glass,
         bowl_water,
         lamp_shade,
+        snail_shade,
         pendulum,
         globe,
         rugs,

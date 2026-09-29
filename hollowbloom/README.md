@@ -189,12 +189,23 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   pond), and **sleep** in your house to end the day. Crops grow one stage per watered day;
   many (strawberries, tomatoes, corn, blueberries, Crystal Berries, Ember Peppers...) keep
   fruiting after the first harvest. **Sweep ripe crops with a sickle** to harvest a whole patch.
-* **38 crops**: turnips, potatoes, radishes, cabbages, tomatoes, strawberries, wheat, corn,
-  blueberries, eggplants, garlic, sunflowers, roses and sweet peas from Burrowby's stall, and
-  strange seeds from every biome of the Hollow: Mossberries and Bunnyroots, Prism Pears and
-  Geode Gourds, Puffballs, Jelly Shrooms and Truffles, Flame Tulips, Lava Lemons and Magma
-  Melons, Snow Peas, Ice Plums and Frost Mint, Starfruit, Ghost Peppers and Ancient Grain.
-* **Cook** them into 41 dishes on the **stove** in your house (or the campfire at any
+* **78 crops**. Thirty-eight grow all year: turnips, potatoes, radishes, cabbages, tomatoes,
+  strawberries, wheat, corn, blueberries, eggplants, garlic, sunflowers, roses and sweet peas
+  from Burrowby's stall, and strange seeds from every biome of the Hollow: Mossberries and
+  Bunnyroots, Prism Pears and Geode Gourds, Puffballs, Jelly Shrooms and Truffles, Flame
+  Tulips, Lava Lemons and Magma Melons, Snow Peas, Ice Plums and Frost Mint, Starfruit, Ghost
+  Peppers and Ancient Grain.
+* **Forty seasonal crops**, ten to a season, that only grow in theirs (a few straddle two):
+  pastel tulips, daffodils, bluebells, lavender, sweet cherries, cloudberries, rhubarb,
+  spring onions, butter lettuce and baby carrots in **spring**; watermelons, honeydew,
+  pineapples, peaches, raspberries, bell peppers, zucchini, hibiscus, poppies and cosmos in
+  **summer**; pumpkins, butternut squash, sweet potatoes, cranberries, grapes, crabapples,
+  chestnuts, beetroot, chrysanthemums and candy corn in **autumn**; and snowdrops, glowing
+  snow roses, poinsettias, mistletoe, holly, kale, parsnips, sprouts, glowing snow melons
+  and frostberries in **winter**. Posy sells every seed of the season and Burrowby the
+  cheaper ones. Out of season they won't go in, and whatever is still in the ground when
+  the season turns withers overnight (the evening before, the day's summary warns you).
+* **Cook** them into 57 dishes on the **stove** in your house (or the campfire at any
   waystone). The good ones give a **buff** for a few minutes: Garlic Bread for damage,
   Strawberry Shortcake for luck, Frost Mint Tea for mana, Lava Lemonade to set things on
   fire...
@@ -224,8 +235,13 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   cozy.
 * **Four seasons** of 28 days each: spring from day 1, then summer, autumn and winter, and
   round again (the clock shows which, and the morning summary says when a new one begins).
-  In **autumn** the round trees turn gold, orange and red, and leaves twirl down over the
-  farm and the town.
+  Each looks and feels its own. In **spring** the trees blossom pink and white, the bushes
+  flower, petals drift on the breeze and wildflowers are everywhere. **Summer** is lush,
+  with butterflies by day and fireflies by night. In **autumn** the trees and bushes turn
+  gold, orange and red, the grass goes gold at the tips and leaves twirl down over the farm
+  and the town. **Winter** lays snow over the lawns, hedges, trees and bushes, frosts the
+  grass, snows instead of raining (a blizzard now and then) and brings pale blue, moonlit
+  nights; the wildflowers wait under the snow for spring.
 * **The cat**, a ginger tabby with white socks, a white bib and a white-tipped tail, has a
   life of its own: it strolls about (off to see you, now and then), sits with its tail round
   its paws, takes catnaps and curls up asleep by the house at night. Press E beside it for a
@@ -273,7 +289,7 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   evening and go home at night. Talk to them (they chatter in little blips, with their
   portrait in the talk box), **give gifts** (each has things they love, like and hate) and
   your **friendship** grows to ten hearts, with presents at three, six and nine.
-* **158 hand-written story quests**, five to ten from everyone in town, unlocking as you
+* **176 hand-written story quests**, five to ten from everyone in town, unlocking as you
   make friends, go deeper and make your home more charming: find **keepsakes** lost in the Hollow (Albert's locket on floors
   2-5, Toby's mailbag, Quill's spectacles...), gather **quest drops** from creatures (slime
   hearts, bat fangs, glow oil from wisps, wishing leaves from the deep), slay, reach floors,
@@ -282,6 +298,11 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   Keepsakes and quest drops **only exist while the quest is open**, and a guardian **returns
   to its floor** for anyone who needs something it carries. A **!** marks someone with a
   request and a **?** someone you can hand one in to.
+* **Seasonal requests**: thirteen villagers ask for the season's crops while they're in
+  (Posy's first tulips, Mabel's cherry tarts and cranberry pies, the mayor's Harvest
+  Festival pumpkins, Pip's pineapple party, Juniper's snowdrops...), the request board asks
+  for **what's in season**, villagers love seasonal gifts, and Posy's last almanac wants all
+  seventy-eight crops, spring to winter.
 * **A Sweet Secret** (Pip, autumn only, and only ever once): when floor 10's guardian falls,
   **candy rocks** burst up out of the floor round it, one after another. Each grinds up out
   of the cracking floor in a spray of sparks, then hisses and **flashes white faster and
@@ -371,6 +392,17 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   **ghosts** with a look for every biome, from mossy bones to a pharaoh's guard. They drop
   grave dust, goblin teeth (goblins carry extra coin) and bug chitin, and townsfolk have
   quests for all of them.
+* From **floor 11** down, two more live in every biome. **Lantern snails** glide after you
+  under shells of **glowing stained glass** (a spiral of leaded panes in the biome's
+  colours) that light up the dark round them, leaving a trail of shining slime. Close up,
+  they draw back and lunge; strike one and it **hides in its shell**, which turns most of a
+  blow aside until it peeks out again, so be patient. **Book-worm bibliomancers** are
+  caterpillars in round spectacles with a little book floating open beside them: they keep
+  their distance, rear up as the pages glow and **spit gobs of glowing ink**, which dry into
+  **runes on the floor whose arrows point the way to the stairs** (a gold one, now and then,
+  to a secret room the floor still hides). Snails drop **stained glass** (make a **Snail
+  Lamp** for the house), book-worms drop **glow ink** and scrolls, and the ink makes **Ink
+  Maps**: read one in the Hollow and a line of runes lights the way down.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -527,6 +559,8 @@ hollowbloom --light-shots DIR     # the sun's shadows through the day, the moon,
 hollowbloom --monster-shots DIR   # every monster family in every biome, the moon, the giants
 hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs and secret rooms
 hollowbloom --pet-shots DIR       # the cat, the jumping spider, its egg, autumn and candy rocks
+hollowbloom --season-shots DIR    # the farm and town in every season, day and night
+hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and the snail lamp
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
