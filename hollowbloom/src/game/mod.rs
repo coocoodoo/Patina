@@ -1,6 +1,7 @@
 //! The game: title screen, playing state, settings and saving.
 
 pub mod bombs;
+pub mod candy;
 pub mod combat;
 pub mod controls;
 pub mod discover;
@@ -19,6 +20,7 @@ pub mod items;
 pub mod loot;
 pub mod magic;
 pub mod menus;
+pub mod pets;
 pub mod play;
 pub mod player;
 pub mod quests;
@@ -273,6 +275,7 @@ impl Game {
                     wind: 1.0,
                     push: glam::Vec2::new(29.5, 11.5),
                     spin: 0.0,
+                    autumn: false,
                 };
                 // The hero, idling by the house.
                 let p = Vec3::new(29.5, 0.0, 11.5);

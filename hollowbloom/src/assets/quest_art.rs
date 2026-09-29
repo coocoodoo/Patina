@@ -637,6 +637,47 @@ const BEETLE: &[&str] = &[
     "................",
 ];
 
+/// Rock-candy crystals growing out of a lump of the Hollow's floor (slots: light, mid and
+/// dark sugar).
+const CANDY_ROCK: &[&str] = &[
+    "................",
+    ".......KK.......",
+    "......KwwK......",
+    ".....Kw001K.....",
+    ".....K0012K.KK..",
+    ".KK..K0122KKw0K.",
+    "Kw0K.K1220Kw01K.",
+    "K00K.K2201K012K.",
+    "K012KK2012K122K.",
+    "K122KK0122K220K.",
+    "K220KK1220K201K.",
+    ".K01KK220KK01K..",
+    ".KhKhhKKKhhKKhK.",
+    "KhhhhRhhhhRhhhRK",
+    "KRRhhhRRRhhRRkkK",
+    ".KKKKKKKKKKKKKK.",
+];
+
+/// Pip's egg: speckled violet with glowing mint spots, in a nest of autumn leaves.
+const MYSTERY_EGG: &[&str] = &[
+    "................",
+    "......KKKK......",
+    ".....KbwLLK.....",
+    "....KbwLLLLK....",
+    "....KbLLVLLK....",
+    "...KLLLLLLMLK...",
+    "...KLVLLLLLLK...",
+    "...KLLLMLLVLK...",
+    "...KLLLLLLLLK...",
+    "...KVLLLLVLLK...",
+    "...KLLLLLLLMK...",
+    "..oKvLLVLLLvKo..",
+    ".oYYKvvLLLvKYYo.",
+    "KouoYKKKKKKYouCK",
+    ".KuCCuooYuCCuuK.",
+    "..KKKKKKKKKKKK..",
+];
+
 /// Everything this module draws, by name.
 pub fn build(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
     let mut add = |name: &'static str, t: Texture| {
@@ -689,6 +730,8 @@ pub fn build(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
     add("spring_stone", art(STONE, [WHITE, AQUA, BLUE, CLEAR]));
     add("glow_beetle", art(BEETLE, [LIME, GREEN, TEAL, CLEAR]));
     add("phoenix_quill", art(QUILL, [GOLD, ORANGE, RED, CLEAR]));
+    add("candy_rock", art(CANDY_ROCK, [WHITE, BLUSH, PINK, CLEAR]));
+    add("mystery_egg", art(MYSTERY_EGG, NO));
 }
 
 #[cfg(test)]
@@ -734,6 +777,8 @@ mod tests {
             ("quill", QUILL),
             ("stone", STONE),
             ("beetle", BEETLE),
+            ("candy", CANDY_ROCK),
+            ("egg", MYSTERY_EGG),
         ] {
             let w = rows[0].len();
             assert!(rows.iter().all(|r| r.len() == w), "{name} is ragged");

@@ -164,6 +164,9 @@ impl Play {
             c.text(px + pw - 12, 6, icon, col);
         }
         c.text(px + 6, 16, &self.clock.label(), RUST);
+        let season = self.clock.season();
+        let sw = c.text_width(season.name());
+        c.text(px + pw - 6 - sw, 16, season.name(), season.color());
         let mw = money_width(c, self.money);
         draw_money(c, a, px + pw - 6 - mw, 26, self.money, INK);
         if let Area::Hollow { depth } = self.area {

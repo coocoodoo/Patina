@@ -20,6 +20,8 @@ pub enum Placeable {
     FlowerPot,
     Bench,
     EnchantTable,
+    /// Pip's mysterious egg: set down on the farm, it hatches ten days later.
+    Egg,
     /// Furniture for inside the house.
     Furniture(Furn),
     /// A rug laid on the house floor (see `home::RUGS`).
@@ -519,6 +521,7 @@ items! {
     FlowerPot = "flower_pot", "Flower Pot", "flower_pot", 20, 20, Kind::Place(P::FlowerPot), "A little colour for the porch.";
     Bench = "bench", "Bench", "bench", 20, 30, Kind::Place(P::Bench), "Sit a while.";
     EnchantTable = "enchant_table", "Enchanting Table", "enchant_table", 5, 300, Kind::Place(P::EnchantTable), "Binds scroll enchantments to your gear.";
+    MysteryEgg = "mystery_egg", "Mysterious Egg", "mystery_egg", 1, 0, Kind::Place(P::Egg), "Pip found it in the fallen leaves. It's warm, and it hums at night. Set it down somewhere on your farm... and wait.";
 
     // Furniture and decor for the house. Everything you place raises your charisma.
     CozyBed = "cozy_bed", "Cozy Bed", "cozy_bed", 5, 300, Kind::Place(P::Furniture(Furn::Bed)), "A patchwork quilt and a very soft pillow. Sleep here.";
@@ -612,6 +615,7 @@ items! {
     GlowOil = "glow_oil", "Glow Oil", "glow_oil", 99, 0, Kind::Keepsake, "Wisp light in a bottle. Lamps love it.";
     GlowBeetle = "glow_beetle", "Glow Beetle", "glow_beetle", 99, 0, Kind::Keepsake, "A sleepy beetle whose back glows green.";
     PhoenixQuill = "phoenix_quill", "Phoenix Quill", "phoenix_quill", 1, 0, Kind::Keepsake, "It writes in firelight.";
+    CandyRock = "candy_rock", "Candy Rock", "candy_rock", 9, 0, Kind::Keepsake, "Rock candy that set hard in the Hollow's floor. Sweet, sparkly and a bit warm.";
 
     // Potions and what goes into them.
     Vial = "vial", "Glass Vial", "vial", 99, 6, Material, "An empty little bottle, waiting for a potion.";

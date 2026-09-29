@@ -233,6 +233,15 @@ pub enum Obj {
         #[serde(default)]
         fish: Vec<Item>,
     },
+    /// Rock candy that burst up out of the Hollow's floor where a guardian fell (see
+    /// `candy`). A pickaxe knocks it loose.
+    CandyRock {
+        hp: i16,
+    },
+    /// Pip's mysterious egg, set down on the farm on day `laid` (see `pets`).
+    Egg {
+        laid: u32,
+    },
 }
 
 impl Obj {
@@ -257,6 +266,8 @@ impl Obj {
             Obj::Campfire => Some((0.4, 6.5, 0.9, 7.5)),
             Obj::Lamp => Some((1.0, 5.0, 0.85, 3.2)),
             Obj::Crystal { .. } => Some((0.5, 4.0, 0.6, 1.5)),
+            Obj::CandyRock { .. } => Some((0.4, 3.0, 0.5, 3.0)),
+            Obj::Egg { .. } => Some((0.3, 2.0, 0.35, 1.2)),
             Obj::Mushroom { .. } => Some((0.3, 3.0, 0.45, 2.5)),
             Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
             Obj::EnchantTable => Some((0.9, 3.4, 0.5, 1.4)),

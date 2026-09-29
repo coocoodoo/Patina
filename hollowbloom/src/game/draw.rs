@@ -32,6 +32,8 @@ pub struct Env {
     pub push: Vec2,
     /// Seconds left of a spin given to the house globe.
     pub spin: f32,
+    /// Outdoors in autumn: the trees have turned.
+    pub autumn: bool,
 }
 
 impl Env {
@@ -117,6 +119,7 @@ pub fn object_lights(w: &World, rect: (i32, i32, i32, i32), env: &Env, out: &mut
                 | Obj::EnchantTable
                 | Obj::StreetLamp { .. }
                 | Obj::WishTree { .. }
+                | Obj::Egg { .. }
                 | Obj::Building { .. } => env.night > 0.2,
                 Obj::Crop { crop, days, .. } => {
                     crop.def().glow && *days >= crop.def().days && env.night > 0.2
@@ -198,6 +201,9 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     r.remap.push((a.water[0], a.water[frame]));
     r.remap
         .push((a.lava[0], a.lava[((env.time * 2.0) as usize) % 2]));
+    if env.autumn {
+        r.remap.extend_from_slice(&a.props.autumn);
+    }
     let opts = DrawOpts::default();
     for chunk in w.visible_chunks(rect) {
         r.mesh(&a.bank, chunk, &Mat4::IDENTITY, &opts);
@@ -323,6 +329,8 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             ][*var as usize % 4];
             bb(r, n, 0.9, &lit.with_warp(env.sway(base, 0.9, 0.12)));
         }
+        // Drawn with their animations by `candy` and `pets`.
+        Obj::CandyRock { .. } | Obj::Egg { .. } => {}
         Obj::Crystal { var, .. } => {
             let m = at * small_rot(x, z);
             r.mesh(

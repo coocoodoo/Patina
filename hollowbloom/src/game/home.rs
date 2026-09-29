@@ -885,6 +885,13 @@ impl Play {
             return;
         }
         match held.map(|i| i.def().kind) {
+            Some(Kind::Place(Placeable::Egg)) => {
+                if self.nag <= 0.0 {
+                    self.nag = 2.5;
+                    self.toast("The egg wants fresh air. Set it down outside.", None, 0);
+                }
+                io.audio.play(Sfx::Denied);
+            }
             Some(Kind::Place(_)) => {
                 io.audio.play(Sfx::Denied);
             }

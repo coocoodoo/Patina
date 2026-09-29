@@ -5,7 +5,7 @@ use glam::{Vec2, Vec3};
 use super::items::{Item, Stack};
 use super::world::World;
 use crate::palette::*;
-use crate::render::Renderer;
+use crate::render::{DrawOpts, Mode, Renderer, Texture, UvRect};
 use crate::util::Rng;
 
 pub struct Particle {
@@ -61,11 +61,38 @@ impl Spark {
     }
 }
 
+/// A puff of smoke from a blast: it flashes white-hot, swells, drifts upwards and thins
+/// away.
+pub struct Puff {
+    pub pos: Vec3,
+    pub vel: Vec3,
+    /// Radius when it appears and when it's gone.
+    pub r0: f32,
+    pub r1: f32,
+    pub life: f32,
+    pub max: f32,
+    /// Seconds before it appears.
+    pub wait: f32,
+}
+
+impl Puff {
+    /// 0 when it appears, 1 when it's gone.
+    pub fn age(&self) -> f32 {
+        (1.0 - self.life / self.max).clamp(0.0, 1.0)
+    }
+
+    pub fn radius(&self) -> f32 {
+        let k = 1.0 - (1.0 - self.age()).powi(2);
+        self.r0 + (self.r1 - self.r0) * k
+    }
+}
+
 #[derive(Default)]
 pub struct Fx {
     pub parts: Vec<Particle>,
     pub pops: Vec<Popup>,
     pub sparks: Vec<Spark>,
+    pub puffs: Vec<Puff>,
     pub rng: Option<Rng>,
 }
 
@@ -188,6 +215,35 @@ impl Fx {
         }
     }
 
+    /// `n` puffs of smoke billowing out round `pos`, `spread` across, each growing to about
+    /// `size` across.
+    pub fn smoke(&mut self, pos: Vec3, n: usize, spread: f32, size: f32) {
+        for _ in 0..n {
+            let r = self.rng();
+            let dir = Vec3::new(
+                r.range_f(-1.0, 1.0),
+                r.range_f(0.0, 0.8),
+                r.range_f(-1.0, 1.0),
+            )
+            .normalize_or_zero();
+            let life = r.range_f(0.5, 0.95);
+            let puff = Puff {
+                pos: pos + dir * (spread * r.range_f(0.0, 0.5)),
+                vel: dir * r.range_f(0.6, 1.6) * spread + Vec3::Y * 0.4,
+                r0: size * r.range_f(0.25, 0.4),
+                r1: size * r.range_f(0.9, 1.3),
+                life,
+                max: life,
+                wait: r.range_f(0.0, 0.12),
+            };
+            self.puffs.push(puff);
+        }
+        if self.puffs.len() > 120 {
+            let extra = self.puffs.len() - 120;
+            self.puffs.drain(..extra);
+        }
+    }
+
     pub fn popup(&mut self, pos: Vec3, text: impl Into<String>, color: u8) {
         self.pops.push(Popup {
             text: text.into(),
@@ -235,6 +291,18 @@ impl Fx {
             s.life -= dt;
         }
         self.sparks.retain(|s| s.life > 0.0);
+        for p in &mut self.puffs {
+            if p.wait > 0.0 {
+                p.wait -= dt;
+                continue;
+            }
+            p.pos += p.vel * dt;
+            // Quick out of the blast, then a slow drift upwards.
+            p.vel *= (1.0 - dt * 3.0).max(0.0);
+            p.vel.y += 0.5 * dt;
+            p.life -= dt;
+        }
+        self.puffs.retain(|p| p.life > 0.0);
         for p in &mut self.pops {
             p.t += dt;
         }
@@ -267,6 +335,25 @@ impl Fx {
             if h > 0.75 {
                 r.point(s.pos, 2, WHITE);
             }
+        }
+    }
+
+    /// The smoke, see-through and thinning as it goes: white-hot for a moment, then grey.
+    pub fn draw_puffs(&self, r: &mut Renderer, hot: &Texture, cold: &Texture) {
+        let uv = UvRect::new(0.0, 0.0, 16.0, 16.0);
+        for p in self.puffs.iter().filter(|p| p.wait <= 0.0) {
+            let k = p.age();
+            let size = p.radius() * 2.0;
+            let o = DrawOpts {
+                mode: Mode::Glass,
+                alpha: (1.0 - k).powf(1.3) * 0.9,
+                glow: 1.0,
+                zwrite: false,
+                ..Default::default()
+            };
+            let tex = if k < 0.16 { hot } else { cold };
+            let base = p.pos - r.cam.up * (size * 0.5);
+            r.billboard(tex, uv, base, Vec2::splat(size), &o);
         }
     }
 

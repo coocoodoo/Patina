@@ -35,6 +35,7 @@ OPTIONS:
     --light-shots DIR  render sun and moon shadows and ambient occlusion
     --monster-shots DIR  render every monster family in every biome's look
     --feature-shots DIR  render recipe cards, bombs, secret rooms and store hours
+    --pet-shots DIR  render the cat, the jumping spider, its egg and the candy rocks
     --music DIR     render every song to WAV files
     --decode IN OUT decode a track (Ogg or MP3) to WAV just as the game does (for loop points)
     --bench         measure rendering speed
@@ -89,6 +90,10 @@ fn main() {
     }
     if let Some(i) = args.iter().position(|a| a == "--magic-shots") {
         headless::magic_shots(args.get(i + 1).map(String::as_str).unwrap_or("magic"));
+        return;
+    }
+    if let Some(i) = args.iter().position(|a| a == "--pet-shots") {
+        headless::pet_shots(args.get(i + 1).map(String::as_str).unwrap_or("pets"));
         return;
     }
     if let Some(i) = args.iter().position(|a| a == "--feature-shots") {

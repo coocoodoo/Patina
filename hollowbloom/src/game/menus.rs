@@ -43,6 +43,8 @@ pub struct Summary {
     pub rain: bool,
     pub passed_out: bool,
     pub fainted: bool,
+    /// Anything else worth knowing this morning: a new season, the egg.
+    pub notes: Vec<(String, u8)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1455,8 +1457,8 @@ impl Play {
                     ("You slept soundly.", SHADOW)
                 };
                 // The rest of the night's news, one line each.
-                let mut news: Vec<(String, u8)> =
-                    vec![(format!("{} crops grew overnight", s.grown), TEAL)];
+                let mut news: Vec<(String, u8)> = s.notes.clone();
+                news.push((format!("{} crops grew overnight", s.grown), TEAL));
                 if s.ready > 0 {
                     news.push((format!("{} are ready to harvest!", s.ready), GREEN));
                 }

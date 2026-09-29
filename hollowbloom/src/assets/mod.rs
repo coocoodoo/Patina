@@ -10,6 +10,7 @@ pub mod logo;
 pub mod magic_art;
 pub mod models;
 pub mod monster_art;
+pub mod pet_art;
 pub mod quest_art;
 pub mod sprites;
 pub mod tiles;
@@ -386,6 +387,8 @@ pub struct Assets {
     pub monsters: monster_art::Monsters,
     /// Bombs, cracked floors, blasted holes and ropes.
     pub delve: delve_art::DelveArt,
+    /// The cat, the jumping spider, its egg, and candy rocks.
+    pub pets: pet_art::PetArt,
 }
 
 impl Assets {
@@ -536,6 +539,7 @@ impl Assets {
         let foes = foe_skins(&mut bank, &critters);
         let monsters = monster_art::build(&mut bank);
         let delve = delve_art::build(&mut bank);
+        let pets = pet_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -584,6 +588,7 @@ impl Assets {
             home,
             monsters,
             delve,
+            pets,
         }
     }
 

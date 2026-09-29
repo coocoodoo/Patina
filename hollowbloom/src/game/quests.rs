@@ -11,7 +11,7 @@ use super::fx::Drop;
 use super::gear::{Group, Rarity};
 use super::items::{Crop, Item, Kind, Stack};
 use super::loot;
-use super::play::Play;
+use super::play::{Play, Season};
 use super::town::{self, FOUNTAIN};
 use crate::audio::Sfx;
 use crate::palette::*;
@@ -28,6 +28,9 @@ pub enum Source {
     Deep(u32),
     /// A guardian (it returns to its floor while the quest is open).
     Boss(Foe),
+    /// Rising out of the floor where the guardian of this floor falls (it returns to its
+    /// floor while the quest is open).
+    Eruption(u32),
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
@@ -117,6 +120,8 @@ pub struct QuestDef {
     pub day: u32,
     /// How charming your home must be before they'll ask.
     pub charm: u32,
+    /// Only asked in this season.
+    pub season: Option<Season>,
 }
 
 const Q: QuestDef = QuestDef {
@@ -132,6 +137,7 @@ const Q: QuestDef = QuestDef {
     hearts: 0,
     day: 0,
     charm: 0,
+    season: None,
 };
 
 /// Bits for a set of villagers.
@@ -1239,6 +1245,21 @@ pub static QUESTS: &[QuestDef] = &[
         ..Q
     },
     // ---------------------------------------------------------------- Pip
+    // Only in autumn, and only ever once: the egg that hatches the farm's jumping spider.
+    QuestDef {
+        key: "pip_candy",
+        giver: V::Pip,
+        title: "A Sweet Secret",
+        ask: "Psst! Closer! Every autumn, when floor ten's guardian falls, CANDY ROCKS burst \
+              out of the ground! Nobody believes me. Bring me five and I'll trade you my \
+              biggest secret. It's round. That's all I'm saying.",
+        thanks: "They're REAL! Okay, a deal's a deal. I found this egg in the leaf pile. It hums \
+                 at night! Set it down on your farm... and wait. Don't tell Mom.",
+        goal: Gather(Item::CandyRock, 5, Source::Eruption(10)),
+        reward: &[item(Item::MysteryEgg, 1)],
+        season: Some(Season::Autumn),
+        ..Q
+    },
     QuestDef {
         key: "pip_teddy",
         giver: V::Pip,
@@ -2686,6 +2707,7 @@ pub fn goal_text(g: Goal) -> String {
                 }
                 Source::Deep(d) => format!("from floor {d} down"),
                 Source::Boss(f) => format!("from {}", super::foes::boss_name(f)),
+                Source::Eruption(d) => format!("where floor {d}'s guardian falls"),
             };
             format!("Collect {n} {} {from}", i.def().name)
         }
@@ -2846,6 +2868,7 @@ impl Play {
                 && self.friends.hearts(v) >= d.hearts
                 && self.clock.day >= d.day
                 && self.charisma() >= d.charm
+                && d.season.is_none_or(|s| s == self.clock.season())
         })
     }
 
@@ -3120,6 +3143,8 @@ impl Play {
                         Source::Biome(b) => (b == biome, 0.3),
                         Source::Deep(d) => (depth >= d, 0.2),
                         Source::Boss(f) => (boss && f == foe, 1.0),
+                        // These come up out of the floor instead (see `candy`).
+                        Source::Eruption(_) => (false, 0.0),
                     };
                     let have = self.player.inv.count(item)
                         + drops.iter().filter(|(i, _)| *i == item).count() as u32
@@ -3265,7 +3290,23 @@ impl Play {
             Goal::Gather(item, n, Source::Boss(f)) => {
                 f == boss && self.player.inv.count(item) < n as u32
             }
+            Goal::Gather(item, n, Source::Eruption(d)) => {
+                d == depth && self.player.inv.count(item) < n as u32
+            }
             _ => false,
+        })
+    }
+
+    /// What a quest wants to see come up out of this floor when its guardian falls, if
+    /// anything.
+    pub fn eruption_wanted(&self, depth: u32) -> Option<Item> {
+        self.quests.iter().find_map(|q| match q.goal() {
+            Goal::Gather(item, n, Source::Eruption(d))
+                if d == depth && self.player.inv.count(item) < n as u32 =>
+            {
+                Some(item)
+            }
+            _ => None,
         })
     }
 

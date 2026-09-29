@@ -501,8 +501,6 @@ pub struct Critters {
     pub golem: Mesh,
     pub imp: Humanoid,
     pub mole: Mesh,
-    pub cat: Mesh,
-    pub cat_tail: Mesh,
     /// Water folk: a bog frog (and a back leg), a drift jelly and a puffer.
     pub frog: Mesh,
     pub frog_leg: Mesh,
@@ -973,58 +971,6 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         &w4,
     );
 
-    // Cat.
-    let fur = bank.add(slime_skin([SAND, GOLD, CLAY]));
-    let mut cat = Mesh::new();
-    skin_box(
-        &mut cat,
-        Vec3::new(-0.12, 0.08, -0.22),
-        Vec3::new(0.12, 0.26, 0.16),
-        fur,
-        &Texture::new(16, 16, 0),
-    );
-    skin_box(
-        &mut cat,
-        Vec3::new(-0.14, 0.18, 0.1),
-        Vec3::new(0.14, 0.42, 0.34),
-        fur,
-        &Texture::new(16, 16, 0),
-    );
-    for sx in [-1.0f32, 1.0] {
-        skin_box(
-            &mut cat,
-            Vec3::new(sx * 0.09 - 0.04, 0.42, 0.18),
-            Vec3::new(sx * 0.09 + 0.04, 0.5, 0.24),
-            fur,
-            &Texture::new(16, 16, 0),
-        );
-        for z in [-0.16f32, 0.1] {
-            skin_box(
-                &mut cat,
-                Vec3::new(sx * 0.07 - 0.03, 0.0, z - 0.03),
-                Vec3::new(sx * 0.07 + 0.03, 0.1, z + 0.03),
-                fur,
-                &Texture::new(16, 16, 0),
-            );
-        }
-    }
-    eyes(&mut cat, eye, 0.32, 0.34, 0.06, 0.05);
-    skin_box(
-        &mut cat,
-        Vec3::new(-0.025, 0.26, 0.34),
-        Vec3::new(0.025, 0.29, 0.36),
-        nose,
-        &w4,
-    );
-    let mut cat_tail = Mesh::new();
-    skin_box(
-        &mut cat_tail,
-        Vec3::new(-0.025, 0.0, -0.3),
-        Vec3::new(0.025, 0.05, 0.0),
-        fur,
-        &Texture::new(16, 16, 0),
-    );
-
     // Bog frog: a squat body with a pale belly, bulging eyes on top and a wide smile.
     let mut frog_t = Texture::new(16, 16, GREEN);
     for y in 0..16 {
@@ -1279,8 +1225,6 @@ pub fn critters(bank: &mut TexBank) -> Critters {
         golem,
         imp,
         mole,
-        cat,
-        cat_tail,
         slime_tex,
         slime_core_tex,
         cap_tex,
@@ -1344,6 +1288,8 @@ pub struct Props {
     pub shrubs: Vec<Mesh>,
     /// The Ward spell's bubble of light.
     pub bubble: Mesh,
+    /// Each round tree's leaves and how they look once they've turned, for autumn.
+    pub autumn: Vec<(TexId, TexId)>,
 }
 
 /// How many of `Props::tufts` (at the end) are tall meadow grass.
@@ -1568,6 +1514,15 @@ pub fn props(bank: &mut TexBank) -> Props {
         bank.add(tiles::leaves([BLUSH, PINK, CRIMSON, PLUM], 3)),
         bank.add(tiles::leaves([GOLD, CLAY, RUST, MAROON], 4)),
     ];
+    // In autumn the greens go gold and orange, the blossom deep red and the gold tree to
+    // russet; the pines keep their needles.
+    let turned = [
+        bank.add(tiles::canopy([GOLD, ORANGE, CLAY, RUST], 1)),
+        bank.add(tiles::leaves([CREAM, GOLD, ORANGE, CLAY], 2)),
+        bank.add(tiles::leaves([SALMON, RED, CRIMSON, MAROON], 3)),
+        bank.add(tiles::leaves([ORANGE, CLAY, RUST, MAROON], 4)),
+    ];
+    let autumn = leaves.iter().copied().zip(turned).collect();
     let pine_leaves = bank.add(tiles::canopy([GREEN, TEAL, DEEP_TEAL, INK], 5));
 
     // Round trees: trunk plus two or three leafy blobs.
@@ -2531,6 +2486,7 @@ pub fn props(bank: &mut TexBank) -> Props {
         hollow,
         stall,
         sign,
+        autumn,
     }
 }
 

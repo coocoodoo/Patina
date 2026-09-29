@@ -221,7 +221,24 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   crops, bushes and trees all **sway in the wind**: gusts roll across the land in waves,
   it blows harder in the rain, and the grass parts round your feet as you walk through it.
 * Glowcaps and Moonblooms glow at night; lamps, lit windows and fireflies keep the evenings
-  cozy. There is a cat. You can pet the cat.
+  cozy.
+* **Four seasons** of 28 days each: spring from day 1, then summer, autumn and winter, and
+  round again (the clock shows which, and the morning summary says when a new one begins).
+  In **autumn** the round trees turn gold, orange and red, and leaves twirl down over the
+  farm and the town.
+* **The cat**, a ginger tabby with white socks, a white bib and a white-tipped tail, has a
+  life of its own: it strolls about (off to see you, now and then), sits with its tail round
+  its paws, takes catnaps and curls up asleep by the house at night. Press E beside it for a
+  fuss.
+* **A jumping spider.** In autumn Pip has a secret to trade (see *A Sweet Secret* below), and
+  it's an egg. Set it down anywhere on the farm and it sits in a nest of fallen leaves for
+  ten days: it hums and taps, its spots glow at night, it **tips over on the ninth day**,
+  and on the **tenth** it hatches as soon as you come near. Out hops a fluffy little jumping
+  spider with big glossy eyes, a pink heart on its back and teal fangs. It hops about in
+  quick little jumps, snaps round to look at you, waves its front legs when you give it a
+  fuss (E), and **plays with the cat**: the cat stalks it, wiggles and pounces, and the
+  spider springs out of the way or right up onto the cat's back for a ride. At night the two
+  of them sleep curled up together.
 * The **moon** goes round its eight phases every eight days (the clock shows tonight's, and
   the morning summary says what it means below). A new moon lulls the Hollow's creatures; a
   **full moon** riles them up: they **glow red**, notice you from further off, move and strike
@@ -256,7 +273,7 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   evening and go home at night. Talk to them (they chatter in little blips, with their
   portrait in the talk box), **give gifts** (each has things they love, like and hate) and
   your **friendship** grows to ten hearts, with presents at three, six and nine.
-* **150 hand-written story quests**, five to ten from everyone in town, unlocking as you
+* **158 hand-written story quests**, five to ten from everyone in town, unlocking as you
   make friends, go deeper and make your home more charming: find **keepsakes** lost in the Hollow (Albert's locket on floors
   2-5, Toby's mailbag, Quill's spectacles...), gather **quest drops** from creatures (slime
   hearts, bat fangs, glow oil from wisps, wishing leaves from the deep), slay, reach floors,
@@ -265,6 +282,12 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   Keepsakes and quest drops **only exist while the quest is open**, and a guardian **returns
   to its floor** for anyone who needs something it carries. A **!** marks someone with a
   request and a **?** someone you can hand one in to.
+* **A Sweet Secret** (Pip, autumn only, and only ever once): when floor 10's guardian falls,
+  **candy rocks** burst up out of the floor round it, one after another. Each grinds up out
+  of the cracking floor in a spray of sparks, then hisses and **flashes white faster and
+  faster** as it swells, like a lit fuse, and goes off with a bang, a flash and a cloud of
+  smoke before setting hard: strawberry, cherry, candy corn and grape rock candy. Knock five
+  loose with a pickaxe and trade them to Pip for a mysterious egg.
 * **Rewards are generous**: heaps of coins, gear of a guaranteed rarity at your level
   (up to Legendary), top scrolls, heart crystals, sun stones and wish stars, sprinklers, rare
   seeds, and each finished quest ends in a little celebration.
@@ -503,6 +526,7 @@ hollowbloom --home-shots DIR      # fishing, the farmhouse, cooking and the furn
 hollowbloom --light-shots DIR     # the sun's shadows through the day, the moon, ambient occlusion
 hollowbloom --monster-shots DIR   # every monster family in every biome, the moon, the giants
 hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs and secret rooms
+hollowbloom --pet-shots DIR       # the cat, the jumping spider, its egg, autumn and candy rocks
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)

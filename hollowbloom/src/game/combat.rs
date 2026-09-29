@@ -319,9 +319,15 @@ impl Play {
                 io.audio.finish_song();
                 self.toast(format!("{} defeated!", f.name()), None, 0);
                 let chests = self.guardian_hoard(f.pos);
+                // And, if Pip's waiting on them, candy rocks.
+                let candy = self.erupt(f.pos);
                 self.banner = Some(Banner {
                     title: "Guardian defeated".into(),
-                    sub: format!("{chests} treasure chests! The waystone awakens"),
+                    sub: if candy > 0 {
+                        format!("{chests} treasure chests... and the ground is rumbling!")
+                    } else {
+                        format!("{chests} treasure chests! The waystone awakens")
+                    },
                     t: 0.0,
                 });
                 self.stats.guardians += 1;

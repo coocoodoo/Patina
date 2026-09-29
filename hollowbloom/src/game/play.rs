@@ -12,6 +12,7 @@ use super::gear::{Class, Rarity, Stat};
 use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack};
 use super::loot::{self, Fortune};
 use super::menus::Menu;
+use super::pets::{Cat, Hatch, Spider};
 use super::player::{Act, ActKind, HOTBAR, Player, RADIUS};
 use super::town::{self, BUILDINGS, Place, Room};
 use super::travel::{Bus, area_world, area_world_mut};
@@ -27,6 +28,47 @@ use crate::util::{Rng, damp, hash2, wrap_angle};
 pub const MIN_PER_SEC: f32 = 1.55;
 pub const DAY_START: f32 = 360.0;
 pub const DAY_END: f32 = 1560.0;
+/// Days in each season: spring from day 1, then summer, autumn and winter, and round again.
+pub const SEASON_DAYS: u32 = 28;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Season {
+    Spring,
+    Summer,
+    Autumn,
+    Winter,
+}
+
+impl Season {
+    pub fn name(self) -> &'static str {
+        match self {
+            Season::Spring => "Spring",
+            Season::Summer => "Summer",
+            Season::Autumn => "Autumn",
+            Season::Winter => "Winter",
+        }
+    }
+
+    /// What the morning it begins feels like.
+    pub fn greeting(self) -> &'static str {
+        match self {
+            Season::Spring => "the farm is waking up.",
+            Season::Summer => "long, golden days ahead.",
+            Season::Autumn => "the leaves are turning.",
+            Season::Winter => "frost on the windows.",
+        }
+    }
+
+    /// Readable on the HUD's paper.
+    pub fn color(self) -> u8 {
+        match self {
+            Season::Spring => DEEP_TEAL,
+            Season::Summer => CLAY,
+            Season::Autumn => CRIMSON,
+            Season::Winter => INDIGO,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Clock {
@@ -50,6 +92,20 @@ impl Clock {
 
     pub fn weekday(&self) -> &'static str {
         ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][((self.day.max(1) - 1) % 7) as usize]
+    }
+
+    pub fn season(&self) -> Season {
+        match (self.day.max(1) - 1) / SEASON_DAYS % 4 {
+            0 => Season::Spring,
+            1 => Season::Summer,
+            2 => Season::Autumn,
+            _ => Season::Winter,
+        }
+    }
+
+    /// How far into its season today is, from 1 to `SEASON_DAYS`.
+    pub fn season_day(&self) -> u32 {
+        (self.day.max(1) - 1) % SEASON_DAYS + 1
     }
 }
 
@@ -101,14 +157,6 @@ pub struct Banner {
     pub title: String,
     pub sub: String,
     pub t: f32,
-}
-
-pub struct Cat {
-    pub pos: Vec2,
-    pub target: Vec2,
-    pub t: f32,
-    pub yaw: f32,
-    pub pet: f32,
 }
 
 pub struct Play {
@@ -190,6 +238,9 @@ pub struct Play {
     pub toasts: Vec<Toast>,
     pub banner: Option<Banner>,
     pub cat: Cat,
+    /// The jumping spider, once Pip's egg has hatched, and the egg while it hatches.
+    pub spider: Option<Spider>,
+    pub hatching: Option<Hatch>,
     pub rain: bool,
     pub time: f32,
     pub target: Option<(i32, i32)>,
@@ -209,6 +260,8 @@ pub struct Play {
     pub bag_seen: Vec<Item>,
     /// Playing on a controller (the Steam Deck's, or any pad): hints show its buttons.
     pub pad: bool,
+    /// Candy rocks bursting up out of the floor where a guardian fell.
+    pub erupting: Vec<super::candy::Eruption>,
     /// Lit bombs, and how many the smith has left to sell today.
     pub bombs: Vec<super::bombs::Bomb>,
     pub bomb_stock: u8,
@@ -306,13 +359,9 @@ impl Play {
             fade: None,
             toasts: Vec::new(),
             banner: None,
-            cat: Cat {
-                pos: Vec2::new(26.5, 11.5),
-                target: Vec2::new(26.5, 11.5),
-                t: 0.0,
-                yaw: 0.0,
-                pet: 0.0,
-            },
+            cat: Cat::new(Vec2::new(26.5, 11.5)),
+            spider: None,
+            hatching: None,
             rain: false,
             time: 0.0,
             target: None,
@@ -328,6 +377,7 @@ impl Play {
             discoveries: Default::default(),
             bag_seen: Vec::new(),
             pad: false,
+            erupting: Vec::new(),
             bombs: Vec::new(),
             bomb_stock: super::bombs::BOMBS_PER_DAY,
             below: None,
@@ -459,6 +509,7 @@ impl Play {
                     wind: 0.0,
                     push: self.player.pos,
                     spin: self.house_spin,
+                    autumn: false,
                 }
             }
             Area::Inside(_) => Env {
@@ -470,6 +521,7 @@ impl Play {
                 wind: 0.0,
                 push: self.player.pos,
                 spin: 0.0,
+                autumn: false,
             },
             Area::Farm | Area::Town => {
                 const KEYS: [(f32, f32, f32); 9] = [
@@ -513,6 +565,7 @@ impl Play {
                     wind: if self.rain { 1.6 } else { 1.0 - night * 0.35 },
                     push: self.player.pos,
                     spin: 0.0,
+                    autumn: self.clock.season() == Season::Autumn,
                 }
             }
             Area::Hollow { depth } => {
@@ -526,6 +579,7 @@ impl Play {
                     wind: 0.0,
                     push: self.player.pos,
                     spin: 0.0,
+                    autumn: false,
                 }
             }
         }
@@ -586,6 +640,7 @@ impl Play {
         self.drops.clear();
         self.shots.clear();
         self.bolts.clear();
+        self.erupting.clear();
         let biome = biome_for(depth);
         let moon = self.moon();
         if moon.full() {
@@ -761,6 +816,15 @@ impl Play {
         p_ward_off(&mut self.player);
         self.area = Area::Home;
         self.cam_pos = self.player.world_pos();
+        let mut notes = Vec::new();
+        if self.clock.season_day() == 1 {
+            let s = self.clock.season();
+            notes.push((
+                format!("{} is here - {}", s.name(), s.greeting()),
+                s.color(),
+            ));
+        }
+        notes.extend(self.egg_news());
         self.last_summary = Some(super::menus::Summary {
             day: self.clock.day,
             earned,
@@ -770,6 +834,7 @@ impl Play {
             rain: self.rain,
             passed_out,
             fainted: false,
+            notes,
         });
         self.menu = Menu::Summary;
     }
@@ -958,7 +1023,10 @@ impl Play {
         self.update_spells(dt, io);
         self.update_drops(io);
         self.update_bombs(dt, io);
+        self.update_eruptions(dt, io);
         self.update_cat(dt);
+        self.update_spider(dt);
+        self.update_egg(dt, io);
         self.update_vitals(dt);
         self.fx.update(dt);
         self.shake = (self.shake - dt * 2.5).max(0.0);
@@ -1333,6 +1401,7 @@ impl Play {
                             Obj::Rock { .. }
                                 | Obj::Boulder { .. }
                                 | Obj::Crystal { .. }
+                                | Obj::CandyRock { .. }
                                 | Obj::Stalagmite { .. }
                                 | Obj::Lamp
                                 | Obj::Sprinkler { .. }
@@ -1588,8 +1657,10 @@ impl Play {
                     return;
                 }
                 self.player.inv.take_one(sel);
+                let day = self.clock.day;
                 let w = self.world_mut();
                 match pl {
+                    Placeable::Egg => w.set_obj(x, z, Some(Obj::Egg { laid: day })),
                     Placeable::WoodPath => w.set_floor(x, z, Floor::Planks),
                     Placeable::StonePath => w.set_floor(x, z, Floor::Cobble),
                     Placeable::StoneWall => w.set_wall(x, z, Wall::Brick),
@@ -1612,8 +1683,23 @@ impl Play {
                     Placeable::Furniture(_) | Placeable::Rug(_) | Placeable::WallArt(_) => {}
                 }
                 io.audio.play(Sfx::Place);
-                self.fx
-                    .burst(tile_center(x, z), 6, &[SAND, KHAKI], 1.2, 1.0);
+                if pl == Placeable::Egg {
+                    // Tucked into a nest of fallen leaves.
+                    let c = tile_center(x, z);
+                    self.fx
+                        .burst(c + Vec3::Y * 0.1, 12, &[ORANGE, GOLD, RUST, CLAY], 1.4, 1.2);
+                    self.fx
+                        .motes(c + Vec3::Y * 0.3, 8, &[MINT, LAVENDER, WHITE], 0.25);
+                    self.toast_colored(
+                        "You tuck the egg into a nest of leaves. Now... wait.",
+                        Some(item),
+                        0,
+                        LAVENDER,
+                    );
+                } else {
+                    self.fx
+                        .burst(tile_center(x, z), 6, &[SAND, KHAKI], 1.2, 1.0);
+                }
             }
             Kind::Produce { hp, energy } => self.eat(item, hp, energy, 0, None, io),
             Kind::Potion { hp, mana, energy } => self.drink(item, hp, mana, energy, io),
@@ -1841,18 +1927,8 @@ impl Play {
                 return;
             }
         }
-        // Pet the cat.
-        if self.area == Area::Farm && (self.cat.pos - self.player.pos).length() < 1.3 {
-            self.cat.pet = 1.5;
-            self.fx.motes(
-                Vec3::new(self.cat.pos.x, 0.5, self.cat.pos.y),
-                5,
-                &[PINK, BLUSH],
-                0.2,
-            );
-            self.fx
-                .popup(Vec3::new(self.cat.pos.x, 0.9, self.cat.pos.y), "♥", PINK);
-            io.audio.play_at(Sfx::Pickup, 0.7, 1.3);
+        // Pet the cat (or the spider).
+        if self.pet_nearby(io) {
             return;
         }
         // Nothing there: use the held item (eat, plant, place).
@@ -1875,6 +1951,10 @@ impl Play {
         match obj {
             Obj::House => {
                 self.go_indoors(io);
+                return true;
+            }
+            Obj::Egg { laid } => {
+                self.listen_to_egg(laid, io);
                 return true;
             }
             Obj::Furniture { .. } if self.area == Area::Home => {
@@ -2624,6 +2704,7 @@ impl Play {
                     self.world_mut().set_obj(x, z, Some(Obj::Boulder { hp }));
                 }
             }
+            Obj::CandyRock { hp } => self.mine_candy(x, z, hp, power, io),
             Obj::Crystal { hp, var } => {
                 let hp = hp - power as i16;
                 io.audio.play_at(Sfx::Mine, 1.0, 1.3);
@@ -2982,31 +3063,6 @@ impl Play {
                         .play_at(Sfx::Pickup, 0.8, 1.0 + self.rng.f32() * 0.1);
                 }
             }
-        }
-    }
-
-    fn update_cat(&mut self, dt: f32) {
-        if self.area != Area::Farm {
-            return;
-        }
-        let c = &mut self.cat;
-        c.t -= dt;
-        c.pet = (c.pet - dt).max(0.0);
-        if c.t <= 0.0 {
-            c.t = self.rng.range_f(2.0, 5.0);
-            let near_player = self.rng.chance(0.4);
-            let base = if near_player {
-                self.player.pos
-            } else {
-                Vec2::new(27.0, 12.0)
-            };
-            c.target = base + Vec2::new(self.rng.range_f(-3.0, 3.0), self.rng.range_f(-2.0, 2.0));
-        }
-        let d = c.target - c.pos;
-        if d.length() > 0.2 && c.pet <= 0.0 {
-            let step = d.normalize() * 1.2 * dt;
-            c.pos = self.farm.move_circle(c.pos, step, 0.2);
-            c.yaw = step.x.atan2(step.y);
         }
     }
 

@@ -75,6 +75,9 @@ pub struct SaveData {
     /// Bombs the smith still has to sell on the saved day.
     #[serde(default)]
     pub bombs: Option<u8>,
+    /// Whether Pip's egg has hatched into the farm's jumping spider.
+    #[serde(default)]
+    pub spider: bool,
 }
 
 const FLOORS: [(Floor, char); 15] = [
@@ -249,6 +252,7 @@ pub fn write(p: &Play) -> Result<(), String> {
         stargazed: p.stargazed,
         recipes: Some(p.known.iter().copied().collect()),
         bombs: Some(p.bomb_stock),
+        spider: p.spider.is_some(),
     };
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
     let path = path().ok_or("no data directory")?;
@@ -341,6 +345,10 @@ pub fn read() -> Result<Play, String> {
     };
     p.bag_seen = p.player.inv.distinct();
     p.bomb_stock = d.bombs.unwrap_or(super::bombs::BOMBS_PER_DAY);
+    if d.spider {
+        let at = p.cat.pos + glam::Vec2::new(0.7, 0.4);
+        p.spider = Some(super::pets::Spider::new(at));
+    }
     p.shipping = d.shipping;
     p.rain = d.rain;
     p.stats = d.stats;

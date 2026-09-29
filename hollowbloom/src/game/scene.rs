@@ -248,7 +248,7 @@ impl Play {
             draw::cast_objects(r, a, self.world(), &env, ext);
             self.draw_bus(r, a, self.sky_night());
             self.draw_drops(r, a);
-            self.draw_cat(r, a);
+            self.draw_pets(r, a);
             self.draw_folk(r, a);
             self.draw_player_body(r, a);
             self.draw_fishing(r, a);
@@ -270,10 +270,11 @@ impl Play {
         self.draw_bus(r, a, self.sky_night());
         self.draw_drops(r, a);
         self.draw_bombs(r, a);
+        self.draw_candy(r, a);
         for f in self.foes.iter().filter(|f| !f.translucent()) {
             f.draw(r, a);
         }
-        self.draw_cat(r, a);
+        self.draw_pets(r, a);
         self.draw_folk(r, a);
         self.draw_player_body(r, a);
 
@@ -379,6 +380,8 @@ impl Play {
         self.draw_ward(r, a);
         self.draw_spells(r);
         self.fx.draw(r);
+        self.fx
+            .draw_puffs(r, a.tex(a.pets.puff_hot), a.tex(a.pets.puff));
         for f in &fireflies {
             let on = ((self.time * 3.0 + f.x).sin() * 0.5 + 0.5) > 0.3;
             if on {
@@ -401,31 +404,27 @@ impl Play {
                 r.point(p + Vec3::Y * 0.12, 1, BLUE);
             }
         }
-        r.fb.outline_with(INK, super::foes::MOONLIT_TAG, RED);
-    }
-
-    /// The cat, snoozing or being petted.
-    fn draw_cat(&self, r: &mut Renderer, a: &Assets) {
-        if self.area != Area::Farm {
-            return;
+        // Autumn leaves, twirling down.
+        if env.autumn {
+            let t = self.cam.target;
+            for i in 0..28 {
+                let fx = (hash2(i, 5, 3) % 1000) as f32 / 1000.0;
+                let fz = (hash2(i, 6, 3) % 1000) as f32 / 1000.0;
+                let speed = 0.22 + (hash2(i, 7, 3) % 100) as f32 / 500.0;
+                let fall = (self.time * speed + fx * 5.0).fract();
+                let sway = (self.time * 1.6 + i as f32 * 0.9).sin() * 0.4;
+                let p = Vec3::new(
+                    t.x - 11.0 + fx * 22.0 + sway,
+                    3.4 - fall * 3.4,
+                    t.z - 7.0 + fz * 13.0 + sway * 0.4,
+                );
+                let col = [ORANGE, GOLD, RUST, CLAY][i as usize % 4];
+                // A leaf flips as it falls: now broad, now edge on.
+                let broad = (self.time * 4.0 + i as f32).sin() > -0.3;
+                r.point(p, if broad && i % 3 == 0 { 2 } else { 1 }, col);
+            }
         }
-        let c = &self.cat;
-        let base = Vec3::new(c.pos.x, 0.0, c.pos.y);
-        r.shadow(a.tex(a.disk), base, 0.22);
-        let hop = if c.pet > 0.0 {
-            (self.time * 10.0).sin().abs() * 0.05
-        } else {
-            0.0
-        };
-        let m = Mat4::from_translation(base + Vec3::Y * hop) * Mat4::from_rotation_y(c.yaw);
-        let o = DrawOpts::at(base).with_tag(1);
-        r.mesh(&a.bank, &a.critters.cat, &m, &o);
-        let wag = (self.time * 5.0).sin() * 0.5;
-        let tail = m
-            * Mat4::from_translation(Vec3::new(0.0, 0.2, -0.2))
-            * Mat4::from_rotation_x(0.8)
-            * Mat4::from_rotation_y(wag);
-        r.mesh(&a.bank, &a.critters.cat_tail, &tail, &o);
+        r.fb.outline_with(INK, super::foes::MOONLIT_TAG, RED);
     }
 
     /// The townsfolk, dressed up, with a bubble over anyone who wants you.

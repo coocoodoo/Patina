@@ -387,9 +387,14 @@ fn save_and_load_round_trip() {
     p.house.redecorate(3, 2);
     p.journal.fish.push(Item::GoldenCarp);
     p.journal.records.push((Item::GoldenCarp, 50));
+    // Pip's egg in its nest, and the spider that hatched from the last one.
+    p.farm.set_obj(21, 30, Some(Obj::Egg { laid: 5 }));
+    p.spider = Some(super::pets::Spider::new(Vec2::new(26.0, 12.0)));
     let charm = p.charisma();
     super::save::write(&p).expect("save");
     let q = super::save::read().expect("load");
+    assert!(matches!(q.farm.obj(21, 30), Some(Obj::Egg { laid: 5 })));
+    assert!(q.spider.is_some(), "the spider comes home too");
     assert_eq!(q.charisma(), charm);
     assert_eq!(q.house.fish_kept(), 1);
     assert_eq!((q.house.paper, q.house.floor), (3, 2));
@@ -2754,4 +2759,240 @@ fn the_smith_sells_five_bombs_a_day() {
     s.play.start_fade(Trans::Sleep { passed_out: false });
     s.frames(90);
     assert_eq!(s.play.bomb_stock, super::bombs::BOMBS_PER_DAY);
+}
+
+#[test]
+fn the_year_turns_through_four_seasons() {
+    use super::play::{Clock, Season};
+    let at = |day| Clock { day, min: 600.0 };
+    assert_eq!(at(1).season(), Season::Spring);
+    assert_eq!(at(28).season(), Season::Spring);
+    assert_eq!(at(29).season(), Season::Summer);
+    assert_eq!(at(57).season(), Season::Autumn);
+    assert_eq!(at(84).season(), Season::Autumn);
+    assert_eq!(at(85).season(), Season::Winter);
+    assert_eq!(at(113).season(), Season::Spring);
+    assert_eq!((at(57).season_day(), at(84).season_day()), (1, 28));
+    // The morning autumn comes, the day's news says so.
+    let mut s = Sim::new();
+    s.play.clock.day = 56;
+    s.play.start_fade(Trans::Sleep { passed_out: false });
+    s.frames(60);
+    let news = &s.play.last_summary.as_ref().expect("a summary").notes;
+    assert!(
+        news.iter().any(|(t, _)| t.starts_with("Autumn is here")),
+        "{news:?}"
+    );
+}
+
+/// Candy rocks on the floor you're on.
+fn candy_rocks(p: &Play) -> Vec<(i32, i32, i16)> {
+    let w = &p.level.as_ref().expect("in the Hollow").world;
+    let mut v = Vec::new();
+    for z in 0..w.h {
+        for x in 0..w.w {
+            if let Some(Obj::CandyRock { hp }) = w.obj(x, z) {
+                v.push((x, z, *hp));
+            }
+        }
+    }
+    v
+}
+
+#[test]
+fn pip_asks_for_candy_rocks_only_in_autumn_and_only_once() {
+    use super::folk::Villager;
+    let mut s = Sim::new();
+    let asks = |p: &Play| {
+        p.quest_for(Villager::Pip)
+            .is_some_and(|q| q.key == "pip_candy")
+    };
+    s.play.clock.day = 20;
+    assert!(!asks(&s.play), "not in spring");
+    s.play.clock.day = 110;
+    assert!(!asks(&s.play), "not in winter");
+    s.play.clock.day = 60;
+    assert!(asks(&s.play), "Pip asks in autumn");
+    s.accept("pip_candy");
+    // Back down to floor 10 by the waystone: its guardian returns while Pip waits.
+    s.play.deepest = 10;
+    s.play.waystones = vec![10];
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 10,
+        via_waystone: true,
+    });
+    s.frames(60);
+    let i = s
+        .play
+        .foes
+        .iter()
+        .position(|f| f.boss)
+        .expect("the guardian is back");
+    let at = s.play.foes[i].pos;
+    s.play.player.pos = at + Vec2::new(0.0, 2.5);
+    s.play.foes.retain(|f| f.boss);
+    s.play.foes[0].hp = 0;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.reap(&mut io);
+    s.play.foes.clear();
+    // Up come the candy rocks, one after another...
+    let rocks = candy_rocks(&s.play);
+    assert_eq!(rocks.len(), super::candy::ROCKS);
+    assert_eq!(s.play.erupting.len(), super::candy::ROCKS);
+    // ...too hot to touch while they're going off...
+    let (x, z, hp) = rocks[0];
+    s.play.mine_candy(x, z, hp, 50, &mut io);
+    assert_eq!(candy_rocks(&s.play).len(), super::candy::ROCKS);
+    // ...until they've all gone bang and set hard.
+    s.frames(600);
+    assert!(s.play.erupting.is_empty());
+    let mut io = frame_io(&s.input, &s.audio);
+    for (x, z, hp) in candy_rocks(&s.play) {
+        s.play.mine_candy(x, z, hp, 50, &mut io);
+    }
+    assert!(candy_rocks(&s.play).is_empty());
+    let loose: u32 = s
+        .play
+        .drops
+        .iter()
+        .filter(|d| d.stack.item == Item::CandyRock)
+        .map(|d| d.stack.n as u32)
+        .sum();
+    assert_eq!(loose, 5);
+    // Five for Pip, and a mysterious egg in return.
+    s.play.drops.clear();
+    s.play.player.inv.add(Item::CandyRock, 5);
+    let q = s.quest("pip_candy");
+    assert!(s.play.quest_ready(&s.play.quests[q]));
+    s.play.finish_quest(q, &mut io);
+    assert_eq!(s.play.player.inv.count(Item::MysteryEgg), 1);
+    assert_eq!(s.play.player.inv.count(Item::CandyRock), 0);
+    // Never again, not even next autumn.
+    s.play.clock.day = 60 + 4 * super::play::SEASON_DAYS;
+    assert!(!asks(&s.play));
+}
+
+#[test]
+fn a_guardian_without_a_candy_quest_leaves_no_candy() {
+    let mut s = Sim::new();
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 10,
+        via_waystone: false,
+    });
+    s.frames(60);
+    let i = s.play.foes.iter().position(|f| f.boss).expect("a guardian");
+    s.play.foes[i].hp = 0;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.reap(&mut io);
+    assert!(candy_rocks(&s.play).is_empty());
+    assert!(s.play.erupting.is_empty());
+}
+
+#[test]
+fn the_egg_tips_over_on_day_nine_and_hatches_on_day_ten() {
+    use super::pets::{HATCH_DAYS, TILT_DAY};
+    let mut s = Sim::new();
+    s.play.clock.min = 600.0;
+    // It won't go down indoors.
+    s.play.player.inv.slots[0] = Some(Stack::new(Item::MysteryEgg, 1));
+    s.select(0);
+    s.play.area = Area::Home;
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.house_use((4, 4), false, &mut io);
+    assert_eq!(s.play.player.inv.count(Item::MysteryEgg), 1);
+    // Out on the farm it tucks into its nest.
+    s.play.area = Area::Farm;
+    let (x, z) = (30, 20);
+    clear_farm_tile(&mut s.play, x, z);
+    s.stand(x, z + 2, Vec2::new(0.0, -1.0));
+    let mut io = frame_io(&s.input, &s.audio);
+    s.play.use_item(Item::MysteryEgg, (x, z), &mut io);
+    let day = s.play.clock.day;
+    assert!(matches!(s.play.farm.obj(x, z), Some(Obj::Egg { laid }) if *laid == day));
+    assert_eq!(s.play.player.inv.count(Item::MysteryEgg), 0);
+    let night = |s: &mut Sim| {
+        s.play.start_fade(Trans::Sleep { passed_out: false });
+        s.frames(60);
+        let news = s
+            .play
+            .last_summary
+            .as_ref()
+            .expect("a summary")
+            .notes
+            .clone();
+        s.play.menu = Menu::None;
+        s.play.fade = None;
+        s.play.area = Area::Farm;
+        news
+    };
+    let mut news = Vec::new();
+    for _ in 0..TILT_DAY {
+        news = night(&mut s);
+    }
+    assert_eq!(s.play.clock.day, day + TILT_DAY);
+    assert!(
+        news.iter().any(|(t, _)| t.contains("tipped over")),
+        "{news:?}"
+    );
+    // Tipped over, but not ready: standing right by it does nothing yet.
+    s.stand(x, z + 2, Vec2::new(0.0, -1.0));
+    s.frames(30);
+    assert!(s.play.hatching.is_none() && s.play.spider.is_none());
+    // The tenth morning: it waits for you to come by.
+    news = night(&mut s);
+    assert_eq!(s.play.clock.day, day + HATCH_DAYS);
+    assert!(news.iter().any(|(t, _)| t.contains("tapping")), "{news:?}");
+    s.stand(x + 14, z, Vec2::new(0.0, 1.0));
+    s.frames(20);
+    assert!(s.play.hatching.is_none(), "not while you're away");
+    s.stand(x + 2, z + 1, Vec2::new(-1.0, 0.0));
+    s.frames(5);
+    assert!(
+        s.play.hatching.is_some(),
+        "it starts to hatch as you come near"
+    );
+    s.frames(150);
+    assert!(s.play.farm.obj(x, z).is_none(), "the shell is gone");
+    let spider = s.play.spider.expect("a jumping spider!");
+    assert!((spider.pos - Vec2::new(x as f32 + 0.5, z as f32 + 0.5)).length() < 2.5);
+}
+
+#[test]
+fn the_cat_and_the_spider_play_together() {
+    use super::pets::{CatMode, Spider};
+    let mut s = Sim::new();
+    s.play.clock.min = 560.0;
+    let cat = s.play.cat.pos;
+    s.play.spider = Some(Spider::new(cat + Vec2::new(1.0, 0.5)));
+    let (mut pounces, mut rides, mut hops) = (0, 0, 0);
+    let mut was = (false, false, false);
+    for _ in 0..60 * 120 {
+        s.frames(1);
+        let c = s.play.cat;
+        let sp = s.play.spider.expect("still here");
+        let now = (
+            matches!(c.mode, CatMode::Pounce { .. }),
+            sp.ride > 0.0,
+            sp.hop.is_some(),
+        );
+        pounces += usize::from(now.0 && !was.0);
+        rides += usize::from(now.1 && !was.1);
+        hops += usize::from(now.2 && !was.2);
+        was = now;
+        // It never lands anywhere it shouldn't.
+        let (tx, tz) = (sp.pos.x.floor() as i32, sp.pos.y.floor() as i32);
+        assert!(sp.ride > 0.0 || sp.y > 0.01 || !s.play.farm.blocked(tx, tz));
+    }
+    assert!(hops > 25, "{hops} hops");
+    assert!(pounces >= 1, "the cat never pounced");
+    assert!(rides >= 1, "the spider never rode the cat");
+    // A fuss: stand by it and it waves.
+    let sp = s.play.spider.expect("still here");
+    s.play.player.pos = sp.pos + Vec2::new(0.6, 0.0);
+    s.play.target = None;
+    let mut io = frame_io(&s.input, &s.audio);
+    assert!(s.play.pet_nearby(&mut io));
+    assert!(s.play.spider.expect("still here").wave > 0.0 || s.play.cat.pet > 0.0);
 }

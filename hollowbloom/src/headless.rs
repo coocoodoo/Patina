@@ -1578,6 +1578,30 @@ pub fn bench() {
         total * 1000.0 / frames as f64,
         draw_time * 1000.0 / frames as f64
     );
+    // Home on the farm, with the cat and the jumping spider playing in view.
+    {
+        let p = play(&mut game);
+        p.ride_bus(false);
+        p.bus = None;
+        p.clock.min = 600.0;
+        p.player.pos = crate::game::pets::CAT_HOME + Vec2::new(1.5, 2.0);
+        let at = p.cat.pos + Vec2::new(0.8, 0.3);
+        p.spider = Some(crate::game::pets::Spider::new(at));
+    }
+    let t0 = Instant::now();
+    let mut draw_time = 0.0;
+    for _ in 0..frames {
+        tick(&mut game, &input, &audio, 1);
+        let t = Instant::now();
+        game.draw(&mut r, &input);
+        draw_time += t.elapsed().as_secs_f64();
+    }
+    let total = t0.elapsed().as_secs_f64();
+    println!(
+        "{frames} frames on the farm: {:.2} ms/frame total, {:.2} ms/frame drawing",
+        total * 1000.0 / frames as f64,
+        draw_time * 1000.0 / frames as f64
+    );
 }
 
 /// `--town-shots DIR`: the road to town, Bramblewick from above and street level, and the
@@ -2950,4 +2974,413 @@ fn bomb_shots(game: &mut Game, r: &mut Renderer, input: &Input, audio: &Audio, d
         p.player.pos = Vec2::new(start.0 as f32 + 0.5, start.1 as f32 + 0.5);
     }
     snap(game, r, input, dir, "b06_secret_room");
+}
+
+/// A close look: the camera `dist` from `focus`, saved at 2x.
+fn close(
+    game: &mut Game,
+    r: &mut Renderer,
+    input: &Input,
+    dir: &Path,
+    name: &str,
+    focus: glam::Vec3,
+    dist: f32,
+) {
+    {
+        let p = play(game);
+        p.player.hurt = 0.0;
+        p.cam_pos = focus;
+        p.cam.target = focus;
+        p.cam.dist = dist;
+        p.cam.update(W, H);
+    }
+    game.draw(r, input);
+    let path = dir.join(format!("{name}.png"));
+    match save_png(&path, &r.fb, 2) {
+        Ok(()) => println!("wrote {}", path.display()),
+        Err(e) => eprintln!("failed to write {}: {e}", path.display()),
+    }
+    play(game).cam.dist = 15.5;
+}
+
+/// `--pet-shots DIR`: the cat in all its moods, the jumping spider, Pip's egg from nest to
+/// hatching, autumn on the farm, Pip's candy quest, and candy rocks erupting on floor 10.
+pub fn pet_shots(dir: &str) {
+    use crate::game::pets::{CAT_HOME, CatMode, Spider};
+    use crate::game::quests::QuestId;
+    use crate::game::talk::Say;
+    use crate::game::world::Area;
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261031);
+    tick(&mut game, &input, &audio, 5);
+    // An autumn morning on the farm.
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 60;
+        p.clock.min = 620.0;
+        p.player.pos = CAT_HOME + Vec2::new(2.5, 2.2);
+        p.player.facing = Vec2::new(-1.0, -0.5);
+    }
+    tick(&mut game, &input, &audio, 2);
+    let cat_at = |game: &mut Game| {
+        let c = play(game).cat.pos;
+        Vec3::new(c.x, 0.2, c.y)
+    };
+    // The cat in all its moods.
+    let moods: [(&str, CatMode, f32); 6] = [
+        ("p01_cat_walk", CatMode::Stroll, 0.8),
+        ("p02_cat_sit", CatMode::Sit, 0.6),
+        ("p03_cat_nap", CatMode::Nap, 0.3),
+        ("p04_cat_stalk", CatMode::Stalk, 1.2),
+        ("p05_cat_bat", CatMode::Bat, 0.9),
+        (
+            "p06_cat_pounce",
+            CatMode::Pounce {
+                from: CAT_HOME,
+                to: CAT_HOME + Vec2::new(1.4, 0.0),
+            },
+            0.6,
+        ),
+    ];
+    for (name, mode, yaw) in moods {
+        {
+            let p = play(&mut game);
+            p.cat.pos = CAT_HOME;
+            p.cat.mode = mode;
+            p.cat.mode_t = if matches!(mode, CatMode::Pounce { .. }) {
+                0.2
+            } else {
+                0.4
+            };
+            p.cat.y = if matches!(mode, CatMode::Pounce { .. }) {
+                0.24
+            } else {
+                0.0
+            };
+            p.cat.yaw = yaw;
+            p.cat.speed = if matches!(mode, CatMode::Stroll | CatMode::Stalk) {
+                1.0
+            } else {
+                0.0
+            };
+            p.cat.stride = 1.2;
+            p.cat.pet = 0.0;
+            p.cat.t = 100.0;
+            p.spider = None;
+        }
+        {
+            let f = cat_at(&mut game);
+            close(&mut game, &mut r, &input, dir, name, f, 5.0);
+        }
+    }
+    {
+        let p = play(&mut game);
+        p.cat.mode = CatMode::Sit;
+        p.cat.pet = 1.0;
+        p.cat.yaw = 0.3;
+    }
+    {
+        let f = cat_at(&mut game);
+        close(&mut game, &mut r, &input, dir, "p07_cat_petted", f, 5.0);
+    }
+    {
+        let p = play(&mut game);
+        p.cat.pet = 0.0;
+        p.cat.mode = CatMode::Stroll;
+        p.cat.yaw = 0.7;
+        p.cat.speed = 1.0;
+    }
+    let f = cat_at(&mut game);
+    snap_on(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "p08_cat_on_the_farm",
+        Some(f),
+    );
+
+    // The jumping spider: hello, and up on the cat.
+    {
+        let p = play(&mut game);
+        p.cat.mode = CatMode::Sit;
+        p.cat.yaw = 0.2;
+        p.cat.t = 100.0;
+        let mut s = Spider::new(CAT_HOME + Vec2::new(0.8, 0.5));
+        s.yaw = 0.3;
+        s.rest = 100.0;
+        p.spider = Some(s);
+    }
+    let spider_at = |game: &mut Game| {
+        let s = play(game).spider.expect("a spider");
+        Vec3::new(s.pos.x, 0.1, s.pos.y)
+    };
+    {
+        let f = spider_at(&mut game);
+        close(&mut game, &mut r, &input, dir, "p09_spider", f, 3.2);
+    }
+    if let Some(s) = &mut play(&mut game).spider {
+        s.wave = 1.0;
+        s.t = 0.4;
+    }
+    {
+        let f = spider_at(&mut game);
+        close(&mut game, &mut r, &input, dir, "p10_spider_waves", f, 3.2);
+    }
+    {
+        let p = play(&mut game);
+        let perch = p.cat.perch(p.time);
+        if let Some(s) = &mut p.spider {
+            s.wave = 0.0;
+            s.ride = 10.0;
+            s.pos = Vec2::new(perch.x, perch.z);
+            s.y = perch.y;
+            s.yaw = p.cat.yaw;
+        }
+    }
+    {
+        let f = cat_at(&mut game);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "p11_spider_on_the_cats_head",
+            f,
+            4.0,
+        );
+    }
+    // Let them play for a while.
+    {
+        let p = play(&mut game);
+        if let Some(s) = &mut p.spider {
+            s.ride = 0.0;
+            s.pos = CAT_HOME + Vec2::new(2.0, 0.6);
+            s.y = 0.0;
+            s.rest = 0.2;
+        }
+        p.cat.t = 0.0;
+    }
+    for k in 0..4 {
+        tick(&mut game, &input, &audio, 150);
+        let c = cat_at(&mut game);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("p12_playing_{k}"),
+            c,
+            7.0,
+        );
+    }
+
+    // Pip's egg: in its nest, tipping over on the ninth day, cracking on the tenth.
+    let (ex, ez) = (CAT_HOME.x as i32 + 3, CAT_HOME.y as i32 + 3);
+    let egg_at = Vec3::new(ex as f32 + 0.5, 0.15, ez as f32 + 0.5);
+    {
+        let p = play(&mut game);
+        p.spider = None;
+        p.farm.set_obj(ex, ez, None);
+        p.player.pos = Vec2::new(ex as f32 + 12.0, ez as f32);
+    }
+    for (name, age, min) in [
+        ("e01_egg_in_its_nest", 3u32, 620.0f32),
+        ("e02_egg_tips_over", 9, 620.0),
+        ("e03_egg_at_night", 5, 1300.0),
+        ("e04_egg_cracking", 10, 620.0),
+    ] {
+        {
+            let p = play(&mut game);
+            p.clock.min = min;
+            let day = p.clock.day;
+            p.farm.set_obj(ex, ez, Some(Obj::Egg { laid: day - age }));
+        }
+        close(&mut game, &mut r, &input, dir, name, egg_at, 3.5);
+    }
+    // Walking up to it on the day: it hatches.
+    {
+        let p = play(&mut game);
+        p.clock.min = 620.0;
+        p.player.pos = Vec2::new(ex as f32 + 2.5, ez as f32 + 1.5);
+        p.player.facing = Vec2::new(-1.0, -0.4);
+    }
+    tick(&mut game, &input, &audio, 60);
+    close(&mut game, &mut r, &input, dir, "e05_hatching", egg_at, 4.0);
+    tick(&mut game, &input, &audio, 52);
+    close(&mut game, &mut r, &input, dir, "e06_hatched", egg_at, 4.0);
+    tick(&mut game, &input, &audio, 30);
+    snap_on(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "e07_hello_spider",
+        Some(egg_at),
+    );
+
+    // Autumn: the trees have turned. Stand among the farm's round trees.
+    {
+        let p = play(&mut game);
+        p.banner = None;
+        p.menu = Menu::None;
+        let me = p.player.pos;
+        let mut best = (f32::MAX, me);
+        for z in 0..p.farm.h {
+            for x in 0..p.farm.w {
+                if matches!(p.farm.obj(x, z), Some(Obj::Tree { .. })) {
+                    let at = Vec2::new(x as f32 + 0.5, z as f32 + 2.0);
+                    let d = (at - Vec2::new(30.0, 20.0)).length();
+                    if d < best.0 && !p.farm.blocked(x, z + 2) {
+                        best = (d, at);
+                    }
+                }
+            }
+        }
+        p.player.pos = best.1;
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "a01_autumn_farm");
+    {
+        let p = play(&mut game);
+        p.clock.day = 20;
+    }
+    snap(&mut game, &mut r, &input, dir, "a02_summer_farm");
+
+    // Pip asks, but only in autumn.
+    {
+        let p = play(&mut game);
+        p.clock.day = 60;
+        p.clock.min = 620.0;
+        p.ride_bus(true);
+        p.bus = None;
+        p.banner = None;
+        p.player.pos = Vec2::new(35.5, 29.6);
+        p.arrive_folk();
+    }
+    tick(&mut game, &input, &audio, 120);
+    {
+        let p = play(&mut game);
+        let mut io = mk_io(&input, &audio);
+        if let Some(i) = p
+            .folk
+            .iter()
+            .position(|n| n.who == crate::game::folk::Villager::Pip)
+        {
+            let at = p.folk[i].pos;
+            p.player.pos = at + Vec2::new(0.0, 1.0);
+            p.player.facing = Vec2::new(0.0, -1.0);
+            p.talk_to(i, &mut io);
+            if let Menu::Talk { who, choices, .. } = &p.menu {
+                let who = *who;
+                let offer = choices
+                    .iter()
+                    .find(|(_, s)| matches!(s, Say::Offer(_)))
+                    .map(|c| c.1);
+                if let Some(say) = offer {
+                    if let Some((text, choices)) = p.talk_choice(who, say, &mut io) {
+                        let n = text.chars().count() as f32;
+                        p.menu = Menu::Talk {
+                            who,
+                            text,
+                            shown: n,
+                            choices,
+                            sel: 0,
+                            blip: 0.0,
+                        };
+                    }
+                }
+            }
+        }
+    }
+    snap(&mut game, &mut r, &input, dir, "q01_pip_asks");
+
+    // Floor 10: the guardian falls, and up come the candy rocks.
+    {
+        let p = play(&mut game);
+        let mut io = mk_io(&input, &audio);
+        p.menu = Menu::None;
+        for n in &mut p.folk {
+            n.talking = false;
+        }
+        p.accept(QuestId::Story("pip_candy".to_string()), &mut io);
+        p.player.level = 20;
+        p.player.refresh();
+    }
+    descend(&mut game, &input, &audio, 10, false);
+    let boss_at = {
+        let p = play(&mut game);
+        let i = p.foes.iter().position(|f| f.boss).expect("the guardian");
+        let at = p.foes[i].pos;
+        p.player.pos = at + Vec2::new(0.0, 2.2);
+        p.foes.retain(|f| f.boss);
+        p.foes[0].hp = 0;
+        let mut io = mk_io(&input, &audio);
+        p.reap(&mut io);
+        p.foes.clear();
+        p.banner = None;
+        Vec3::new(at.x, 0.3, at.y)
+    };
+    for (k, frames) in [
+        (0, 70),
+        (1, 30),
+        (2, 24),
+        (3, 18),
+        (4, 12),
+        (5, 8),
+        (6, 8),
+        (7, 20),
+        (8, 60),
+        (9, 120),
+    ] {
+        tick(&mut game, &input, &audio, frames);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("c{k:02}_candy"),
+            boss_at,
+            14.0,
+        );
+    }
+    // A close look at one.
+    let rock = {
+        let p = play(&mut game);
+        let w = &p.level.as_ref().expect("a floor").world;
+        let mut found = None;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if matches!(w.obj(x, z), Some(Obj::CandyRock { .. })) && found.is_none() {
+                    found = Some((x, z));
+                }
+            }
+        }
+        found
+    };
+    if let Some((x, z)) = rock {
+        let at = Vec3::new(x as f32 + 0.5, 0.3, z as f32 + 0.5);
+        close(&mut game, &mut r, &input, dir, "c10_candy_rock", at, 4.0);
+    }
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Journal { tab: 0, sel: 0 };
+    }
+    snap(&mut game, &mut r, &input, dir, "q02_journal");
+    let _ = Area::Farm;
 }
