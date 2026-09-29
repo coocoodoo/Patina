@@ -2481,6 +2481,13 @@ fn a_steam_deck_plays_the_game() {
     assert!(matches!(s.play.menu, Menu::Pause { .. }));
     press(&mut s, PadButton::B);
     assert!(matches!(s.play.menu, Menu::None));
+    // R1 and L1 step along the hotbar, round from the first slot to the last.
+    s.select(0);
+    press(&mut s, PadButton::R1);
+    assert_eq!(s.play.player.sel, 1);
+    press(&mut s, PadButton::L1);
+    press(&mut s, PadButton::L1);
+    assert_eq!(s.play.player.sel, super::player::HOTBAR - 1);
     // The left stick walks, the right one turns you about.
     let start = s.play.player.pos;
     for _ in 0..30 {
@@ -2510,6 +2517,49 @@ fn a_steam_deck_plays_the_game() {
     s.frames(1);
     s.input.key_event(KeyCode::KeyW, false, false);
     assert_eq!(s.play.prompt(crate::input::Action::Confirm), "(E)");
+}
+
+#[test]
+fn a_stack_picked_up_on_a_controller_rides_on_the_cursor() {
+    use super::menus::{bag_grid, panel_layout};
+    use crate::pad::{PadButton, PadState};
+    let mut s = Sim::new();
+    s.frames(2);
+    let press = |s: &mut Sim, b: PadButton| {
+        let st = PadState {
+            connected: true,
+            buttons: b.bit(),
+            ..Default::default()
+        };
+        s.input.pad_event(st, 1.0 / 60.0);
+        s.frames(1);
+        s.input.pad_event(
+            PadState {
+                connected: true,
+                ..Default::default()
+            },
+            1.0 / 60.0,
+        );
+        s.frames(1);
+    };
+    press(&mut s, PadButton::Y);
+    s.play.player.inv.slots[3] = Some(Stack::new(Item::Wood, 7));
+    if let Menu::Inventory { cursor, .. } = &mut s.play.menu {
+        *cursor = 3;
+    }
+    press(&mut s, PadButton::A);
+    assert_eq!(s.play.held.map(|h| h.item), Some(Item::Wood));
+    // The Deck's pointer sits parked in the corner: the stack stays on the cursor's slot.
+    let (x, y) = bag_grid(&panel_layout(480, 270), 22).slot_pos(3);
+    assert_eq!(
+        s.play.held_spot(480, 270, Vec2::ZERO, s.input.mouse_aim),
+        (x + 7, y - 7)
+    );
+    // Once the mouse is what's pointing, it follows the mouse.
+    assert_eq!(
+        s.play.held_spot(480, 270, Vec2::new(100.0, 80.0), true),
+        (96, 76)
+    );
 }
 
 #[test]

@@ -1121,7 +1121,7 @@ impl Play {
                         SHADOW,
                     );
                     c.text(l.px + 196, y, &format!("{have}/{need}"), SHADOW);
-                    y += 12;
+                    y += 10;
                 };
                 line(c, "Crop almanac".into(), j.crops.len(), 38);
                 line(c, "Curio cabinet".into(), j.curios.len(), 19);
@@ -1138,7 +1138,7 @@ impl Play {
                     &format!("Lantern Guild: {rank} ({} marks)", self.marks),
                     TEAL,
                 );
-                y += 11;
+                y += 10;
                 let ch = self.charisma();
                 c.text(
                     l.px + 10,
@@ -1146,7 +1146,7 @@ impl Play {
                     &format!("Home: charisma {ch} ({})", super::home::charm_title(ch)),
                     PLUM,
                 );
-                y += 11;
+                y += 10;
                 let moon = self.moon();
                 c.text(
                     l.px + 10,
@@ -1154,9 +1154,9 @@ impl Play {
                     &format!("Tonight: {}", moon.name()),
                     if moon.full() { CRIMSON } else { INDIGO },
                 );
-                y += 14;
+                y += 12;
                 c.text(l.px + 10, y, "Bramblewick", RUST);
-                y += 11;
+                y += 10;
                 for (i, bit) in [
                     town::FOUNTAIN,
                     town::GARDENS,
@@ -1175,8 +1175,9 @@ impl Play {
                     let done = self.restored & bit != 0;
                     let mark = if done { "★" } else { "·" };
                     c.text(x, yy, mark, if done { GOLD } else { KHAKI });
-                    let t: String = project_name(bit).chars().take(18).collect();
-                    c.text(x + 8, yy, &t, if done { INK } else { KHAKI });
+                    // Without the "the", every project fits its column.
+                    let t = project_name(bit).trim_start_matches("the ");
+                    c.text(x + 8, yy, t, if done { INK } else { KHAKI });
                 }
             }
         }

@@ -1416,7 +1416,16 @@ impl Play {
         }
     }
 
-    pub fn draw_menu(&self, c: &mut Canvas, a: &Assets, settings: &Settings, mouse: Vec2) {
+    /// Draws the open menu. `pointer` says the mouse is what's pointing (it moved or clicked
+    /// last), rather than a controller or the keys.
+    pub fn draw_menu(
+        &self,
+        c: &mut Canvas,
+        a: &Assets,
+        settings: &Settings,
+        mouse: Vec2,
+        pointer: bool,
+    ) {
         let (w, h) = (c.w(), c.h());
         match &self.menu {
             Menu::None => {}
@@ -1749,13 +1758,44 @@ impl Play {
                 glow,
             } => self.draw_enchant(c, a, *gear, *scroll, *socket, *cursor, msg, *glow, mouse),
         }
-        // The stack being carried follows the mouse.
+        // The stack being carried rides on the cursor (or follows the mouse).
         if let Some(hs) = self.held {
-            let (x, y) = (mouse.x as i32 - 4, mouse.y as i32 - 4);
+            let (x, y) = self.held_spot(w, h, mouse, pointer);
             c.sprite(a.tex(a.icon(hs.item.def().icon)), x, y);
             if hs.n > 1 {
                 c.tiny(x + 16, y + 11, &hs.n.to_string(), WHITE, INK);
             }
+        }
+    }
+
+    /// Where to draw the stack being carried: on the mouse when that's what's pointing,
+    /// otherwise lifted off the cursor's slot (or, with no slots in view, tucked into the
+    /// panel's corner).
+    pub fn held_spot(&self, w: i32, h: i32, mouse: Vec2, pointer: bool) -> (i32, i32) {
+        if pointer {
+            return (mouse.x as i32 - 4, mouse.y as i32 - 4);
+        }
+        let l = panel_layout(w, h);
+        let slot = match self.menu {
+            Menu::Inventory {
+                tab: Tab::Bag,
+                cursor,
+                ..
+            } => Some(if cursor < 40 {
+                bag_grid(&l, 22).slot_pos(cursor)
+            } else {
+                worn_pos(&l, 22, cursor - 40)
+            }),
+            Menu::Chest { cursor, .. } => Some(if cursor < 30 {
+                chest_grid(&l).slot_pos(cursor)
+            } else {
+                bag_grid(&l, 20 + 3 * CELL + 16).slot_pos(cursor - 30)
+            }),
+            _ => None,
+        };
+        match slot {
+            Some((x, y)) => (x + 7, y - 7),
+            None => (l.px + l.pw - 26, l.py + l.ph - 26),
         }
     }
 

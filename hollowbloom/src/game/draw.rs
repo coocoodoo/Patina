@@ -1236,7 +1236,11 @@ fn draw_body(
     let (rx, rz, twist) = match pose.swing {
         Some((t, Swing::Slash)) => {
             let k = ease_out(t);
-            (-1.4 + (k * 2.6 - 1.2) * 0.2, 0.0, 1.3 - k * 2.6)
+            (
+                -1.4 + (k * 2.6 - 1.2) * 0.2,
+                0.0,
+                SLASH_TWIST * (1.0 - 2.0 * k),
+            )
         }
         Some((t, Swing::Chop)) => {
             let k = ease_out(t);
@@ -1305,15 +1309,18 @@ fn ease_out(t: f32) -> f32 {
     1.0 - (1.0 - t) * (1.0 - t)
 }
 
-/// A translucent slash arc in front of a character.
+/// How far round a slash swings the sword arm: from this far round on its own side (radians)
+/// to as far round the other way.
+const SLASH_TWIST: f32 = 1.3;
+
+/// A translucent slash arc in front of a character, trailing the blade from where the swing
+/// began to where the blade is now.
 pub fn slash_arc(r: &mut Renderer, pos: Vec3, yaw: f32, t: f32, reach: f32, color: u8) {
     if t > 0.7 {
         return;
     }
-    let k = ease_out(t / 0.7);
-    let span = 2.4f32;
-    let start = -span * 0.5;
-    let end = start + span * k;
+    let start = SLASH_TWIST;
+    let end = SLASH_TWIST * (1.0 - 2.0 * ease_out(t));
     let steps = 10;
     for i in 0..=steps {
         let ang = start + (end - start) * i as f32 / steps as f32;

@@ -403,6 +403,15 @@ impl Input {
             || self.pad_repeated & pad_bits(a) != 0
     }
 
+    /// A step along the hotbar in play: ] or R1 forwards (1), [ or L1 back (-1). Q and R step
+    /// through menu tabs, but in play they cast spells, so they don't count here.
+    pub fn hotbar_step(&self) -> i32 {
+        let pad = |b: P| self.pad_pressed & b.bit() as u32 != 0;
+        let next = self.key_pressed(KeyCode::BracketRight) || pad(P::R1);
+        let prev = self.key_pressed(KeyCode::BracketLeft) || pad(P::L1);
+        next as i32 - prev as i32
+    }
+
     /// Where the right stick points, when it's pushed: the way to face.
     pub fn aim_axis(&self) -> Option<Vec2> {
         let v = live(self.pad.right, AIM_DEAD);
@@ -502,6 +511,29 @@ mod tests {
         // Pressing a key hands the hints back to the keyboard.
         i.key_event(KeyCode::KeyE, true, false);
         assert!(!i.pad_active);
+    }
+
+    #[test]
+    fn the_bumpers_and_brackets_step_along_the_hotbar() {
+        let mut i = Input::default();
+        i.pad_event(pad(&[P::R1], Vec2::ZERO, 0.0), 1.0 / 60.0);
+        assert_eq!(i.hotbar_step(), 1);
+        i.end_frame(1.0 / 60.0);
+        // Held, it steps once.
+        i.pad_event(pad(&[P::R1], Vec2::ZERO, 0.0), 1.0 / 60.0);
+        assert_eq!(i.hotbar_step(), 0);
+        i.pad_event(pad(&[], Vec2::ZERO, 0.0), 1.0 / 60.0);
+        i.end_frame(1.0 / 60.0);
+        i.pad_event(pad(&[P::L1], Vec2::ZERO, 0.0), 1.0 / 60.0);
+        assert_eq!(i.hotbar_step(), -1);
+        i.end_frame(1.0 / 60.0);
+        i.key_event(KeyCode::BracketRight, true, false);
+        assert_eq!(i.hotbar_step(), 1);
+        i.end_frame(1.0 / 60.0);
+        // R steps menu tabs, but casts in play.
+        i.key_event(KeyCode::KeyR, true, false);
+        assert!(i.pressed(Action::NextSlot));
+        assert_eq!(i.hotbar_step(), 0);
     }
 
     #[test]

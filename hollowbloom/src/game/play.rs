@@ -931,13 +931,11 @@ impl Play {
             let n = (self.player.sel + dir) % HOTBAR;
             self.select(n, io);
         }
-        // [ and ] step along the hotbar; Q and R cast your two spells.
-        if input.key_pressed(KeyCode::BracketRight) {
-            let n = (self.player.sel + 1) % HOTBAR;
-            self.select(n, io);
-        }
-        if input.key_pressed(KeyCode::BracketLeft) {
-            let n = (self.player.sel + HOTBAR - 1) % HOTBAR;
+        // ] and [ (R1 and L1 on a controller) step along the hotbar; Q and R cast your two
+        // spells.
+        let step = input.hotbar_step();
+        if step != 0 {
+            let n = (self.player.sel as i32 + step).rem_euclid(HOTBAR as i32) as usize;
             self.select(n, io);
         }
         for (slot, action) in [Action::Spell1, Action::Spell2].into_iter().enumerate() {

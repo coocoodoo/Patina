@@ -331,7 +331,7 @@ impl Game {
                     darken: &r.sh.darken,
                 };
                 p.draw_hud(&mut c, a, &cam);
-                p.draw_menu(&mut c, a, &self.settings, input.mouse);
+                p.draw_menu(&mut c, a, &self.settings, input.mouse, input.mouse_aim);
                 let (vw, vh) = (c.w(), c.h());
                 if let Some((who, x, y)) = talk::portrait_rect(vw, vh, &p.menu) {
                     draw_portrait(&mut self.portrait, a, who, p.time);
