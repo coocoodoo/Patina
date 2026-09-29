@@ -99,6 +99,10 @@ fn main() {
         headless::pet_shots(args.get(i + 1).map(String::as_str).unwrap_or("pets"));
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--beast-shots") {
+        headless::beast_shots(args.get(i + 1).map(String::as_str).unwrap_or("beasts"));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--glowcave-shots") {
         headless::glowcave_shots(args.get(i + 1).map(String::as_str).unwrap_or("glowcaves"));
         return;

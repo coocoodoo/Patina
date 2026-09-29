@@ -3616,3 +3616,211 @@ fn glowcap_caves_glow_and_their_mushrooms_can_be_gathered() {
     };
     assert_eq!(s.play.water_at(pool.0, pool.1), Some(Water::Fungal));
 }
+
+#[test]
+fn drakelings_leaflings_and_werewolves_fight_back() {
+    use super::dungeon::Foe;
+    for (foe, biome, depth) in [
+        (Foe::Drake, 3usize, 14u32),
+        (Foe::Drake, 4, 24),
+        (Foe::Leafling, 0, 4),
+        (Foe::Werewolf, 2, 8),
+    ] {
+        let mut s = Sim::new();
+        s.play.start_fade(Trans::Descend {
+            depth,
+            via_waystone: false,
+        });
+        s.frames(60);
+        let (px, pz) = s.play.player.tile();
+        let w = &s.play.level.as_ref().unwrap().world;
+        let (fx, fz) = w.nearest_open(px + 2, pz);
+        s.play.foes.clear();
+        s.play.foes.push(super::foes::Enemy::new(
+            foe,
+            fx as f32 + 0.5,
+            fz as f32 + 0.5,
+            depth,
+            biome,
+            false,
+            3,
+        ));
+        s.play.player.hurt = 0.0;
+        let start = s.play.player.hp;
+        let mut hit = false;
+        for _ in 0..900 {
+            s.frames(1);
+            if s.play.player.hp < start {
+                hit = true;
+                break;
+            }
+            s.play.player.hp = start;
+            s.play.player.hurt = 0.0;
+        }
+        assert!(hit, "{foe:?} in biome {biome} never landed a blow");
+    }
+}
+
+#[test]
+fn a_drakeling_rears_back_and_breathes_fire_or_frost() {
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, St, kind_name};
+    use super::fx::ShotKind;
+    assert_eq!(kind_name(Foe::Drake, 3), "Cinder Drakeling");
+    assert_eq!(kind_name(Foe::Drake, 4), "Frost Drakeling");
+    use crate::palette::{ORANGE, SKY};
+    for (biome, colour) in [(3usize, ORANGE), (4, SKY)] {
+        let mut s = Sim::new();
+        one_foe_ahead(&mut s, 14, 3.0);
+        let p = s.play.player.pos;
+        let w = &s.play.level.as_ref().unwrap().world;
+        let (fx, fz) = w.nearest_open(p.x as i32, p.y as i32 + 3);
+        let at = Vec2::new(fx as f32 + 0.5, fz as f32 + 0.5);
+        assert!(w.clear_line(at, p), "no clear line to the hero");
+        let mut d = Enemy::new(Foe::Drake, at.x, at.y, 14, biome, false, 3);
+        d.alert = true;
+        d.t = 0.0;
+        d.speed = 0.0;
+        s.play.foes[0] = d;
+        s.play.shots.clear();
+        s.frames(20);
+        let d = &s.play.foes[0];
+        assert_eq!(d.st, St::Windup, "rearing back to draw breath");
+        assert!(
+            d.armored() && d.light().is_some(),
+            "scaly, and its mouth glows"
+        );
+        s.frames(40);
+        let puffs: Vec<_> = s
+            .play
+            .shots
+            .iter()
+            .filter(|s| s.kind == ShotKind::Breath)
+            .collect();
+        assert!(puffs.len() >= 3, "only {} puffs", puffs.len());
+        assert!(puffs.iter().all(|s| s.color == colour));
+        // Breathed at the hero.
+        let towards = (p - at).normalize();
+        assert!(puffs.iter().all(|s| s.vel.normalize().dot(towards) > 0.8));
+        s.frames(30);
+        assert_ne!(s.play.foes[0].st, St::Dash, "a breath doesn't last");
+    }
+}
+
+#[test]
+fn a_leafling_mends_whoever_is_worst_hurt() {
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, MEND_AGAIN};
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 3, 2.0);
+    let p = s.play.player.pos;
+    let foe = |f: Foe, dx: f32, dz: f32, seed: u32| {
+        let mut e = Enemy::new(f, p.x + dx, p.y + dz, 3, 0, false, seed);
+        e.speed = 0.0;
+        e
+    };
+    let mut leaf = foe(Foe::Leafling, 0.5, 2.0, 5);
+    leaf.alert = true;
+    leaf.summon = 0.05;
+    let mut slime = foe(Foe::Slime, -1.0, 2.5, 6);
+    slime.hp = slime.max_hp / 3;
+    let mut bat = foe(Foe::Bat, 1.0, 3.0, 7);
+    bat.hp = bat.max_hp * 3 / 4;
+    s.play.foes = vec![leaf, slime, bat];
+    let (slime_hp, bat_hp) = (s.play.foes[1].hp, s.play.foes[2].hp);
+    s.frames(10);
+    assert!(s.play.foes[1].hp > slime_hp, "the worst hurt is mended");
+    assert_eq!(s.play.foes[2].hp, bat_hp, "one at a time");
+    // With nobody left needing it, it looks again in a moment rather than waiting out
+    // its whole spell.
+    for f in s.play.foes.iter_mut() {
+        f.hp = f.max_hp;
+    }
+    s.play.foes[0].summon = 0.02;
+    s.frames(3);
+    let again = s.play.foes[0].summon;
+    assert!(again <= MEND_AGAIN && again > MEND_AGAIN - 0.1, "{again}");
+}
+
+#[test]
+fn werewolves_prowl_under_a_full_moon_and_howl_up_the_floor() {
+    use super::dungeon::{Foe, WEREWOLF_FLOOR};
+    use super::foes::{Enemy, HOWL_SECS, St};
+    // Only under a full moon (day 5), and not so near the top.
+    let wolves = |day: u32, depth: u32| {
+        let mut s = Sim::new();
+        s.play.clock.day = day;
+        s.play.start_fade(Trans::Descend {
+            depth,
+            via_waystone: false,
+        });
+        s.frames(60);
+        let start = s.play.player.pos;
+        let wolves: Vec<&Enemy> = s
+            .play
+            .foes
+            .iter()
+            .filter(|f| f.foe == Foe::Werewolf)
+            .collect();
+        assert!(
+            wolves
+                .iter()
+                .all(|w| (w.pos - start).length() > 14.0 && w.moonlit)
+        );
+        wolves.len()
+    };
+    assert_eq!(wolves(2, 12), 0, "not on a quiet night");
+    assert_eq!(wolves(5, WEREWOLF_FLOOR - 1), 0, "not so near the top");
+    assert!(wolves(5, 12) >= 1, "none under the full moon");
+    // Catching the hero's scent, it throws its head back and howls, and everything in
+    // earshot comes running, riled up.
+    let mut s = Sim::new();
+    one_foe_ahead(&mut s, 12, 3.0);
+    let p = s.play.player.pos;
+    let w = &s.play.level.as_ref().unwrap().world;
+    // Somewhere in plain sight a few steps off, and someone else a little further.
+    let spot = |near: f32, far: f32| {
+        (-6..=6)
+            .flat_map(|dz| (-6..=6).map(move |dx| (dx, dz)))
+            .map(|(dx, dz)| Vec2::new(p.x.floor() + dx as f32 + 0.5, p.y.floor() + dz as f32 + 0.5))
+            .find(|q| {
+                let d = (*q - p).length();
+                d > near && d < far && !w.blocked(q.x as i32, q.y as i32) && w.clear_line(*q, p)
+            })
+            .expect("open ground")
+    };
+    let (a, b) = (spot(2.5, 4.0), spot(4.5, 6.5));
+    let wolf = Enemy::new(Foe::Werewolf, a.x, a.y, 12, 1, false, 9);
+    let near = Enemy::new(Foe::Skeleton, b.x, b.y, 12, 1, false, 10);
+    s.play.foes = vec![wolf, near];
+    let fury = s.play.foes[1].fury;
+    s.frames(2);
+    assert_eq!(s.play.foes[0].st, St::Howl);
+    assert!(s.play.foes[1].alert && s.play.foes[1].fury > fury);
+    s.frames((HOWL_SECS * 60.0) as usize + 5);
+    assert_ne!(s.play.foes[0].st, St::Howl, "one howl, then the hunt");
+    // Losing the scent and finding it again, it doesn't howl twice.
+    s.play.foes[0].alert = false;
+    s.frames(2);
+    assert_ne!(s.play.foes[0].st, St::Howl);
+}
+
+#[test]
+fn drakelings_leaflings_and_werewolves_drop_their_bits() {
+    use super::dungeon::Foe;
+    use super::loot::{Fortune, foe_loot};
+    let mut rng = crate::util::Rng::new(9);
+    for (foe, biome, bit) in [
+        (Foe::Drake, 3, Item::CinderScale),
+        (Foe::Drake, 4, Item::FrostScale),
+        (Foe::Leafling, 0, Item::Heartleaf),
+        (Foe::Werewolf, 2, Item::WolfFang),
+    ] {
+        let mut got = 0;
+        for _ in 0..200 {
+            let loot = foe_loot(foe, false, biome, 14, Fortune::plain(), &mut rng);
+            got += loot.iter().filter(|s| s.item == bit).count();
+        }
+        assert!(got > 60, "{foe:?} dropped {got} {bit:?}");
+    }
+}

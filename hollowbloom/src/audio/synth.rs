@@ -81,6 +81,10 @@ pub enum Sfx {
     Piano,
     /// A recipe worked out: a music-box twinkle climbing up.
     Discover,
+    /// A werewolf's howl, to bring the whole floor running.
+    Howl,
+    /// A drakeling breathing out a roar of fire or frost.
+    Breath,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -142,6 +146,8 @@ pub const ALL: &[Sfx] = &[
     Sfx::Sizzle,
     Sfx::Piano,
     Sfx::Discover,
+    Sfx::Howl,
+    Sfx::Breath,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -753,6 +759,43 @@ pub fn make(s: Sfx) -> Vec<f32> {
                 }));
             }
             b
+        }
+        Sfx::Howl => {
+            // Up from low to a long high note, wavering, and sagging away at the end.
+            let secs = 1.5;
+            let (mut a, mut b, mut lp) = (0.0, 0.0, 0.0);
+            let mut out = render(secs, |t, n| {
+                let k = t / secs;
+                let pitch = if k < 0.22 {
+                    260.0 + k / 0.22 * 300.0
+                } else if k < 0.75 {
+                    560.0 + (k - 0.22) * 40.0
+                } else {
+                    581.0 - (k - 0.75) / 0.25 * 170.0
+                };
+                let vib = 1.0 + sine(t * 5.5) * 0.012 * (t * 2.0).min(1.0);
+                a += pitch * vib / RATE;
+                b += pitch * 2.0 * vib / RATE;
+                lp += (n - lp) * 0.1;
+                let env = (t * 6.0).min(1.0) * (1.0 - k).powf(0.6);
+                (sine(a) * 0.45 + tri(b) * 0.12 + lp * 0.25) * env
+            });
+            lowpass(&mut out, 0.5);
+            out
+        }
+        Sfx::Breath => {
+            // A rushing roar: a swell of noise over a low rumble.
+            let secs = 0.7;
+            let (mut lp, mut phase) = (0.0, 0.0);
+            let mut out = render(secs, |t, n| {
+                let k = t / secs;
+                lp += (n - lp) * (0.15 + 0.2 * (1.0 - k));
+                phase += (70.0 + 30.0 * (1.0 - k)) / RATE;
+                let env = (t * 12.0).min(1.0) * (1.0 - k).powf(1.3);
+                (lp * 0.9 + square(phase, 0.5) * 0.15 * (-t * 4.0).exp()) * env
+            });
+            lowpass(&mut out, 0.6);
+            out
         }
         Sfx::Piano => {
             // A little tune on a slightly out-of-tune upright.

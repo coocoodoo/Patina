@@ -5,7 +5,7 @@ use glam::{Mat4, Vec2, Vec3};
 
 use super::draw::{self, Outfit, Pose, Swing, draw_humanoid, flames, full_uv};
 use super::fish::{self, Hooked, Phase, Water};
-use super::fx::shot_colors;
+use super::fx::{BREATH_LIFE, ShotKind, shot_colors};
 use super::gear::{Rarity, Slot};
 use super::home::{self, WINDOWS};
 use super::items::{Kind, Placeable, Stack};
@@ -156,7 +156,12 @@ impl Play {
                 });
             }
         }
-        for s in &self.shots {
+        // (A drakeling's breath is lit by the drakeling, and leaves don't glow.)
+        for s in self
+            .shots
+            .iter()
+            .filter(|s| matches!(s.kind, ShotKind::Spark | ShotKind::Ink))
+        {
             lights.push(PointLight {
                 pos: s.world_pos(),
                 radius: 2.2,
@@ -356,16 +361,60 @@ impl Play {
             super::ink::draw_rune(r, a, rune, self.time);
         }
         for s in &self.shots {
-            if s.ink {
-                // A gob of glowing ink, dripping as it flies.
-                let p = s.world_pos();
-                let back = Vec3::new(s.vel.x, 0.0, s.vel.y) * 0.04;
-                r.halo(p, 0.3, s.color, 0.75);
-                r.point(p, 4, s.color);
-                r.point(p + Vec3::Y * 0.03, 2, WHITE);
-                r.point(p - back, 2, s.color);
-                r.point(p - back * 2.2 - Vec3::Y * 0.05, 1, s.color);
-                continue;
+            match s.kind {
+                ShotKind::Ink => {
+                    // A gob of glowing ink, dripping as it flies.
+                    let p = s.world_pos();
+                    let back = Vec3::new(s.vel.x, 0.0, s.vel.y) * 0.04;
+                    r.halo(p, 0.3, s.color, 0.75);
+                    r.point(p, 4, s.color);
+                    r.point(p + Vec3::Y * 0.03, 2, WHITE);
+                    r.point(p - back, 2, s.color);
+                    r.point(p - back * 2.2 - Vec3::Y * 0.05, 1, s.color);
+                    continue;
+                }
+                ShotKind::Breath => {
+                    // A puff of fire or frost: small and bright at the mouth, billowing out
+                    // and fading as it goes, with flames (or ice crystals) tumbling in it.
+                    let fire = s.color == ORANGE;
+                    let (glow, bits): ([u8; 3], [u8; 3]) = if fire {
+                        ([CREAM, GOLD, ORANGE], [CREAM, GOLD, RED])
+                    } else {
+                        ([WHITE, WHITE, MINT], [WHITE, INDIGO, BLUE])
+                    };
+                    let age = (1.0 - s.life / BREATH_LIFE).clamp(0.0, 1.0);
+                    let p = s.world_pos() + Vec3::Y * (age * 0.18 - 0.05);
+                    let size = 0.16 + age * 0.3;
+                    let stage = ((age * 3.0) as usize).min(2);
+                    r.halo(p, size, glow[stage], 0.8 - age * 0.45);
+                    for k in 0..4 {
+                        let a = self.time * 11.0 + k as f32 * 1.6 + s.pos.x * 5.0;
+                        let q =
+                            p + Vec3::new(a.cos(), (a * 1.3).sin() * 0.6, a.sin()) * size * 0.55;
+                        let c = bits[(k + stage) % 3];
+                        r.point(q, if k == 0 { 3 } else { 2 }, c);
+                    }
+                    if age < 0.35 {
+                        r.point(p, 3, bits[0]);
+                    } else if fire && age > 0.75 {
+                        // Smoke, once the flame's spent.
+                        r.point(p + Vec3::Y * 0.1, 2, SHADOW);
+                    }
+                    continue;
+                }
+                ShotKind::Leaf => {
+                    // A leaf, spinning end over end.
+                    let yaw = s.vel.x.atan2(s.vel.y);
+                    let spin = self.time * 16.0 + s.pos.x * 3.0;
+                    let m = Mat4::from_translation(s.world_pos())
+                        * Mat4::from_rotation_y(yaw)
+                        * Mat4::from_rotation_x(spin)
+                        * Mat4::from_translation(Vec3::new(0.0, -0.09, 0.0));
+                    let o = DrawOpts::at(s.world_pos()).two_sided();
+                    r.mesh(&a.bank, &a.beasts.leafling.leaf, &m, &o);
+                    continue;
+                }
+                ShotKind::Spark => {}
             }
             let c = shot_colors(s.color);
             r.halo(s.world_pos(), 0.28, c[1], 0.7);

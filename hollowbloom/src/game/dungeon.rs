@@ -38,19 +38,78 @@ pub enum Foe {
     /// A book-worm bibliomancer: a caterpillar in spectacles that keeps its distance and
     /// spits glowing ink, which dries into runes pointing the way on. Floor 11 and down.
     Bookworm,
+    /// A drakeling: a little dragon, a frost drake in the Frost Caverns and a cinder drake
+    /// in the Ember Depths. It keeps its distance, rears up and breathes frost or fire.
+    /// Floor 11 and down.
+    Drake,
+    /// A leafling: a cross little sprite of leaves flitting about the Mossy Burrows. It
+    /// throws leaves, and mends whoever's most hurt round it.
+    Leafling,
+    /// A werewolf: out only under a full moon, from floor 5 down. It howls to bring the
+    /// whole floor running, then pounces.
+    Werewolf,
 }
 
 /// The first floor the lantern snails and book-worms live on.
 pub const DEEP_FOLK: u32 = 11;
 
-/// Everyone living on a floor: the biome's folk, and from floor 11 down the lantern snails
-/// and book-worm bibliomancers as well.
+/// Everyone living on a floor: the biome's folk, and from floor 11 down its deep folk as
+/// well (see `deep_folk`).
 pub fn floor_foes(biome: usize, depth: u32) -> Vec<(Foe, f32)> {
     let mut v = biome_foes(biome).to_vec();
     if depth >= DEEP_FOLK {
-        v.extend([(Foe::Snail, 1.3), (Foe::Bookworm, 1.1)]);
+        v.extend_from_slice(deep_folk(biome));
     }
     v
+}
+
+/// Who lives in a biome from floor 11 down, with weights: lantern snails and book-worm
+/// bibliomancers everywhere, and drakelings in the Ember Depths and the Frost Caverns.
+pub fn deep_folk(biome: usize) -> &'static [(Foe, f32)] {
+    match biome {
+        3 | 4 => &[(Foe::Snail, 1.3), (Foe::Bookworm, 1.1), (Foe::Drake, 1.2)],
+        _ => &[(Foe::Snail, 1.3), (Foe::Bookworm, 1.1)],
+    }
+}
+
+/// The first floor werewolves prowl under a full moon.
+pub const WEREWOLF_FLOOR: u32 = 5;
+
+/// Out-of-the-way spots on a floor, far from where you come in and from each other: where
+/// the full moon's werewolves prowl.
+pub fn prowls(level: &Level, n: usize, rng: &mut Rng) -> Vec<(f32, f32)> {
+    let w = &level.world;
+    let (sx, sz) = level.start;
+    let mut open = Vec::new();
+    for z in 1..w.h - 1 {
+        for x in 1..w.w - 1 {
+            let far = (x - sx).pow(2) + (z - sz).pow(2) > 14 * 14;
+            if far && !w.blocked(x, z) && w.obj(x, z).is_none() {
+                open.push((x, z));
+            }
+        }
+    }
+    let mut out: Vec<(f32, f32)> = Vec::new();
+    while out.len() < n && !open.is_empty() {
+        let (x, z) = open.swap_remove(rng.below(open.len()));
+        let (fx, fz) = (x as f32 + 0.5, z as f32 + 0.5);
+        if out
+            .iter()
+            .all(|&(ox, oz)| (ox - fx).powi(2) + (oz - fz).powi(2) > 36.0)
+        {
+            out.push((fx, fz));
+        }
+    }
+    out
+}
+
+/// How many werewolves prowl a floor under a full moon: more the deeper you go.
+pub fn werewolves(depth: u32) -> usize {
+    if depth < WEREWOLF_FLOOR || is_waystone_floor(depth) {
+        0
+    } else {
+        (1 + depth as usize / 12).min(4)
+    }
 }
 
 pub struct Spawn {
@@ -97,9 +156,13 @@ fn biome_order(seed: u64, run: u32) -> [usize; BIOMES] {
     order
 }
 
-/// Does this creature live in this biome (on its floors, or round its ponds)?
+/// Does this creature live in this biome (on its floors, deeper down, or round its ponds)?
 pub fn lives_in(foe: Foe, biome: usize) -> bool {
-    biome_foes(biome).iter().any(|&(f, _)| f == foe) || pond_foes(biome).contains(&foe)
+    biome_foes(biome)
+        .iter()
+        .chain(deep_folk(biome))
+        .any(|&(f, _)| f == foe)
+        || pond_foes(biome).contains(&foe)
 }
 
 pub fn is_waystone_floor(depth: u32) -> bool {
@@ -114,6 +177,7 @@ pub fn biome_foes(biome: usize) -> &'static [(Foe, f32)] {
             (Foe::Slime, 3.0),
             (Foe::Bat, 1.5),
             (Foe::Shroom, 2.0),
+            (Foe::Leafling, 1.3),
             (Foe::Frog, 0.6),
             (Foe::Zombie, 1.2),
             (Foe::Sneak, 1.2),
@@ -1173,5 +1237,30 @@ mod tests {
         assert!(lives_in(Foe::Imp, 3));
         assert!((0..BIOMES).filter(|&b| lives_in(Foe::Imp, b)).count() == 1);
         assert!(lives_in(Foe::Crab, 0), "round the Mossy Burrows' ponds");
+        // The deep folk count too: snails everywhere, drakelings where it's hot or cold.
+        assert!((0..BIOMES).all(|b| lives_in(Foe::Snail, b)));
+        let drakes: Vec<usize> = (0..BIOMES).filter(|&b| lives_in(Foe::Drake, b)).collect();
+        assert_eq!(drakes, [3, 4]);
+        assert!(lives_in(Foe::Leafling, 0) && !lives_in(Foe::Leafling, 3));
+        assert!(
+            (0..BIOMES).all(|b| !lives_in(Foe::Werewolf, b)),
+            "only the moon brings them"
+        );
+    }
+
+    #[test]
+    fn drakelings_live_deep_and_werewolves_come_with_depth() {
+        for biome in 0..BIOMES {
+            let shallow = floor_foes(biome, DEEP_FOLK - 1);
+            assert!(!shallow.iter().any(|f| f.0 == Foe::Drake));
+        }
+        assert!(floor_foes(3, DEEP_FOLK).iter().any(|f| f.0 == Foe::Drake));
+        assert!(floor_foes(4, 30).iter().any(|f| f.0 == Foe::Drake));
+        assert!(!floor_foes(1, 30).iter().any(|f| f.0 == Foe::Drake));
+        assert_eq!(werewolves(WEREWOLF_FLOOR - 1), 0);
+        assert_eq!(werewolves(WEREWOLF_FLOOR), 1);
+        assert_eq!(werewolves(20), 0, "not on a guardian's floor");
+        assert_eq!(werewolves(25), 3);
+        assert_eq!(werewolves(99), 4);
     }
 }

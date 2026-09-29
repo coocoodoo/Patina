@@ -3994,7 +3994,7 @@ pub fn deep_shots(dir: &str) {
             life: 2.0,
             color: crate::assets::deep_art::INK_COLORS[3][1],
             radius: 0.17,
-            ink: true,
+            kind: crate::game::fx::ShotKind::Ink,
         });
     }
     snap(&mut game, &mut r, &input, dir, "d08_runes");
@@ -4958,4 +4958,223 @@ pub fn glowcave_shots(dir: &str) {
         fresh(&mut game);
         snap(&mut game, &mut r, &input, dir, "g18_fungal_hollow");
     }
+}
+
+/// `--beast-shots DIR`: frost and cinder drakelings rearing up and breathing, leaflings
+/// flitting about throwing leaves and mending a friend, and a werewolf under the full moon,
+/// prowling, howling and pouncing.
+pub fn beast_shots(dir: &str) {
+    use crate::game::dungeon::Foe;
+    use crate::game::foes::{BREATH_WINDUP, HOWL_SECS, St};
+    use crate::game::glowcave::is_glowcave;
+    use crate::game::sewer::is_sewer;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261005);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+        p.player.level = 30;
+        p.player.refresh();
+    }
+    // A plain floor of a biome (no sewers, no glowcaps) from band `from` on.
+    let plain = |game: &mut Game, from: u32, biome: usize| {
+        let base = floor_in(game, from, biome, 0);
+        let seed = play(game).seed;
+        (base + 2..base + 10)
+            .find(|&d| !is_sewer(seed, d) && !is_glowcave(seed, d, biome))
+            .unwrap_or(base + 4)
+    };
+    let middle = |p: &Play| {
+        let n = p.foes.len().max(1) as f32;
+        let m = p.foes.iter().map(|f| f.pos).sum::<Vec2>() / n;
+        glam::Vec3::new(m.x, 0.3, m.y)
+    };
+    // Squares the hero up to them, a few steps in front.
+    let face_off = |p: &mut Play, gap: f32| {
+        let n = p.foes.len().max(1) as f32;
+        let m = p.foes.iter().map(|f| f.pos).sum::<Vec2>() / n;
+        p.player.pos = m + Vec2::new(0.0, gap);
+        p.player.facing = Vec2::new(0.0, -1.0);
+        p.player.hurt = 100.0;
+        let ppos = p.player.pos;
+        for f in p.foes.iter_mut() {
+            let to = ppos - f.pos;
+            f.alert = true;
+            f.speed = 0.0;
+            f.yaw = to.x.atan2(to.y);
+            f.dir = to.normalize_or_zero();
+        }
+    };
+
+    // Drakelings: a frost drake in the Frost Caverns and a cinder drake in the Ember Depths,
+    // at rest, then one rearing back while the other breathes.
+    for (k, (biome, name)) in [(4usize, "frost"), (3, "cinder")].into_iter().enumerate() {
+        let depth = plain(&mut game, 1, biome);
+        descend(&mut game, &input, &audio, depth, false);
+        lineup(play(&mut game), &[Foe::Drake, Foe::Drake], biome, depth);
+        tick(&mut game, &input, &audio, 1);
+        let focus = {
+            let p = play(&mut game);
+            hold_still(p);
+            p.foes[1].yaw = -0.5;
+            middle(p)
+        };
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("b{}1_{name}_drakes", k + 1),
+            focus,
+            5.2,
+        );
+        {
+            let p = play(&mut game);
+            face_off(p, 3.0);
+            p.foes[0].st = St::Windup;
+            p.foes[0].t = BREATH_WINDUP * 0.9;
+            p.foes[1].st = St::Windup;
+            p.foes[1].t = 0.01;
+        }
+        tick(&mut game, &input, &audio, 16);
+        let focus = middle(play(&mut game)) + glam::Vec3::new(0.0, 0.0, 1.0);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("b{}2_{name}_breath", k + 1),
+            focus,
+            6.5,
+        );
+    }
+
+    // Leaflings in the Mossy Burrows: flitting about, then throwing leaves and mending a
+    // hurt slime.
+    let depth = plain(&mut game, 0, 0);
+    descend(&mut game, &input, &audio, depth, false);
+    lineup(
+        play(&mut game),
+        &[Foe::Leafling, Foe::Slime, Foe::Leafling, Foe::Leafling],
+        0,
+        depth,
+    );
+    tick(&mut game, &input, &audio, 1);
+    let focus = {
+        let p = play(&mut game);
+        hold_still(p);
+        for (i, f) in p.foes.iter_mut().enumerate() {
+            f.y = if f.flying() {
+                0.55 + i as f32 * 0.04
+            } else {
+                0.0
+            };
+        }
+        middle(p)
+    };
+    close(&mut game, &mut r, &input, dir, "b31_leaflings", focus, 5.6);
+    {
+        let p = play(&mut game);
+        face_off(p, 2.6);
+        let slime = &mut p.foes[1];
+        slime.hp = slime.max_hp / 3;
+        slime.alert = false;
+        p.foes[0].st = St::Windup;
+        p.foes[0].t = 0.01;
+        p.foes[2].summon = 0.05;
+        p.foes[3].t = 3.0;
+    }
+    tick(&mut game, &input, &audio, 12);
+    let focus = middle(play(&mut game)) + glam::Vec3::new(0.0, 0.0, 1.3);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "b32_leaves_and_mending",
+        focus,
+        6.2,
+    );
+
+    // A werewolf, out under the full moon.
+    play(&mut game).clock.day = 5;
+    let depth = plain(&mut game, 0, 1);
+    descend(&mut game, &input, &audio, depth, false);
+    lineup(play(&mut game), &[Foe::Werewolf], 1, depth);
+    tick(&mut game, &input, &audio, 1);
+    let focus = {
+        let p = play(&mut game);
+        for f in p.foes.iter_mut() {
+            f.feel_the_moon(crate::game::sky::MoonPhase::Full);
+        }
+        hold_still(p);
+        middle(p) + glam::Vec3::new(0.0, 0.3, 0.0)
+    };
+    close(&mut game, &mut r, &input, dir, "b41_werewolf", focus, 4.4);
+    // Head back and howling...
+    {
+        let p = play(&mut game);
+        p.foes[0].alert = true;
+        p.foes[0].st = St::Howl;
+        p.foes[0].t = HOWL_SECS * 0.5;
+        p.foes[0].yaw = 0.5;
+        p.fx.popup_big(
+            p.foes[0].world_pos() + glam::Vec3::Y * 1.4,
+            "Awoooo!",
+            crate::palette::CREAM,
+        );
+    }
+    close(&mut game, &mut r, &input, dir, "b42_howl", focus, 4.8);
+    // ...then, crouched, and pouncing on the hero.
+    {
+        let p = play(&mut game);
+        p.fx.pops.clear();
+        face_off(p, 2.2);
+        p.foes[0].st = St::Windup;
+        p.foes[0].t = 0.2;
+    }
+    let focus = middle(play(&mut game)) + glam::Vec3::new(0.0, 0.3, 1.0);
+    close(&mut game, &mut r, &input, dir, "b43_crouch", focus, 5.0);
+    {
+        let p = play(&mut game);
+        p.foes[0].st = St::Dash;
+        p.foes[0].t = 0.16;
+        p.foes[0].anim = 0.4;
+    }
+    close(&mut game, &mut r, &input, dir, "b44_pounce", focus, 5.0);
+    // The things they leave behind.
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.player.inv = crate::game::items::Inventory::new(p.player.inv.slots.len());
+        for (item, n) in [
+            (Item::Heartleaf, 3),
+            (Item::FrostScale, 5),
+            (Item::CinderScale, 4),
+            (Item::WolfFang, 2),
+        ] {
+            p.player.inv.add_stack(Stack::new(item, n));
+        }
+        p.menu = Menu::inventory(false);
+        if let Menu::Inventory { cursor, .. } = &mut p.menu {
+            *cursor = 3;
+        }
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "b51_loot");
 }

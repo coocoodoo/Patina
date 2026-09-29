@@ -4,9 +4,9 @@ use glam::{Mat4, Vec2, Vec3};
 
 use std::f32::consts::PI;
 
-use super::draw::{Outfit, Pose, draw_humanoid};
+use super::draw::{Outfit, Pose, Swing, draw_humanoid};
 use super::dungeon::Foe;
-use super::fx::{Fx, Shot};
+use super::fx::{BREATH_LIFE, Fx, Shot, ShotKind};
 use super::world::World;
 use crate::assets::{Assets, BIOMES, LOOKS, SEWER_LOOK};
 use crate::palette::*;
@@ -21,7 +21,33 @@ pub enum St {
     Dash,
     Rest,
     Hop,
+    /// Head thrown back, howling (a werewolf; see `Call::Howl`).
+    Howl,
 }
+
+/// Something a creature has done that reaches past itself, for the floor to answer (see
+/// `Play::update_foes`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Call {
+    /// A werewolf's howl: everything in earshot comes running, riled up.
+    Howl,
+    /// A drakeling breathing out fire or frost (for the roar of it).
+    Breath,
+    /// A leafling mending whoever's most hurt round it.
+    Mend,
+}
+
+/// How long a werewolf howls, and how far the howl carries.
+pub const HOWL_SECS: f32 = 1.1;
+pub const HOWL_REACH: f32 = 9.0;
+/// How long a drakeling rears back drawing breath, and how long it breathes for.
+pub const BREATH_WINDUP: f32 = 0.6;
+pub const BREATH_SECS: f32 = 0.45;
+/// How often a leafling mends someone, how far it reaches, and how often it looks again
+/// when nobody needs it.
+pub const MEND_SECS: f32 = 5.0;
+pub const MEND_REACH: f32 = 5.0;
+pub const MEND_AGAIN: f32 = 1.0;
 
 pub struct Enemy {
     pub foe: Foe,
@@ -72,6 +98,8 @@ pub struct Enemy {
     pub sewer: bool,
     /// Living in the glowcap caves, where the shroomlings glow like the caps.
     pub glowcave: bool,
+    /// What it has just done that the floor has to answer (taken each frame).
+    pub call: Option<Call>,
 }
 
 /// How long a lantern snail hides in its shell once struck, and how much of a blow the
@@ -135,6 +163,9 @@ pub fn base(f: Foe) -> Base {
         Foe::Bug => b(11, 6, 3.0, 0.26, 5, "Bug"),
         Foe::Snail => b(34, 9, 0.8, 0.3, 11, "Lantern Snail"),
         Foe::Bookworm => b(22, 8, 1.7, 0.28, 10, "Bibliomancer"),
+        Foe::Drake => b(38, 11, 2.0, 0.34, 14, "Drakeling"),
+        Foe::Leafling => b(16, 6, 2.7, 0.26, 8, "Leafling"),
+        Foe::Werewolf => b(52, 14, 3.0, 0.34, 18, "Werewolf"),
     }
 }
 
@@ -145,7 +176,7 @@ pub const MOTHS: usize = 2;
 pub fn flies(foe: Foe, biome: usize) -> bool {
     matches!(
         foe,
-        Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer
+        Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer | Foe::Leafling
     ) || (foe == Foe::Bug && biome % 6 == MOTHS)
 }
 
@@ -228,6 +259,10 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
         Foe::Frog => "Bog Frog",
         Foe::Jelly => "Drift Jelly",
         Foe::Puffer => "Puffer",
+        Foe::Drake if b == 3 => "Cinder Drakeling",
+        Foe::Drake => "Frost Drakeling",
+        Foe::Leafling => "Leafling",
+        Foe::Werewolf => "Werewolf",
     }
 }
 
@@ -346,6 +381,7 @@ impl Enemy {
             trail: Vec::new(),
             sewer: false,
             glowcave: false,
+            call: None,
         }
     }
 
@@ -442,7 +478,7 @@ impl Enemy {
     pub fn armored(&self) -> bool {
         matches!(
             self.foe,
-            Foe::Crab | Foe::Beetle | Foe::Golem | Foe::Skeleton
+            Foe::Crab | Foe::Beetle | Foe::Golem | Foe::Skeleton | Foe::Drake
         ) || (self.foe == Foe::Bug && (self.sewer || self.biome % 6 != MOTHS))
             || self.shelled()
     }
@@ -518,6 +554,14 @@ impl Enemy {
             if sees || (self.boss && dist < 9.0) {
                 self.alert = true;
                 fx.popup(self.world_pos() + Vec3::Y * (0.8 * self.scale()), "!", GOLD);
+                if self.foe == Foe::Werewolf && self.hops == 0 {
+                    // The first scent of you: its head goes back for a howl that brings the
+                    // whole floor running.
+                    self.hops = 1;
+                    self.st = St::Howl;
+                    self.t = HOWL_SECS;
+                    self.call = Some(Call::Howl);
+                }
             } else {
                 self.idle_wander(dt, world, rng);
                 return;
@@ -653,6 +697,9 @@ impl Enemy {
             Foe::Bug => self.bug(dt, world, dirp, dist, shots, rng),
             Foe::Snail => self.snail(dt, world, dirp, dist),
             Foe::Bookworm => self.bookworm(dt, world, dirp, dist, shots, rng),
+            Foe::Drake => self.drake(dt, world, dirp, dist, shots, rng),
+            Foe::Leafling => self.leafling(dt, world, dirp, dist, shots, rng),
+            Foe::Werewolf => self.werewolf(dt, world, dirp, dist, rng),
         }
         if dist > 0.01 && self.st != St::Dash {
             self.yaw = dirp.x.atan2(dirp.y);
@@ -744,7 +791,7 @@ impl Enemy {
                             life: 2.4,
                             color,
                             radius: 0.17,
-                            ink: true,
+                            kind: ShotKind::Ink,
                         });
                     }
                     self.st = St::Rest;
@@ -768,6 +815,187 @@ impl Enemy {
                 {
                     self.st = St::Windup;
                     self.t = 0.65;
+                }
+            }
+        }
+    }
+
+    /// A drakeling keeps its distance, circling; then it rears back drawing breath (its
+    /// mouth glowing) and breathes a gout of fire or frost, sweeping it after you.
+    fn drake(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    self.t = BREATH_SECS;
+                    self.dir = dirp;
+                    self.call = Some(Call::Breath);
+                }
+            }
+            St::Dash => {
+                // It follows you with its breath, but slowly.
+                let turn = (dt * 1.6).min(1.0);
+                self.dir = (self.dir + (dirp - self.dir) * turn).normalize_or(self.dir);
+                // A puff every so often, spread through a cone.
+                let every = 0.05;
+                let before = self.t + dt * self.fury;
+                if (before / every).floor() != (self.t / every).floor() {
+                    let spread = if self.boss { 0.6 } else { 0.32 };
+                    let d = Vec2::from_angle(rng.range_f(-spread, spread)).rotate(self.dir);
+                    shots.push(Shot {
+                        pos: self.pos + self.dir * 0.4 * self.scale(),
+                        vel: d * rng.range_f(5.0, 6.2),
+                        dmg: self.dmg,
+                        life: BREATH_LIFE,
+                        color: if self.biome % 6 == 3 { ORANGE } else { SKY },
+                        radius: 0.2,
+                        kind: ShotKind::Breath,
+                    });
+                }
+                if self.t <= 0.0 {
+                    self.st = St::Rest;
+                    self.t = 0.9;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(1.2, 2.2);
+                }
+            }
+            _ => {
+                // Near enough to scorch you, never near enough to be hit.
+                let turn = if self.seed % 2 == 0 { 1.0 } else { -1.0 };
+                let circle = Vec2::new(-dirp.y, dirp.x) * turn;
+                let want = if dist > 3.8 {
+                    dirp
+                } else if dist < 2.3 {
+                    (circle * 0.5 - dirp).normalize_or_zero()
+                } else {
+                    circle * 0.6
+                };
+                self.dir = dirp;
+                self.step(world, want * self.speed * dt);
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < 4.0 * self.reach() && sees {
+                    self.st = St::Windup;
+                    self.t = BREATH_WINDUP;
+                }
+            }
+        }
+    }
+
+    /// A leafling flits round you in fits and starts, throws a fan of leaves now and then,
+    /// and every so often mends whoever's most hurt round it (see `Call::Mend`).
+    fn leafling(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        self.y = 0.55 + (self.anim * 4.0).sin() * 0.1;
+        self.summon -= dt;
+        if self.summon <= 0.0 {
+            self.summon = MEND_SECS;
+            self.call = Some(Call::Mend);
+        }
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    let n = if self.boss { 7 } else { 3 };
+                    for k in 0..n {
+                        let a = (k as f32 - (n - 1) as f32 * 0.5) * 0.28;
+                        let d = Vec2::from_angle(a).rotate(dirp);
+                        shots.push(Shot {
+                            pos: self.pos + d * 0.3,
+                            vel: d * 4.4,
+                            dmg: self.dmg,
+                            life: 1.8,
+                            color: GREEN,
+                            radius: 0.14,
+                            kind: ShotKind::Leaf,
+                        });
+                    }
+                    self.st = St::Chase;
+                    self.t = rng.range_f(1.8, 2.8);
+                }
+            }
+            _ => {
+                // Darting this way and that, never still for long.
+                let side = Vec2::new(-dirp.y, dirp.x);
+                let flit = side * (self.anim * 1.9 + self.seed as f32).sin() * 1.3
+                    + Vec2::new((self.anim * 4.3).sin(), (self.anim * 3.1).cos()) * 0.5;
+                let want = if dist > 5.0 {
+                    dirp
+                } else if dist < 2.8 {
+                    -dirp
+                } else {
+                    Vec2::ZERO
+                };
+                let d = (want + flit).normalize_or_zero();
+                let dart = 0.6 + 0.8 * (self.anim * 5.0 + self.seed as f32).sin().max(0.0);
+                self.dir = d;
+                self.step(world, d * self.speed * dart * dt);
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < 7.0 && sees {
+                    self.st = St::Windup;
+                    self.t = 0.35;
+                }
+            }
+        }
+    }
+
+    /// A werewolf, after its howl (see `Call::Howl`), runs you down in long lopes, drops
+    /// into a crouch and pounces, claws first.
+    fn werewolf(&mut self, dt: f32, world: &World, dirp: Vec2, dist: f32, rng: &mut Rng) {
+        match self.st {
+            St::Howl => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = 0.3;
+                }
+            }
+            St::Windup => {
+                if self.t <= 0.0 {
+                    self.st = St::Dash;
+                    self.t = 0.32;
+                }
+            }
+            St::Dash => {
+                let before = self.pos;
+                let d = self.dir * self.speed * 3.2 * dt;
+                self.step(world, d);
+                if self.t <= 0.0 || (self.pos - before).length() < d.length() * 0.3 {
+                    self.st = St::Rest;
+                    self.t = 0.6;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(0.5, 1.1);
+                }
+            }
+            _ => {
+                self.dir = dirp;
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < 3.4 * self.reach() && sees {
+                    self.st = St::Windup;
+                    self.t = 0.3;
+                } else {
+                    let lope = 0.75 + 0.45 * (self.anim * 7.0).sin().abs();
+                    self.step(world, dirp * self.speed * lope * dt);
                 }
             }
         }
@@ -881,7 +1109,7 @@ impl Enemy {
                                 life: 1.2,
                                 color: SKY,
                                 radius: 0.18,
-                                ink: false,
+                                kind: ShotKind::Spark,
                             });
                         }
                         self.st = St::Rest;
@@ -949,7 +1177,7 @@ impl Enemy {
                             life: 2.5,
                             color,
                             radius: 0.16,
-                            ink: false,
+                            kind: ShotKind::Spark,
                         });
                     }
                     self.st = St::Chase;
@@ -1016,7 +1244,7 @@ impl Enemy {
                         life: 2.0,
                         color: SKY,
                         radius: 0.17,
-                        ink: false,
+                        kind: ShotKind::Spark,
                     });
                     self.st = St::Idle;
                     self.t = rng.range_f(0.5, 1.0);
@@ -1069,7 +1297,7 @@ impl Enemy {
                             life,
                             color,
                             radius: 0.15,
-                            ink: false,
+                            kind: ShotKind::Spark,
                         });
                     }
                     if jelly {
@@ -1143,7 +1371,7 @@ impl Enemy {
                             life: if self.boss { 0.9 } else { 0.4 },
                             color: skin[0],
                             radius: 0.2,
-                            ink: false,
+                            kind: ShotKind::Spark,
                         });
                     }
                     self.st = St::Rest;
@@ -1231,7 +1459,7 @@ impl Enemy {
                                 life: 1.6,
                                 color: DAGGERS[self.look()],
                                 radius: 0.12,
-                                ink: false,
+                                kind: ShotKind::Spark,
                             });
                         }
                         self.t = rng.range_f(1.8, 2.8);
@@ -1274,7 +1502,7 @@ impl Enemy {
                             life: 2.4,
                             color: PINK,
                             radius: 0.2,
-                            ink: false,
+                            kind: ShotKind::Spark,
                         });
                     }
                 }
@@ -1358,6 +1586,13 @@ impl Enemy {
             (Foe::Bug, b) => [GREEN, AQUA, LAVENDER, RED, SKY, GOLD][b % 6],
             (Foe::Snail, b) => crate::assets::deep_art::GLASS[b % 6][1],
             (Foe::Bookworm, b) => crate::assets::deep_art::INK_COLORS[b % 6][1],
+            (Foe::Drake, b) => {
+                let look =
+                    &crate::assets::beast_art::DRAKES[crate::assets::beast_art::drake_look(b)];
+                look.scales[1]
+            }
+            (Foe::Leafling, _) => GREEN,
+            (Foe::Werewolf, _) => KHAKI,
         }
     }
 
@@ -1410,6 +1645,24 @@ impl Enemy {
                 power: if self.shelled() { 0.75 } else { 0.55 },
                 warmth: [3.5, 2.0, 4.5, 7.5, 1.0, 6.5, 2.5][self.look()],
             }),
+            // A drakeling's mouth glows as it draws breath, and its breath lights the way
+            // ahead of it.
+            Foe::Drake if matches!(self.st, St::Windup | St::Dash) => {
+                let breathing = self.st == St::Dash;
+                let ahead = if breathing { 1.3 } else { 0.35 } * self.scale();
+                let at = self.pos + self.dir * ahead;
+                let fire = self.biome % 6 == 3;
+                Some(PointLight {
+                    pos: Vec3::new(at.x, 0.5 * self.scale(), at.y),
+                    radius: if breathing { 3.4 } else { 1.6 },
+                    power: match (breathing, fire) {
+                        (false, _) => 0.4,
+                        (true, true) => 0.75,
+                        (true, false) => 0.45,
+                    },
+                    warmth: if fire { 8.0 } else { 1.2 },
+                })
+            }
             // A book-worm's pages glow as it gathers its ink.
             Foe::Bookworm if self.st == St::Windup => Some(PointLight {
                 pos: self.world_pos() + Vec3::Y * 0.4,
@@ -1787,6 +2040,9 @@ impl Enemy {
             Foe::Bug => self.draw_bug(r, a, &o, b),
             Foe::Snail => self.draw_snail(r, a, &o, b),
             Foe::Bookworm => self.draw_worm(r, a, &o, b),
+            Foe::Drake => self.draw_drake(r, a, &o),
+            Foe::Leafling => self.draw_leafling(r, a, &o),
+            Foe::Werewolf => self.draw_werewolf(r, a, &o),
             Foe::Imp | Foe::Skeleton | Foe::Zombie | Foe::Brute | Foe::Sneak => {
                 let looks = &a.monsters;
                 let h = match self.foe {
@@ -1851,6 +2107,7 @@ impl Enemy {
                     squash: self.flash * 2.0,
                     reach,
                     grow: s - 1.0,
+                    look_up: 0.0,
                 };
                 let mut ho = o;
                 if self.boss {
@@ -1870,6 +2127,150 @@ impl Enemy {
                 draw_humanoid(r, a, h, root, self.yaw + lurch, &pose, &ho, &fit);
             }
         }
+    }
+
+    /// A drakeling, sat up on its haunches with its wings half open and its tail swishing.
+    /// Drawing breath it rears back, wings up and mouth aglow; breathing, it leans into it
+    /// with its wings beating.
+    fn draw_drake(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::beast_art::{DRAKES, SNOUT_AT, TAIL_AT, WING_AT, drake_look};
+        let s = self.scale();
+        let look = drake_look(self.biome);
+        let art = &a.beasts.drakes[look];
+        let rearing = 1.0 - (self.t / BREATH_WINDUP).clamp(0.0, 1.0);
+        let (lean, raise, beat) = match self.st {
+            St::Windup => (-0.3 * rearing, 0.9 * rearing, 0.0),
+            St::Dash => (0.18, 0.5, 1.0),
+            _ => (0.0, 0.25, 0.0),
+        };
+        let walking = self.alert && self.st == St::Chase || !self.alert && self.dir != Vec2::ZERO;
+        let hop = if walking {
+            (self.anim * 9.0).sin().abs() * 0.04
+        } else {
+            0.0
+        };
+        let body = Mat4::from_translation(Vec3::new(self.pos.x, hop, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s))
+            * Mat4::from_rotation_x(lean);
+        r.mesh(&a.bank, &art.body, &body, o);
+        // Its wings, half open at rest and beating hard as it breathes.
+        let wave = (self.anim * if beat > 0.0 { 22.0 } else { 6.0 }).sin();
+        let open = raise + wave * (0.15 + beat * 0.3);
+        let wo = o.two_sided();
+        for side in [1.0f32, -1.0] {
+            let m = body
+                * Mat4::from_translation(Vec3::new(WING_AT.x * side, WING_AT.y, WING_AT.z))
+                * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
+                * Mat4::from_rotation_y(0.2)
+                * Mat4::from_rotation_z(open);
+            r.mesh(&a.bank, &art.wing, &m, &wo);
+        }
+        let swish = (self.anim * 2.5 + self.seed as f32).sin() * 0.35;
+        let tail = body * Mat4::from_translation(TAIL_AT) * Mat4::from_rotation_y(swish);
+        r.mesh(&a.bank, &art.tail, &tail, o);
+        // Its mouth glowing brighter as it draws breath; the breath itself; and at rest,
+        // a wisp of smoke (or frost) from its nostrils now and then.
+        let snout = body.transform_point3(SNOUT_AT);
+        let breath = DRAKES[look].breath;
+        match self.st {
+            St::Windup => {
+                r.halo(
+                    snout,
+                    (0.12 + rearing * 0.2) * s,
+                    breath[1],
+                    0.3 + rearing * 0.5,
+                );
+                r.point(snout, 2, breath[0]);
+            }
+            St::Dash => {
+                r.halo(snout, 0.3 * s, breath[1], 0.8);
+                r.point(snout, 3, breath[0]);
+            }
+            _ => {
+                let t = (self.anim * 0.7 + self.seed as f32 * 0.1).fract();
+                if t < 0.5 {
+                    r.point(snout + Vec3::Y * (t * 0.5 * s), 1, breath[2]);
+                }
+            }
+        }
+    }
+
+    /// A leafling bobbing in the air, its leaf wings a blur, leaning back to throw.
+    fn draw_leafling(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::beast_art::LEAF_WING_AT;
+        let s = self.scale();
+        let art = &a.beasts.leafling;
+        let lean = if self.st == St::Windup { -0.35 } else { 0.12 };
+        let m = Mat4::from_translation(Vec3::new(self.pos.x, self.y - 0.22 * s, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s))
+            * Mat4::from_rotation_x(lean);
+        r.mesh(&a.bank, &art.body, &m, o);
+        let flap = (self.anim * 30.0 + self.seed as f32).sin() * 0.6;
+        let wo = o.two_sided();
+        for side in [1.0f32, -1.0] {
+            let w =
+                m * Mat4::from_translation(Vec3::new(
+                    LEAF_WING_AT.x * side,
+                    LEAF_WING_AT.y,
+                    LEAF_WING_AT.z,
+                )) * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
+                    * Mat4::from_rotation_y(0.5 + flap);
+            r.mesh(&a.bank, &art.wing, &w, &wo);
+        }
+    }
+
+    /// A werewolf loping along on its long legs, its tail streaming behind. Howling, it
+    /// throws its head back; about to pounce it crouches, and its claws come round.
+    fn draw_werewolf(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        let s = self.scale();
+        let h = &a.monsters.werewolf;
+        let moving = if self.alert {
+            matches!(self.st, St::Chase | St::Idle | St::Dash)
+        } else {
+            self.dir.length_squared() > 0.0
+        };
+        let pace = if self.st == St::Dash { 16.0 } else { 12.0 };
+        let swing = match self.st {
+            St::Windup => Some((0.0, Swing::Slash)),
+            St::Dash => Some((1.0 - self.t.clamp(0.0, 0.32) / 0.32, Swing::Slash)),
+            _ => None,
+        };
+        // Head back for the howl, held, and down again.
+        let howl = if self.st == St::Howl {
+            let k = 1.0 - (self.t / HOWL_SECS).clamp(0.0, 1.0);
+            ((k * PI).sin() / 0.8).min(1.0)
+        } else {
+            0.0
+        };
+        let crouch = if self.st == St::Windup { 0.35 } else { 0.0 };
+        let stride = if moving { 1.0 } else { 0.0 };
+        let pose = Pose {
+            walk: self.anim * pace,
+            stride,
+            swing,
+            bob: (self.anim * pace).sin().abs() * 0.05 * stride,
+            squash: self.flash * 2.0 + crouch,
+            // Claws out in front, ready.
+            reach: if self.st == St::Howl { 0.0 } else { 0.25 },
+            grow: s - 1.0,
+            look_up: howl * 0.9,
+        };
+        let root = Vec3::new(self.pos.x, 0.0, self.pos.y);
+        draw_humanoid(r, a, h, root, self.yaw, &pose, o, &Outfit::default());
+        // The tail, from the small of its back: streaming out behind as it runs, up for
+        // the howl, and wagging.
+        let wag = (self.anim * if moving { 9.0 } else { 3.0 }).sin() * 0.3;
+        let (squash, widen) = (1.0 - pose.squash * 0.25, 1.0 + pose.squash * 0.2);
+        let m = Mat4::from_translation(root)
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(1.0 + pose.grow))
+            * Mat4::from_scale(Vec3::new(widen, squash, widen))
+            * Mat4::from_translation(Vec3::new(0.0, h.hip + 0.06, -0.15))
+            * Mat4::from_rotation_y(wag)
+            * Mat4::from_rotation_x(stride * 0.5 + howl * 0.9);
+        r.mesh(&a.bank, &a.monsters.wolf_tail, &m, o);
     }
 
     /// A bug: its body, jointed legs on both sides scuttling in step, and wings or claws

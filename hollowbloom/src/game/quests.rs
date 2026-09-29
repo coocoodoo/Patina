@@ -5,7 +5,7 @@ use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
 use super::Io;
-use super::dungeon::{Foe, biome_foes, biome_for, guardian_home, lives_in, pond_foes};
+use super::dungeon::{Foe, biome_foes, biome_for, deep_folk, guardian_home, lives_in, pond_foes};
 use super::folk::{VILLAGERS, Villager};
 use super::fx::Drop;
 use super::gear::{Group, Rarity};
@@ -2991,6 +2991,7 @@ pub fn home_biome(foe: Foe) -> usize {
     let at = |b: usize| {
         biome_foes(b)
             .iter()
+            .chain(deep_folk(b))
             .find(|f| f.0 == foe)
             .map_or(0.0, |f| f.1)
             + if pond_foes(b).contains(&foe) {
@@ -3095,6 +3096,9 @@ pub fn foe_name(f: Foe) -> &'static str {
         Foe::Bug => "bug",
         Foe::Snail => "lantern snail",
         Foe::Bookworm => "book-worm",
+        Foe::Drake => "drakeling",
+        Foe::Leafling => "leafling",
+        Foe::Werewolf => "werewolf",
     }
 }
 

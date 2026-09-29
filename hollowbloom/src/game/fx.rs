@@ -442,9 +442,24 @@ pub struct Shot {
     pub life: f32,
     pub color: u8,
     pub radius: f32,
-    /// Book-worm ink: where it lands it dries into a rune (see `Rune`).
-    pub ink: bool,
+    pub kind: ShotKind,
 }
+
+/// What a creature's shot is, for how it looks and what becomes of it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShotKind {
+    /// A ball of light in its colour (a spark, a dagger's glint, a bubble, a shard).
+    Spark,
+    /// Book-worm ink: where it lands it dries into a rune (see `Rune`).
+    Ink,
+    /// A puff of a drakeling's breath, fire or frost, billowing out as it goes.
+    Breath,
+    /// A leafling's leaf, spinning as it flies.
+    Leaf,
+}
+
+/// How long a puff of a drakeling's breath lasts.
+pub const BREATH_LIFE: f32 = 0.6;
 
 /// A splash of book-worm ink dried into a glowing rune on the floor. Its arrow points the
 /// way on to the stairs down (or, in gold, towards a secret), and it fades after a while.

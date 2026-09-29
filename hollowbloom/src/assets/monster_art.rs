@@ -55,6 +55,10 @@ pub struct Monsters {
     pub ghost_face: Mesh,
     pub ghost_hat: Vec<Mesh>,
     pub bug: Vec<Bug>,
+    /// The werewolf of the full moon, and its bushy tail (hanging down and back from the
+    /// hips).
+    pub werewolf: Humanoid,
+    pub wolf_tail: Mesh,
 }
 
 fn v(x: f32, y: f32, z: f32) -> Vec3 {
@@ -841,6 +845,221 @@ fn brute(bank: &mut TexBank, k: &mut Kit, biome: usize) -> Humanoid {
             }
         }
     })
+}
+
+/// A werewolf: grey fur, a long muzzle full of fangs, tall pointed ears, glowing gold eyes,
+/// and claws, in what's left of a pair of trousers. Tall, lean and hunched.
+fn werewolf(bank: &mut TexBank, k: &mut Kit) -> (Humanoid, Mesh) {
+    let (fur, dark, light) = (SHADOW, INK, KHAKI);
+    let (cloth, torn) = (RUST, MAROON);
+    let legend = [
+        ('f', fur),
+        ('d', dark),
+        ('l', light),
+        ('y', GOLD),
+        ('k', INK),
+        ('c', cloth),
+    ];
+    let head = head_tex(
+        &[
+            "ffffffff", "kkffffkk", "fyykkyyf", "fyklkyyf", "ffllllff", "flllllll", "llllllll",
+        ],
+        &legend,
+        fur,
+        dark,
+        fur,
+        light,
+    );
+    let body = body_tex(
+        &["fllllf", "fllllf", "ffllff", "ffffff", "cccccc"],
+        &legend,
+        fur,
+        cloth,
+        fur,
+    );
+    let arm = limb(fur, dark, dark);
+    let leg = limb(cloth, torn, fur);
+    let b = Build {
+        head: v(0.15, 0.24, 0.15),
+        body: v(0.24, 0.36, 0.17),
+        arm: Vec2::new(0.07, 0.36),
+        leg: Vec2::new(0.08, 0.22),
+    };
+    let wolf = assemble(bank, [head, body, arm, leg], &b, &mut |bank, parts| {
+        let h = &mut parts[HEAD];
+        // A long muzzle: fur on top, a pale jaw under it, a black nose on the end, and
+        // fangs hanging over the jaw.
+        k.bx(bank, h, v(-0.07, 0.045, 0.14), v(0.07, 0.13, 0.33), fur);
+        k.bx(bank, h, v(-0.062, 0.0, 0.14), v(0.062, 0.05, 0.3), light);
+        k.bx(bank, h, v(-0.034, 0.1, 0.32), v(0.034, 0.145, 0.35), INK);
+        k.bx(bank, h, v(-0.068, 0.046, 0.3), v(0.068, 0.054, 0.334), INK);
+        for sx in [-1.0f32, 1.0] {
+            k.bx(
+                bank,
+                h,
+                v(sx * 0.045 - 0.011, 0.012, 0.3),
+                v(sx * 0.045 + 0.011, 0.05, 0.32),
+                WHITE,
+            );
+            // Shaggy tufts at its cheeks.
+            let (x0, x1) = if sx < 0.0 {
+                (-0.19, -0.13)
+            } else {
+                (0.13, 0.19)
+            };
+            k.bx(bank, h, v(x0, 0.02, -0.06), v(x1, 0.12, 0.1), fur);
+        }
+        // Tall pointed ears, dark at the tips, pink inside.
+        let furt = k.c(bank, fur);
+        let tip = k.c(bank, dark);
+        let inner = k.c(bank, ROSEWOOD);
+        for sx in [-1.0f32, 1.0] {
+            let mut ear = Mesh::new();
+            lathe(
+                &mut ear,
+                Vec3::ZERO,
+                &[(0.06, 0.0), (0.035, 0.1)],
+                4,
+                0.785,
+                furt,
+                false,
+            );
+            lathe(
+                &mut ear,
+                Vec3::ZERO,
+                &[(0.035, 0.1), (0.0, 0.17)],
+                4,
+                0.785,
+                tip,
+                false,
+            );
+            lathe(
+                &mut ear,
+                v(0.0, 0.0, 0.03),
+                &[(0.03, 0.01), (0.0, 0.1)],
+                4,
+                0.785,
+                inner,
+                false,
+            );
+            h.append(
+                &ear,
+                Mat4::from_translation(v(sx * 0.09, 0.22, -0.03))
+                    * Mat4::from_rotation_z(-sx * 0.22),
+            );
+        }
+        // A mane of dark spikes down the back of its head and neck.
+        for (y, z) in [(0.2, -0.13), (0.1, -0.15), (0.0, -0.15)] {
+            let mut m = Mesh::new();
+            lathe(
+                &mut m,
+                Vec3::ZERO,
+                &[(0.05, 0.0), (0.0, 0.11)],
+                4,
+                0.785,
+                tip,
+                false,
+            );
+            h.append(
+                &m,
+                Mat4::from_translation(v(0.0, y, z)) * Mat4::from_rotation_x(-2.0),
+            );
+        }
+        // Tufts of fur bristling off its shoulders.
+        for sx in [-1.0f32, 1.0] {
+            for (dx, dz) in [(0.0f32, -0.06f32), (0.05, 0.05)] {
+                let mut m = Mesh::new();
+                lathe(
+                    &mut m,
+                    Vec3::ZERO,
+                    &[(0.05, 0.0), (0.0, 0.12)],
+                    4,
+                    0.785,
+                    furt,
+                    false,
+                );
+                parts[BODY].append(
+                    &m,
+                    Mat4::from_translation(v(sx * (0.2 + dx), 0.33, dz))
+                        * Mat4::from_rotation_z(-sx * 0.7),
+                );
+            }
+        }
+        // Claws on its paws.
+        let claw = k.c(bank, CREAM);
+        for i in [ARM_L, ARM_R] {
+            for x in [-0.04f32, 0.0, 0.04] {
+                let mut m = Mesh::new();
+                lathe(
+                    &mut m,
+                    Vec3::ZERO,
+                    &[(0.014, 0.0), (0.0, 0.07)],
+                    4,
+                    0.785,
+                    claw,
+                    false,
+                );
+                parts[i].append(
+                    &m,
+                    Mat4::from_translation(v(x, -0.35, 0.045)) * Mat4::from_rotation_x(2.6),
+                );
+            }
+        }
+        // Torn trouser legs, and furry feet with claws.
+        for i in [LEG_L, LEG_R] {
+            k.bx(
+                bank,
+                &mut parts[i],
+                v(-0.085, -0.22, -0.08),
+                v(0.085, -0.17, 0.13),
+                fur,
+            );
+            for x in [-0.045f32, 0.0, 0.045] {
+                k.bx(
+                    bank,
+                    &mut parts[i],
+                    v(x - 0.01, -0.22, 0.13),
+                    v(x + 0.01, -0.2, 0.165),
+                    CREAM,
+                );
+            }
+            // Ragged hems.
+            for x in [-0.06f32, 0.02] {
+                k.bx(
+                    bank,
+                    &mut parts[i],
+                    v(x, -0.19, -0.085),
+                    v(x + 0.04, -0.15, 0.085),
+                    torn,
+                );
+            }
+        }
+    });
+    // A bushy tail, thickest in the middle, a pale tip; it hangs down and back.
+    let mut tail = Mesh::new();
+    let furt = k.c(bank, fur);
+    let pale = k.c(bank, light);
+    lathe(
+        &mut tail,
+        Vec3::ZERO,
+        &[(0.04, 0.0), (0.09, 0.12), (0.08, 0.24), (0.05, 0.3)],
+        6,
+        0.0,
+        furt,
+        false,
+    );
+    lathe(
+        &mut tail,
+        Vec3::ZERO,
+        &[(0.05, 0.3), (0.0, 0.36)],
+        6,
+        0.0,
+        pale,
+        false,
+    );
+    let mut hang = Mesh::new();
+    hang.append(&tail, Mat4::from_rotation_x(-2.3));
+    (wolf, hang)
 }
 
 /// A skinny goblin: all elbows and knees, a hood and a long nose.
@@ -1768,6 +1987,7 @@ pub fn build(bank: &mut TexBank) -> Monsters {
             &k.w4,
         );
     }
+    let (werewolf, wolf_tail) = werewolf(bank, &mut k);
     let ghost_pals = [
         [MINT, LIME, GREEN],
         [WHITE, SKY, AQUA],
@@ -1789,6 +2009,8 @@ pub fn build(bank: &mut TexBank) -> Monsters {
         ghost_face,
         ghost_hat: (0..LOOKS).map(|b| ghost_hat(bank, &mut k, b)).collect(),
         bug: (0..LOOKS).map(|b| bug(bank, &mut k, b)).collect(),
+        werewolf,
+        wolf_tail,
     }
 }
 

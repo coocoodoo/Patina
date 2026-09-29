@@ -187,6 +187,9 @@ items! {
     Chitin = "chitin", "Bug Chitin", "chitin", 99, 12, Material, "A tough, glossy plate off a Hollow bug.";
     StainedGlass = "stained_glass", "Stained Glass", "stained_glass", 99, 60, Material, "A pane of a lantern snail's shell. It never quite stops glowing.";
     GlowInk = "glow_ink", "Glow Ink", "glow_ink", 99, 45, Material, "Book-worm ink. It glows, and it always seems to know the way.";
+    FrostScale = "frost_scale", "Frost Scale", "frost_scale", 99, 85, Material, "A frost drake's scale, cold as a winter morning however long you hold it.";
+    CinderScale = "cinder_scale", "Cinder Scale", "cinder_scale", 99, 85, Material, "A cinder drake's scale, still warm from the fire inside.";
+    WolfFang = "wolf_fang", "Werewolf Fang", "wolf_fang", 99, 120, Material, "Only ever found the morning after a full moon.";
     InkMap = "ink_map", "Ink Map", "ink_map", 20, 90, Kind::InkMap, "Read it in the Hollow and runes of glowing ink light the way to the stairs down, and hint at secrets.";
 
     // Gems: scroll ink, and worth a pretty coin.

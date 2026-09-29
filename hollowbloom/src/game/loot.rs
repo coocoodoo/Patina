@@ -359,6 +359,24 @@ fn foe_bits(foe: Foe, biome: usize, rng: &mut Rng) -> Vec<Stack> {
             roll(o, rng, Item::GlowInk, 0.55, 1, 2);
             roll(o, rng, Item::WispDust, 0.2, 1, 1);
         }
+        Foe::Drake => {
+            let (scale, gem) = if biome % 6 == 3 {
+                (Item::CinderScale, Item::EmberOre)
+            } else {
+                (Item::FrostScale, Item::FrostGem)
+            };
+            roll(o, rng, scale, 0.6, 1, 2);
+            roll(o, rng, gem, 0.15, 1, 1);
+        }
+        Foe::Leafling => {
+            roll(o, rng, Item::Heartleaf, 0.5, 1, 2);
+            roll(o, rng, Item::Fiber, 0.4, 1, 3);
+            roll(o, rng, Item::MossberrySeeds, 0.12, 1, 2);
+        }
+        Foe::Werewolf => {
+            roll(o, rng, Item::WolfFang, 0.75, 1, 2);
+            roll(o, rng, Item::Bone, 0.3, 1, 1);
+        }
     }
     out
 }

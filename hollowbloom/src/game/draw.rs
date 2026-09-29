@@ -1349,6 +1349,8 @@ pub struct Pose {
     pub reach: f32,
     /// Drawn this much bigger than life (0 = life size, 1 = twice as big).
     pub grow: f32,
+    /// The head tipped back this far (radians): a werewolf howling at the moon.
+    pub look_up: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -1510,7 +1512,7 @@ fn draw_body(
     }
     let head = root
         * Mat4::from_translation(Vec3::new(0.0, h.neck + bob, 0.0))
-        * Mat4::from_rotation_x(-0.22)
+        * Mat4::from_rotation_x(-0.22 - pose.look_up)
         * Mat4::from_rotation_z(sw * 0.05);
     let head_mesh = match fit.hat {
         Some(_) if fit.hood => &h.head_hooded,

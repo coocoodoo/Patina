@@ -421,6 +421,21 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   to a secret room the floor still hides). Snails drop **stained glass** (make a **Snail
   Lamp** for the house), book-worms drop **glow ink** and scrolls, and the ink makes **Ink
   Maps**: read one in the Hollow and a line of runes lights the way down.
+* **Drakelings** live from floor 11 down in the Ember Depths (**cinder drakes**, red and
+  gold) and the Frost Caverns (**frost drakes**, blue with dark bat wings): little horned
+  dragons that circle just out of reach, **rear back with their mouths aglow** and breathe a
+  roaring gout of **fire or frost** that they sweep after you. Their scales turn blows into
+  sparks. They drop **cinder** or **frost scales**, and now and then ember ore or a frost
+  gem.
+* **Leaflings** flit about the Mossy Burrows: cross little sprites of leaves with red eyes
+  and glassy leaf wings, darting this way and that and throwing **fans of spinning leaves**.
+  Every few seconds one **mends whoever's worst hurt** round it (a stream of green light and
+  a green ring), so deal with them first. They drop heartleaf, fibre and mossberry seeds.
+* **Werewolves** come out **under a full moon**, from floor 5 down (more of them the deeper
+  you go, never on a guardian's floor), prowling far from where you came in. The first time
+  one catches your scent it throws its head back and **howls**, and every creature in earshot
+  comes running, riled up (a second howl riles them further). Then it runs you down in long
+  lopes, drops into a crouch and **pounces**, claws first. They drop **werewolf fangs**.
 * **The old sewers.** Now and then (from floor 3, never on a guardian's floor) a floor is a
   stretch of sewer instead of caves: murky green channels, misty and bubbling, run between
   **stone walkways two lanes wide on each side**, curbed along the water, meeting at
@@ -614,6 +629,7 @@ hollowbloom --season-shots DIR    # the farm and town in every season, day and n
 hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and the snail lamp
 hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
+hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)

@@ -6,8 +6,8 @@ use super::combat::{Bolt, Flash};
 use super::draw::Env;
 use super::dungeon::{self, Level, is_waystone_floor, ore_item};
 use super::farm::{self, MARKS, tillable};
-use super::foes::{Enemy, St};
-use super::fx::{Drop, Fx, Rune, Shot};
+use super::foes::{Call, Enemy, HOWL_REACH, MEND_AGAIN, MEND_REACH, St};
+use super::fx::{Drop, Fx, Rune, Shot, ShotKind};
 use super::gear::{Class, Rarity, Stat};
 use super::items::{Crop, Inventory, Item, Kind, Placeable, Stack};
 use super::loot::{self, Fortune};
@@ -712,6 +712,20 @@ impl Play {
             }
             f.feel_the_moon(moon);
             self.foes.push(f);
+        }
+        if moon.full() {
+            // Under a full moon, werewolves prowl the Hollow, well away from the way in.
+            let n = dungeon::werewolves(depth);
+            let mut rng = Rng::new(self.seed ^ (depth as u64 * 0x57A8) ^ self.clock.day as u64);
+            for (k, (x, z)) in dungeon::prowls(&level, n, &mut rng).into_iter().enumerate() {
+                let seed = hash2(depth as i32, 900 + k as i32, self.seed as u32);
+                let mut f = Enemy::new(dungeon::Foe::Werewolf, x, z, depth, biome, false, seed);
+                if level.world.sewer {
+                    f = f.in_the_sewers();
+                }
+                f.feel_the_moon(moon);
+                self.foes.push(f);
+            }
         }
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
@@ -3087,7 +3101,8 @@ impl Play {
         let mut spawns = Vec::new();
         let mut shots = std::mem::take(&mut self.shots);
         let before = shots.len();
-        for f in self.foes.iter_mut() {
+        let mut calls = Vec::new();
+        for (i, f) in self.foes.iter_mut().enumerate() {
             let was_alert = f.alert;
             // Chilled creatures move (and think) at half speed.
             let fdt = if f.chill > 0.0 { dt * 0.5 } else { dt };
@@ -3107,9 +3122,16 @@ impl Play {
                     self.boss_seen = Some(f.name().to_string());
                 }
             }
+            if let Some(c) = f.call.take() {
+                calls.push((i, c));
+            }
         }
-        if shots.len() > before {
+        // (A drakeling's breath roars rather than zaps: see `answer`.)
+        if shots[before..].iter().any(|s| s.kind != ShotKind::Breath) {
             io.audio.play(Sfx::Shoot);
+        }
+        for (i, c) in calls {
+            self.answer(i, c, io);
         }
         // Keep enemies from stacking up.
         let n = self.foes.len();
@@ -3154,14 +3176,14 @@ impl Play {
         shots.retain_mut(|s| {
             if !s.update(dt, world) {
                 // Ink splashes where it lands (just short of any wall it hit).
-                if s.ink {
+                if s.kind == ShotKind::Ink {
                     splats.push(s.pos - s.vel * dt);
                 }
                 return false;
             }
             if (s.pos - ppos).length() < s.radius + RADIUS {
                 hurt = Some((s.dmg, s.vel.normalize_or_zero(), None));
-                if s.ink {
+                if s.kind == ShotKind::Ink {
                     splats.push(ppos);
                 }
                 return false;
@@ -3175,6 +3197,74 @@ impl Play {
         if let Some((dmg, dir, from)) = hurt {
             self.hurt_player(dmg, dir, from, io);
             self.reap(io);
+        }
+    }
+
+    /// Answers what a creature has just done that reaches past itself (see `Call`).
+    fn answer(&mut self, i: usize, call: Call, io: &mut Io) {
+        let (pos, at, biome) = {
+            let f = &self.foes[i];
+            (f.pos, f.world_pos(), f.biome)
+        };
+        match call {
+            Call::Howl => {
+                let pitch = 0.95 + self.rng.f32() * 0.1;
+                io.audio.play_at(Sfx::Howl, 0.9, pitch);
+                self.fx.popup_big(at + Vec3::Y * 1.4, "Awoooo!", CREAM);
+                self.fx
+                    .ring(at + Vec3::Y * 1.0, 4.0, 24, &[WHITE, CREAM, SAND]);
+                // Everything in earshot comes running, and riled up (a second howl riles
+                // them further; a third, no more).
+                for (j, f) in self.foes.iter_mut().enumerate() {
+                    if j != i && (f.pos - pos).length() < HOWL_REACH {
+                        f.alert = true;
+                        if f.fury < 1.6 {
+                            f.fury += 0.2;
+                            f.speed *= 1.08;
+                        }
+                    }
+                }
+            }
+            Call::Breath => {
+                let pitch = if biome % 6 == 3 { 0.9 } else { 1.15 };
+                io.audio.play_at(Sfx::Breath, 0.8, pitch);
+            }
+            Call::Mend => {
+                // Whoever's worst hurt close by (not itself).
+                let hurt = |f: &Enemy| f.hp as f32 / f.max_hp.max(1) as f32;
+                let patient = self
+                    .foes
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, f)| {
+                        *j != i
+                            && f.hp > 0
+                            && f.hp < f.max_hp
+                            && (f.pos - pos).length() < MEND_REACH
+                    })
+                    .min_by(|a, b| hurt(a.1).total_cmp(&hurt(b.1)))
+                    .map(|(j, _)| j);
+                let Some(j) = patient else {
+                    // Nobody needs it yet: it looks again in a moment.
+                    self.foes[i].summon = MEND_AGAIN;
+                    return;
+                };
+                let f = &mut self.foes[j];
+                let heal = (f.max_hp / 4).max(4).min(f.max_hp - f.hp);
+                f.hp += heal;
+                let to = f.world_pos() + Vec3::Y * (0.4 * f.scale());
+                let ground = Vec3::new(f.pos.x, 0.05, f.pos.y);
+                self.fx.popup(to + Vec3::Y * 0.4, format!("+{heal}"), LIME);
+                self.fx.motes(to, 14, &[WHITE, LIME, GREEN], 0.4);
+                self.fx.ring(ground, 1.6, 14, &[WHITE, LIME, GREEN]);
+                // A stream of green light from the leafling to whoever it mends.
+                let from = at + Vec3::Y * 0.1;
+                for k in 1..6 {
+                    self.fx
+                        .motes(from.lerp(to, k as f32 / 6.0), 1, &[LIME, MINT], 0.05);
+                }
+                io.audio.play_at(Sfx::Magic, 0.45, 1.5);
+            }
         }
     }
 

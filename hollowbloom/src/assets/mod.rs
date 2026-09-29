@@ -1,5 +1,6 @@
 //! Every texture, sprite, font and model the game uses, generated at start-up.
 
+pub mod beast_art;
 pub mod deep_art;
 pub mod delve_art;
 pub mod fish_art;
@@ -670,6 +671,8 @@ pub struct Assets {
     pub sewer: sewer_art::SewerArt,
     /// The glowcap caves: their rock, ruins and pools, and the glowing mushrooms.
     pub glowcave: glowcave_art::GlowcaveArt,
+    /// Drakelings and leaflings.
+    pub beasts: beast_art::Beasts,
 }
 
 impl Assets {
@@ -681,6 +684,7 @@ impl Assets {
         quest_art::build(&mut bank, &mut icons);
         season_art::build(&mut bank, &mut icons);
         deep_art::icons(&mut bank, &mut icons);
+        beast_art::icons(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
         fish_art::build(&mut bank, &mut icons);
         let home = home_art::build(&mut bank, &mut icons);
@@ -830,6 +834,7 @@ impl Assets {
         let deep = deep_art::build(&mut bank);
         let sewer = sewer_art::build(&mut bank);
         let glowcave = glowcave_art::build(&mut bank);
+        let beasts = beast_art::build(&mut bank);
         Assets {
             foes,
             bank,
@@ -883,6 +888,7 @@ impl Assets {
             deep,
             sewer,
             glowcave,
+            beasts,
         }
     }
 
