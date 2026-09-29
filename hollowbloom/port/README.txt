@@ -25,6 +25,7 @@ CONTROLS
 
 GOOD TO KNOW
 
-  Saves go in hollowbloom/save. If the game won't start, hollowbloom/log.txt says why.
+  Saves go in the hollowbloom folder, beside the game (save.json). If the game won't
+  start, hollowbloom/log.txt says why.
   Sun shadows and ambient occlusion start off to keep it quick; turn them on under
   Pause > Settings if your handheld keeps up.

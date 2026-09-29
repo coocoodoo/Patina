@@ -178,7 +178,7 @@ ambient occlusion start off, as they halve the frame rate on a small processor.
 
 `hollowbloom/package.sh handheld` builds it (with cargo-zigbuild) and lays it out for a
 ports folder: copy `Hollowbloom.sh` and the `hollowbloom` folder into `roms/ports` and it
-shows up under **Ports** in EmulationStation. Saves go in `hollowbloom/save` beside the game,
+shows up under **Ports** in EmulationStation. Saves go in the `hollowbloom` folder beside the game (flushed to the card as they're written),
 and if A and B come out the wrong way round, `Hollowbloom.sh` has a line to swap them. The
 game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
 

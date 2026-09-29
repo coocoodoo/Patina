@@ -21,10 +21,14 @@ fi
 
 GAMEDIR="$(cd "$(dirname "$0")/hollowbloom" && pwd)"
 cd "$GAMEDIR" || exit 1
-# Saves stay with the game, on the card.
-export HOLLOWBLOOM_DATA="$GAMEDIR/save"
+# Saves go beside the game, on the card. Bring over any from where earlier builds kept them.
+for f in save.json settings.json; do
+  [ -f "save/$f" ] && [ ! -f "$f" ] && mv "save/$f" "$f"
+done
 # If A and B (and X and Y) come out the wrong way round, remove the # from the next line.
 # export HOLLOWBLOOM_SWAP_AB=1
 
 chmod +x ./hollowbloom
 ./hollowbloom --sdl > "$GAMEDIR/log.txt" 2>&1
+# Make sure the card has it all before anything powers off.
+sync

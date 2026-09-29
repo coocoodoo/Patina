@@ -181,6 +181,15 @@ pub fn dir() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("HOLLOWBLOOM_DATA") {
         return Some(PathBuf::from(p));
     }
+    // On a handheld the game lives on the games card, and its saves live beside it.
+    if crate::input::handheld() {
+        if let Some(d) = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(PathBuf::from))
+        {
+            return Some(d);
+        }
+    }
     #[cfg(windows)]
     {
         std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Hollowbloom"))
@@ -208,7 +217,7 @@ fn path() -> Option<PathBuf> {
 }
 
 pub fn exists() -> bool {
-    path().is_some_and(|p| p.exists())
+    path().is_some_and(|p| p.exists() || p.with_extension("tmp").exists())
 }
 
 pub fn write(p: &Play) -> Result<(), String> {
@@ -246,15 +255,39 @@ pub fn write(p: &Play) -> Result<(), String> {
     if let Some(d) = path.parent() {
         fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    write_file(&path, json.as_bytes())
+}
+
+/// Writes a file so a crash or power-off midway leaves the old one whole: a copy beside it,
+/// flushed to the disk, then put in its place. A handheld's FAT or exFAT card needs the
+/// flushing (it's otherwise lost at power-off), and some of their drivers won't rename
+/// over a file, so the old one goes first when they won't.
+fn write_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    {
+        let mut f = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        f.write_all(bytes).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+    }
+    if fs::rename(&tmp, path).is_err() {
+        let _ = fs::remove_file(path);
+        fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    }
+    if let Some(d) = path.parent().and_then(|d| fs::File::open(d).ok()) {
+        let _ = d.sync_all();
+    }
+    Ok(())
 }
 
 pub fn read() -> Result<Play, String> {
     let path = path().ok_or("no data directory")?;
-    let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let d: SaveData = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    // A copy left whole by a write that stopped before replacing the save will do too.
+    let d: SaveData = [path.clone(), path.with_extension("tmp")]
+        .iter()
+        .filter_map(|p| fs::read_to_string(p).ok())
+        .find_map(|t| serde_json::from_str(&t).ok())
+        .ok_or_else(|| format!("couldn't read {}", path.display()))?;
     let mut p = Play::new(d.seed);
     p.clock.day = d.day.max(1);
     p.clock.min = d
@@ -374,13 +407,25 @@ pub fn save_settings(s: &super::Settings) {
         ao: s.ao,
     };
     if let Ok(j) = serde_json::to_string_pretty(&f) {
-        let _ = fs::write(d.join("settings.json"), j);
+        let _ = write_file(&d.join("settings.json"), j.as_bytes());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_is_replaced_whole() {
+        let d = std::env::temp_dir().join(format!("hb-save-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        let p = d.join("save.json");
+        write_file(&p, b"one").unwrap();
+        write_file(&p, b"two").unwrap();
+        assert_eq!(fs::read(&p).unwrap(), b"two");
+        assert!(!p.with_extension("tmp").exists());
+        let _ = fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn farm_round_trip() {
