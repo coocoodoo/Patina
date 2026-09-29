@@ -105,6 +105,16 @@ fn descend(game: &mut Game, input: &Input, audio: &Audio, depth: u32, waystone: 
     p.banner = None;
 }
 
+/// Floor `n` (1 to 10) of the first band of ten floors, from band `from` down, that's in
+/// `biome` on this save.
+fn floor_in(game: &mut Game, from: u32, biome: usize, n: u32) -> u32 {
+    let p = play(game);
+    let band = (from..from + 24)
+        .find(|b| p.biome_at(b * 10 + 1) == biome)
+        .expect("every biome comes round");
+    band * 10 + n
+}
+
 /// A piece of gear with hand-picked rolls, for showing off.
 fn fancy(item: Item, level: u16, affixes: &[(Stat, i16)], enchants: &[(Stat, i16)]) -> Stack {
     let mut g = Gear::plain(level);
@@ -516,7 +526,8 @@ pub fn shots(dir: &str) {
             ActKind::Blast,
         ),
     ];
-    for (i, depth) in [1u32, 14, 25, 33, 44, 56].into_iter().enumerate() {
+    for (i, n) in [1u32, 4, 5, 3, 4, 6].into_iter().enumerate() {
+        let depth = floor_in(&mut game, 0, i, n);
         descend(&mut game, &input, &audio, depth, false);
         {
             let p = play(&mut game);
@@ -2159,7 +2170,7 @@ pub fn home_shots(dir: &str) {
         p.drops.clear();
         p.player.pos = Vec2::new(wx as f32 + 0.5, wz as f32 + 2.5);
         p.player.facing = Vec2::new(0.0, -1.0);
-        let biome = crate::game::dungeon::biome_for(depth);
+        let biome = p.hollow_biome(depth);
         let (px, pz) = p.player.tile();
         let w = &p.level.as_ref().unwrap().world;
         let mut open = Vec::new();
@@ -2511,7 +2522,8 @@ pub fn light_shots(dir: &str) {
     tick(&mut game, &input, &audio, 2);
     snap(&mut game, &mut r, &input, dir, "l07_town_afternoon");
     // Underground and indoors: ambient occlusion alone.
-    for (name, depth) in [("l08_hollow_mossy", 3u32), ("l09_hollow_frost", 44)] {
+    for (name, biome, n) in [("l08_hollow_mossy", 0, 3u32), ("l09_hollow_frost", 4, 4)] {
+        let depth = floor_in(&mut game, 0, biome, n);
         descend(&mut game, &input, &audio, depth, false);
         tick(&mut game, &input, &audio, 2);
         snap(&mut game, &mut r, &input, dir, name);
@@ -2633,7 +2645,7 @@ pub fn monster_shots(dir: &str) {
     ];
     let names = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"];
     for (biome, name) in names.iter().enumerate() {
-        let depth = biome as u32 * 10 + 4;
+        let depth = floor_in(&mut game, 0, biome, 4);
         descend(&mut game, &input, &audio, depth, false);
         lineup(play(&mut game), &families, biome, depth);
         tick(&mut game, &input, &audio, 1);
@@ -2652,8 +2664,9 @@ pub fn monster_shots(dir: &str) {
     }
     // The bugs up close, one from each biome: the moss spider, glass mantis, spore moth,
     // fire ant, frost spider and scarab.
-    descend(&mut game, &input, &audio, 4, false);
-    lineup(play(&mut game), &[Foe::Bug; 6], 0, 4);
+    let depth = floor_in(&mut game, 0, 0, 4);
+    descend(&mut game, &input, &audio, depth, false);
+    lineup(play(&mut game), &[Foe::Bug; 6], 0, depth);
     tick(&mut game, &input, &audio, 1);
     let focus = {
         let p = play(&mut game);
@@ -2684,8 +2697,9 @@ pub fn monster_shots(dir: &str) {
     };
     snap_on(&mut game, &mut r, &input, dir, "f15_spiders", Some(focus));
     // Under a full moon they glow red.
-    descend(&mut game, &input, &audio, 24, false);
-    lineup(play(&mut game), &families, 2, 24);
+    let depth = floor_in(&mut game, 0, 2, 4);
+    descend(&mut game, &input, &audio, depth, false);
+    lineup(play(&mut game), &families, 2, depth);
     {
         let p = play(&mut game);
         for f in p.foes.iter_mut() {
@@ -2700,12 +2714,13 @@ pub fn monster_shots(dir: &str) {
     }
     snap(&mut game, &mut r, &input, dir, "f07_full_moon");
     // A brawl: arms up, clubs raised, daggers out, a mantis about to strike.
-    descend(&mut game, &input, &audio, 14, false);
+    let depth = floor_in(&mut game, 0, 1, 4);
+    descend(&mut game, &input, &audio, depth, false);
     lineup(
         play(&mut game),
         &[Foe::Zombie, Foe::Brute, Foe::Sneak, Foe::Bug, Foe::Skeleton],
         1,
-        14,
+        depth,
     );
     tick(&mut game, &input, &audio, 1);
     {
@@ -2735,10 +2750,11 @@ pub fn monster_shots(dir: &str) {
     snap(&mut game, &mut r, &input, dir, "f08_brawl");
 
     // The tenth floors' guardians: oversized, and hoarding treasure.
-    for (depth, name) in [
-        (10u32, "f09_guardian_king_slime"),
-        (70, "f10_guardian_goblin_king"),
+    for (from, name) in [
+        (0u32, "f09_guardian_king_slime"),
+        (6, "f10_guardian_goblin_king"),
     ] {
+        let depth = floor_in(&mut game, from, 0, 10);
         descend(&mut game, &input, &audio, depth, false);
         {
             let p = play(&mut game);
@@ -2954,7 +2970,7 @@ fn bomb_shots(game: &mut Game, r: &mut Renderer, input: &Input, audio: &Audio, d
     let seed = play(game).seed;
     let depth = (2..40)
         .find(|&d| {
-            crate::game::dungeon::generate(seed, d, false)
+            crate::game::dungeon::generate(seed, d, play(game).biome_at(d), false)
                 .crack
                 .is_some()
         })
@@ -3832,14 +3848,10 @@ pub fn deep_shots(dir: &str) {
         p.banner = None;
         p.clock.day = 2;
     }
-    // Every biome's pair, by the first floor of it that they live on.
+    // Every biome's pair, by the first floor of it that they live on (from floor 11).
     let names = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"];
     for (biome, name) in names.iter().enumerate() {
-        let depth = if biome == 0 {
-            64
-        } else {
-            biome as u32 * 10 + 4
-        };
+        let depth = floor_in(&mut game, 1, biome, 4);
         descend(&mut game, &input, &audio, depth, false);
         lineup(
             play(&mut game),
@@ -3870,12 +3882,13 @@ pub fn deep_shots(dir: &str) {
     }
     // Close-ups on the ember floor: a snail gliding, one hiding, and a book-worm rearing up
     // to spit.
-    descend(&mut game, &input, &audio, 34, false);
+    let depth = floor_in(&mut game, 1, 3, 4);
+    descend(&mut game, &input, &audio, depth, false);
     lineup(
         play(&mut game),
         &[Foe::Snail, Foe::Snail, Foe::Bookworm],
         3,
-        34,
+        depth,
     );
     tick(&mut game, &input, &audio, 30);
     let focus = {
@@ -4107,7 +4120,7 @@ pub fn sewer_shots(dir: &str) {
             // from above.
             {
                 let p = play(&mut game);
-                let biome = crate::game::dungeon::biome_for(depth);
+                let biome = p.hollow_biome(depth);
                 p.banner = Some(crate::game::play::Banner {
                     title: format!("Floor {depth}"),
                     sub: format!(
@@ -4225,7 +4238,7 @@ pub fn sewer_shots(dir: &str) {
                     use crate::game::foes::Enemy;
                     let p = play(&mut game);
                     p.foes.clear();
-                    let biome = crate::game::dungeon::biome_for(depth);
+                    let biome = p.hollow_biome(depth);
                     for (foe, dx, dz, yaw) in [
                         (Foe::Snail, 2.0, -2.0, 2.2),
                         (Foe::Bookworm, -2.0, 2.0, 0.4),
@@ -4323,7 +4336,7 @@ pub fn sewer_shots(dir: &str) {
                 let p = play(&mut game);
                 p.foes.clear();
                 p.drops.clear();
-                let biome = crate::game::dungeon::biome_for(depth);
+                let biome = p.hollow_biome(depth);
                 let folk = [
                     [
                         Foe::Zombie,
@@ -4415,7 +4428,7 @@ pub fn sewer_shots(dir: &str) {
             play(&mut game).menu = Menu::None;
         } else {
             let name = ["mossy", "crystal", "fungal", "ember", "frost", "ruins"]
-                [crate::game::dungeon::biome_for(depth)];
+                [play(&mut game).hollow_biome(depth)];
             snap(
                 &mut game,
                 &mut r,

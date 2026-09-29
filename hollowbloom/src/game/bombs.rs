@@ -204,6 +204,7 @@ impl Play {
             return;
         };
         let key = level.crack.unwrap_or(self.player.tile());
+        let biome = level.world.biome;
         let above = Stash {
             level,
             foes: std::mem::take(&mut self.foes),
@@ -225,8 +226,7 @@ impl Play {
                 self.revealed = v.revealed;
             }
             None => {
-                let level = dungeon::vault(self.seed, depth, key);
-                let biome = dungeon::biome_for(depth);
+                let level = dungeon::vault(self.seed, depth, biome, key);
                 let moon = self.moon();
                 for (i, s) in level.spawns.iter().enumerate() {
                     let mut f = Enemy::new(

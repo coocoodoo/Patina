@@ -5,7 +5,7 @@ use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
 use super::Io;
-use super::dungeon::{Foe, biome_for};
+use super::dungeon::{Foe, biome_foes, biome_for, guardian_home, lives_in, pond_foes};
 use super::folk::{VILLAGERS, Villager};
 use super::fx::Drop;
 use super::gear::{Group, Rarity};
@@ -13,6 +13,7 @@ use super::items::{Crop, Item, Kind, Stack, seasonal_seeds};
 use super::loot;
 use super::play::{Play, Season};
 use super::town::{self, FOUNTAIN};
+use crate::assets::{BIOME_STYLES, BIOMES};
 use crate::audio::Sfx;
 use crate::palette::*;
 use crate::util::Rng;
@@ -283,8 +284,8 @@ pub static QUESTS: &[QuestDef] = &[
         giver: V::Thistle,
         title: "The Silent Clock",
         ask: "The Town Hall clock hasn't chimed in twenty years. Nix found the problem: the \
-              bell's clapper is missing! Someone swears they saw it deep in the Fungal \
-              Hollow, floors 25 to 29. Mushrooms, of all things.",
+              bell's clapper is missing! Someone swears they saw it deep in the {biome@25}, \
+              floors 25 to 29. Of all places.",
         thanks: "BONG! BONG! Ha! I'd forgotten how it sounds. Everyone stopped in the street \
                  to listen. Bramblewick has its heartbeat back.",
         goal: Find(Item::BellClapper, 25, 29),
@@ -433,8 +434,8 @@ pub static QUESTS: &[QuestDef] = &[
         key: "rowan_warden",
         giver: V::Rowan,
         title: "The Bone Warden",
-        ask: "Past the Frost Caverns lie the Sunken Ruins, and on floor sixty the Bone \
-              Warden. No delver alive has beaten it. Yet.",
+        ask: "Deep in the Sunken Ruins, down on floor sixty, waits the Bone Warden. No \
+              delver alive has beaten it. Yet.",
         thanks: "...You did it. The Bone Warden. I'll be telling this story until I'm older \
                  than Grandma Fern. The Starlight Sword - the Guild's treasure - is yours.",
         goal: Guardian(60),
@@ -531,7 +532,7 @@ pub static QUESTS: &[QuestDef] = &[
         key: "quill_phoenix",
         giver: V::Quill,
         title: "The Phoenix Quill",
-        ask: "Legends speak of a phoenix quill in the Ember Depths, floors 35 to 39. A scroll \
+        ask: "Legends speak of a phoenix quill in the {biome@35}, floors 35 to 39. A scroll \
               written with it would be... well. Let's just say I'd write you a wand.",
         thanks: "It writes in firelight! As promised - a wand from the Moonquill vault. The \
                  Moonpetal. It's been waiting for someone like you.",
@@ -1823,7 +1824,7 @@ pub static QUESTS: &[QuestDef] = &[
         key: "clank_frost",
         giver: V::Clank,
         title: "The Frost Guard",
-        ask: "Reach the Frost Caverns - floor forty-one - and walk where the Guard once walked.",
+        ask: "Reach floor forty-one - the {biome@41} - and walk where the Guard once walked.",
         thanks: "You've seen the ice. Now you're one of us. The Frost Guard helm is yours.",
         goal: Reach(41),
         reward: &[Coins(6000), gear(Item::FrostHelm, EPIC)],
@@ -1848,7 +1849,7 @@ pub static QUESTS: &[QuestDef] = &[
         key: "clank_squire",
         giver: V::Clank,
         title: "A Knight's Duty",
-        ask: "One last patrol. Forty skeletons in the Sunken Ruins, floor fifty-one and below. \
+        ask: "One last patrol. Forty skeletons, floor fifty-one and below. \
               Then you'll be a true knight.",
         thanks: "Kneel, squire. ...Rise, Sir Farmer of the Frost Guard! My sword is yours. And \
                  two heart crystals, from the Guard's vault.",
@@ -2985,6 +2986,43 @@ fn note<T: PartialEq>(v: &mut Vec<T>, x: T) -> bool {
     }
 }
 
+/// The biome a creature calls home: where it's commonest (or round whose ponds it lives).
+pub fn home_biome(foe: Foe) -> usize {
+    let at = |b: usize| {
+        biome_foes(b)
+            .iter()
+            .find(|f| f.0 == foe)
+            .map_or(0.0, |f| f.1)
+            + if pond_foes(b).contains(&foe) {
+                0.5
+            } else {
+                0.0
+            }
+    };
+    (0..BIOMES)
+        .max_by(|&a, &b| at(a).total_cmp(&at(b)))
+        .unwrap_or(0)
+}
+
+/// A quest's words for this save: `{biome@N}` is the name of the biome floor N is in.
+pub fn fill_text(p: &Play, text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("{biome@") {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i + 7..];
+        let Some(j) = tail.find('}') else {
+            out.push_str(&rest[i..]);
+            return out;
+        };
+        let floor = tail[..j].parse().unwrap_or(1);
+        out.push_str(BIOME_STYLES[p.biome_at(floor)].name);
+        rest = &tail[j + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// What the goal asks for, in a few words.
 pub fn goal_text(g: Goal) -> String {
     match g {
@@ -2994,10 +3032,7 @@ pub fn goal_text(g: Goal) -> String {
             let from = match s {
                 Source::Foe(f) => format!("from {}s", foe_name(f)),
                 Source::Biome(b) => {
-                    format!(
-                        "in the {}",
-                        crate::assets::BIOME_STYLES[b as usize % 6].name
-                    )
+                    format!("in the {}", BIOME_STYLES[b as usize % 6].name)
                 }
                 Source::Deep(d) => format!("from floor {d} down"),
                 Source::Boss(f) => format!("from {}", super::foes::boss_name(f)),
@@ -3429,7 +3464,7 @@ impl Play {
         if boss {
             note(&mut self.journal.guardians, depth);
         }
-        let biome = biome_for(depth) as u8;
+        let biome = self.hollow_biome(depth) as u8;
         let mut drops = Vec::new();
         for q in &mut self.quests {
             match q.goal() {
@@ -3577,12 +3612,125 @@ impl Play {
             .collect()
     }
 
+    /// The biome floor `depth` is built in: this save's order (see `dungeon::biome_for`),
+    /// unless a quest under way holds its band to a biome it needs (see `held_biomes`). The
+    /// rest of the band you're in stays what it's been, whatever quests come and go, so
+    /// every ten floors are one biome.
+    pub fn biome_at(&self, depth: u32) -> usize {
+        let band = (depth.max(1) - 1) / 10;
+        if let (super::world::Area::Hollow { depth: here }, Some(l)) = (self.area, &self.level) {
+            if (here.max(1) - 1) / 10 == band {
+                return l.world.biome;
+            }
+        }
+        self.held_biomes()
+            .into_iter()
+            .find(|&(b, _)| b == band)
+            .map_or_else(|| biome_for(self.seed, depth), |(_, biome)| biome)
+    }
+
+    /// The biome of the floor of the Hollow you're on, as it was built (a quest finished
+    /// since doesn't change it under your feet).
+    pub fn hollow_biome(&self, depth: u32) -> usize {
+        self.level
+            .as_ref()
+            .map_or_else(|| self.biome_at(depth), |l| l.world.biome)
+    }
+
+    /// Bands of ten floors that quests under way hold to a biome they need, until they're
+    /// done, as (band, biome). A guardian someone has sent you after (or after its prize) is
+    /// found where they said: the King Slime on floor ten, the Matriarch on floor twenty,
+    /// the Bone Warden on floor sixty. Creatures and things that only live in some biomes
+    /// are there from the quest's floor on: if none of the floors you can get to has any,
+    /// the quest's own band turns into their home (the Guild's imps from floor 31 down
+    /// bring the Ember Depths there). A band that turns trades places with the one of its
+    /// six that had that biome, so every six bands still have all six biomes.
+    pub fn held_biomes(&self) -> Vec<(u32, usize)> {
+        let band_of = |floor: u32| (floor.max(1) - 1) / 10;
+        let reach = band_of(self.deepest);
+        let keeps_to_its_floor =
+            |g: &Goal| matches!(g, Goal::Guardian(_) | Goal::Gather(_, _, Source::Boss(_)));
+        // Guardians first: they have nowhere else to be.
+        let mut goals: Vec<(Goal, Option<u32>)> = self
+            .quests
+            .iter()
+            .map(|q| (q.goal(), q.story().map(|d| d.depth)))
+            .collect();
+        goals.sort_by_key(|(g, _)| !keeps_to_its_floor(g));
+        // (band, biome, whether a quest needs it there or it was only traded away)
+        let mut held: Vec<(u32, usize, bool)> = Vec::new();
+        let biome_of = |held: &[(u32, usize, bool)], b: u32| {
+            held.iter()
+                .find(|h| h.0 == b)
+                .map_or_else(|| biome_for(self.seed, b * 10 + 1), |h| h.1)
+        };
+        for (goal, depth) in goals {
+            // The bands the quest can be done in, the biome it needs, and the band that
+            // turns into it if none of them is.
+            let (from, to, want, hold): (u32, u32, Box<dyn Fn(usize) -> bool>, usize) = match goal {
+                // The classic six guardians keep to their floors...
+                Goal::Guardian(d) if d <= 10 * BIOMES as u32 => {
+                    let classic = band_of(d) as usize;
+                    (
+                        band_of(d),
+                        band_of(d),
+                        Box::new(move |b| b == classic),
+                        classic,
+                    )
+                }
+                // ...and so do the ones whose prizes someone's after.
+                Goal::Gather(_, _, Source::Boss(foe)) => match guardian_home(foe) {
+                    Some((d, home)) => (band_of(d), band_of(d), Box::new(move |b| b == home), home),
+                    None => continue,
+                },
+                Goal::Slay(Some(foe), _, d) => (
+                    band_of(d),
+                    reach.max(band_of(d)),
+                    Box::new(move |b| lives_in(foe, b)),
+                    home_biome(foe),
+                ),
+                // Anywhere in the biome: a story's from its own floor, a notice's
+                // anywhere you've been (and failing that, the deepest of those).
+                Goal::Gather(_, _, Source::Biome(b)) => {
+                    let b = b as usize;
+                    let from = depth.map_or(0, band_of);
+                    (from, reach.max(from), Box::new(move |x| x == b), b)
+                }
+                _ => continue,
+            };
+            if (from..=to).any(|b| want(biome_of(&held, b))) {
+                continue;
+            }
+            let start = if depth.is_none() && !keeps_to_its_floor(&goal) {
+                to
+            } else {
+                from
+            };
+            let Some(band) =
+                (start..start + BIOMES as u32).find(|b| !held.iter().any(|h| h.0 == *b && h.2))
+            else {
+                continue;
+            };
+            let was = biome_of(&held, band);
+            let run = band / BIOMES as u32 * BIOMES as u32;
+            let swap = (run..run + BIOMES as u32).find(|&b| {
+                b != band && biome_of(&held, b) == hold && !held.iter().any(|h| h.0 == b && h.2)
+            });
+            held.retain(|h| h.0 != band && Some(h.0) != swap);
+            held.push((band, hold, true));
+            if let Some(b) = swap {
+                held.push((b, was, false));
+            }
+        }
+        held.into_iter().map(|(b, biome, _)| (b, biome)).collect()
+    }
+
     /// True if a quest wants this floor's guardian back.
     pub fn guardian_wanted(&self, depth: u32) -> bool {
         if !super::dungeon::is_waystone_floor(depth) {
             return false;
         }
-        let boss = super::dungeon::boss_for(depth);
+        let boss = super::dungeon::boss_for(depth, self.biome_at(depth));
         self.quests.iter().any(|q| match q.goal() {
             Goal::Gather(item, n, Source::Boss(f)) => {
                 f == boss && self.player.inv.count(item) < n as u32
@@ -3627,7 +3775,9 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
     let id = day * 16 + slot + if guild { 8 } else { 0 };
     let mut r = Rng::new(p.seed ^ (id as u64).wrapping_mul(0x9E37_79B9));
     let deepest = p.deepest.max(1);
-    let biome = biome_for(deepest).min(5) as u8;
+    // The bands of ten floors you've been down to, and the deepest one's biome.
+    let bands = (deepest - 1) / 10;
+    let biome = p.biome_at(deepest) as u8;
     let givers: Vec<Villager> = VILLAGERS.to_vec();
     let giver = if guild {
         Villager::Rowan
@@ -3637,8 +3787,8 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
     let scale = 1.0 + deepest as f32 / 12.0;
     let (title, text, goal, coins) = if guild || r.chance(0.3) {
         // Monsters.
-        let floor = (r.range(0, biome as i32 + 1) as u32) * 10 + 1;
-        let foes = super::dungeon::floor_foes(r.range(0, biome as i32 + 1) as usize, floor);
+        let floor = (r.range(0, bands as i32 + 1) as u32) * 10 + 1;
+        let foes = super::dungeon::floor_foes(p.biome_at(floor), floor);
         let foe = foes[r.below(foes.len())].0;
         let n = r.range(8, 20) as u16;
         let coins = (n as f32 * 45.0 * (1.0 + floor as f32 / 8.0)) as u64;
@@ -3656,12 +3806,13 @@ pub fn make_request(p: &Play, day: u32, slot: u32, guild: bool) -> Request {
         let reach: Vec<super::fish::Water> = {
             use super::fish::Water as W;
             let mut v = vec![W::Pond, W::River];
-            // The Hollow's waters, one for each biome going down. (Not the sewers: they come
-            // and go, so nobody counts on them.)
-            for (b, w) in super::fish::WATERS[2..].iter().enumerate() {
+            // The Hollow's waters: each biome's you've been down to. (Not the sewers': they
+            // come and go, so nobody counts on them.)
+            for band in 0..=bands {
+                let w = super::fish::WATERS[2 + p.biome_at(band * 10 + 1)];
                 // Lava fish need a heat-proof rod: nobody asks for those on the board.
-                if b as u8 <= biome && deepest > b as u32 * 10 && !matches!(w, W::Lava | W::Sewer) {
-                    v.push(*w);
+                if !matches!(w, W::Lava | W::Sewer) && !v.contains(&w) {
+                    v.push(w);
                 }
             }
             v

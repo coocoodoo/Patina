@@ -6,7 +6,6 @@
 use glam::{Mat4, Vec2, Vec3};
 
 use super::Io;
-use super::dungeon::biome_for;
 use super::fx::{RUNE_SECS, Rune};
 use super::play::Play;
 use super::world::{Area, Obj, World};
@@ -60,7 +59,7 @@ impl Play {
         if self.world().sewer {
             crate::assets::SEWER_LOOK
         } else {
-            biome_for(depth) % crate::assets::BIOMES
+            self.hollow_biome(depth) % crate::assets::BIOMES
         }
     }
 

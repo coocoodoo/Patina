@@ -1373,6 +1373,10 @@ fn guardians_return_for_their_prizes() {
         !s.play.foes.iter().any(|f| f.boss),
         "a cleared floor stays cleared"
     );
+    // Home to hear about her pearl, and back down by the waystone.
+    s.play.fade = None;
+    s.play.start_fade(Trans::Home);
+    s.frames(60);
     for k in ["opal_gems", "opal_curios"] {
         s.play.done.push(k.into());
     }
@@ -2123,7 +2127,7 @@ fn the_sewers_folk_are_bones_and_sludge() {
         ));
     }
     // Every family the sewers hold, drawn in its sewer look (bone spiders walking).
-    let biome = super::dungeon::biome_for(depth);
+    let biome = p.hollow_biome(depth);
     let at = p.player.pos;
     p.foes.clear();
     for (i, foe) in [
@@ -2421,7 +2425,8 @@ fn zombies_goblins_and_bugs_live_in_every_biome() {
     assert!(too_tough(Foe::Brute, 1) && !too_tough(Foe::Brute, 3));
     for depth in [1u32, 2] {
         for seed in 0..6 {
-            let level = super::dungeon::generate(seed, depth, false);
+            let biome = super::dungeon::biome_for(seed, depth);
+            let level = super::dungeon::generate(seed, depth, biome, false);
             assert!(level.spawns.iter().all(|s| !too_tough(s.foe, depth)));
         }
     }
@@ -2495,15 +2500,98 @@ fn every_new_family_fights_back() {
 }
 
 #[test]
+fn quests_hold_the_hollow_to_the_biome_they_need_until_theyre_done() {
+    use super::dungeon::{Foe, biome_for, boss_for};
+    use super::quests::{Quest, QuestId, fill_text};
+    let story = |k: &str| Quest {
+        id: QuestId::Story(k.to_string()),
+        n: 0,
+        met: 0,
+        day: 0,
+    };
+    let mut s = Sim::new();
+    // A save whose floors 31-40 aren't the Ember Depths, and whose Ember Depths are
+    // somewhere above them.
+    let seed = (0..500u64)
+        .find(|&seed| (1..4).any(|b| biome_for(seed, b * 10 + 1) == 3) && biome_for(seed, 31) != 3)
+        .expect("such a save");
+    s.play.seed = seed;
+    s.play.deepest = 35;
+    s.play.quests.clear();
+    let natural = biome_for(seed, 31);
+    assert_eq!(s.play.biome_at(31), natural);
+    // The Guild wants thirty imps from floor 31 down: that band turns into the Ember Depths
+    // (imps and all) while the quest is under way...
+    s.play.quests.push(story("rowan_imps"));
+    for depth in 31..=40 {
+        assert_eq!(s.play.biome_at(depth), 3, "floor {depth}");
+    }
+    // ...trading places with the band that was, so the first six still have all six.
+    let embers = (1..3)
+        .find(|b| biome_for(seed, b * 10 + 1) == 3)
+        .expect("above");
+    assert_eq!(s.play.biome_at(embers * 10 + 1), natural);
+    let firsts: std::collections::HashSet<usize> =
+        (0..6).map(|b| s.play.biome_at(b * 10 + 1)).collect();
+    assert_eq!(firsts.len(), 6);
+    for b in (0..12).filter(|&b| b != 3 && b != embers) {
+        let floor = b * 10 + 1;
+        assert_eq!(
+            s.play.biome_at(floor),
+            biome_for(seed, floor),
+            "the rest stay put"
+        );
+    }
+    // Down there when it's done, the band stays as it's been until you're out of it...
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 35,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert_eq!(s.play.hollow_biome(35), 3);
+    s.play.quests.clear();
+    assert_eq!(s.play.biome_at(36), 3);
+    assert_eq!(s.play.biome_at(40), 3);
+    // ...and goes back once you're out.
+    s.play.level = None;
+    s.play.area = super::world::Area::Town;
+    assert_eq!(s.play.biome_at(35), natural);
+    assert_eq!(s.play.biome_at(embers * 10 + 1), 3);
+    // A guardian someone sends you after is where they said it would be.
+    s.play.quests.push(story("rowan_warden"));
+    assert_eq!(s.play.biome_at(60), 5);
+    assert_eq!(boss_for(60, s.play.biome_at(60)), Foe::Skeleton);
+    s.play.quests.clear();
+    // So is one whose prize someone's after: the Matriarch waits on floor twenty.
+    s.play.quests.push(story("opal_pearl"));
+    assert_eq!(boss_for(20, s.play.biome_at(20)), Foe::Crab);
+    assert_eq!(super::dungeon::guardian_home(Foe::Crab), Some((20, 1)));
+    assert_eq!(super::dungeon::guardian_home(Foe::Brute), Some((70, 0)));
+    assert_eq!(super::dungeon::guardian_home(Foe::Frog), None);
+    s.play.quests.clear();
+    // Quest words name the biome a floor is in on this save.
+    let name = crate::assets::BIOME_STYLES[s.play.biome_at(25)].name;
+    let text = fill_text(&s.play, "deep in the {biome@25}, floors 25 to 29");
+    assert_eq!(text, format!("deep in the {name}, floors 25 to 29"));
+    // Every quest's placeholders are ones that fill in.
+    for q in super::quests::QUESTS.iter() {
+        assert!(!fill_text(&s.play, q.ask).contains('{'), "{}", q.key);
+    }
+}
+
+#[test]
 fn guardians_are_giants_that_leave_a_hoard_of_chests() {
     use super::dungeon::{Foe, boss_for};
     use super::foes::{BOSS_SCALE, Enemy};
-    // The classic six on the first trip down, giant goblins, bugs and dead on the next.
-    assert_eq!(boss_for(10), Foe::Slime);
-    assert_eq!(boss_for(60), Foe::Skeleton);
-    assert_eq!(boss_for(70), Foe::Brute);
-    assert_eq!(boss_for(80), Foe::Bug);
-    assert_eq!(boss_for(130), Foe::Slime);
+    // The classic six on the first trip down (whichever biome a band turns out to be),
+    // giant goblins, bugs and dead on the next.
+    assert_eq!(boss_for(10, 0), Foe::Slime);
+    assert_eq!(boss_for(60, 5), Foe::Skeleton);
+    assert_eq!(boss_for(20, 5), Foe::Skeleton);
+    assert_eq!(boss_for(70, 0), Foe::Brute);
+    assert_eq!(boss_for(80, 1), Foe::Bug);
+    assert_eq!(boss_for(130, 0), Foe::Slime);
     let small = Enemy::new(Foe::Slime, 0.0, 0.0, 10, 0, false, 1);
     let big = Enemy::new(Foe::Slime, 0.0, 0.0, 10, 0, true, 1);
     assert!(big.scale() >= 2.5 && BOSS_SCALE == big.scale());
@@ -2517,7 +2605,7 @@ fn guardians_are_giants_that_leave_a_hoard_of_chests() {
         });
         s.frames(60);
         let i = s.play.foes.iter().position(|f| f.boss).expect("a guardian");
-        assert_eq!(s.play.foes[i].foe, boss_for(depth));
+        assert_eq!(s.play.foes[i].foe, boss_for(depth, s.play.biome_at(depth)));
         let name = s.play.foes[i].name();
         assert!(!name.is_empty() && name != "Guardian", "{name}");
         let chests = |p: &Play| {
@@ -2580,7 +2668,7 @@ fn gleaming_chests_hold_finely_rolled_gear() {
     // Most chests are plain; now and then one gleams.
     let (mut total, mut gleams) = (0, 0);
     for seed in 0..40 {
-        let level = super::dungeon::generate(seed, 13, false);
+        let level = super::dungeon::generate(seed, 13, super::dungeon::biome_for(seed, 13), false);
         let w = &level.world;
         for z in 0..w.h {
             for x in 0..w.w {
@@ -2883,7 +2971,11 @@ fn a_bomb_opens_a_secret_room_and_the_rope_leads_back() {
     s.play.menu = Menu::None;
     // Find a floor with a crack in it.
     let depth = (2..40)
-        .find(|&d| generate(s.play.seed, d, false).crack.is_some())
+        .find(|&d| {
+            generate(s.play.seed, d, s.play.biome_at(d), false)
+                .crack
+                .is_some()
+        })
         .expect("some floor hides a secret room");
     s.play.fade = None;
     s.play.start_fade(Trans::Descend {
@@ -3064,6 +3156,8 @@ fn pip_asks_for_candy_rocks_only_in_autumn_and_only_once() {
     let mut io = frame_io(&s.input, &s.audio);
     s.play.reap(&mut io);
     s.play.foes.clear();
+    // (Its loot's no part of this: a recipe it teaches would pop up and pause the game.)
+    s.play.drops.clear();
     // Up come the candy rocks, one after another...
     let rocks = candy_rocks(&s.play);
     assert_eq!(rocks.len(), super::candy::ROCKS);
@@ -3329,14 +3423,14 @@ fn lantern_snails_and_book_worms_live_from_floor_eleven_down() {
     let mut seen = [0usize; 2];
     for seed in 0..12u64 {
         for depth in [1, 5, 9, 10] {
-            let l = generate(seed, depth, false);
+            let l = generate(seed, depth, super::dungeon::biome_for(seed, depth), false);
             assert!(
                 !l.spawns.iter().any(|s| deep(&s.foe)),
                 "a deep creature on floor {depth}"
             );
         }
         for depth in [DEEP_FOLK, 25, 47, 63] {
-            let l = generate(seed, depth, false);
+            let l = generate(seed, depth, super::dungeon::biome_for(seed, depth), false);
             for s in &l.spawns {
                 match s.foe {
                     Foe::Snail => seen[0] += 1,

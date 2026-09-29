@@ -8,7 +8,6 @@ use glam::{Mat4, Vec3};
 
 use super::Io;
 use super::draw::HAND;
-use super::dungeon::biome_for;
 use super::gear::{Class, Stat};
 use super::items::{Item, Stack};
 use super::loot;
@@ -1168,7 +1167,7 @@ impl Play {
             (Area::Farm, Floor::Water) => Some(Water::Pond),
             (Area::Town, Floor::Water) => Some(Water::River),
             (Area::Hollow { .. }, Floor::Water) if self.world().sewer => Some(Water::Sewer),
-            (Area::Hollow { depth }, Floor::Water) => Some(match biome_for(depth) {
+            (Area::Hollow { depth }, Floor::Water) => Some(match self.hollow_biome(depth) {
                 0 => Water::Cave,
                 1 => Water::Grotto,
                 2 => Water::Fungal,

@@ -5,7 +5,7 @@
 use glam::{Vec2, Vec3};
 
 use super::Io;
-use super::dungeon::{Foe, biome_for};
+use super::dungeon::Foe;
 use super::foes::{HIDE_SECS, SHELL_LETS_THROUGH, St};
 use super::fx::Drop;
 use super::gear::Stat;
@@ -299,19 +299,13 @@ impl Play {
                 fortune.luck += 0.35;
                 fortune.greed *= 1.6;
             }
-            let mut loot = loot::foe_loot(
-                f.foe,
-                f.boss,
-                biome_for(depth),
-                depth,
-                fortune,
-                &mut self.rng,
-            );
+            let biome = self.hollow_biome(depth);
+            let mut loot = loot::foe_loot(f.foe, f.boss, biome, depth, fortune, &mut self.rng);
             if f.moonlit && self.rng.chance(0.5) {
                 loot.extend(loot::foe_loot(
                     f.foe,
                     false,
-                    biome_for(depth),
+                    biome,
                     depth,
                     fortune,
                     &mut self.rng,

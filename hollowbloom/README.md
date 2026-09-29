@@ -388,10 +388,17 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
 * Every floor is generated from your world seed and its depth: rooms, winding corridors,
   ore veins, pots, crates, treasure chests and torches. The stairs down are always as far from
   where you land as the floor allows.
-* The biome changes every ten floors (Mossy Burrows, Crystal Grotto, Fungal Hollow, Ember
-  Depths, Frost Caverns, Sunken Ruins) and then cycles, tougher each time. Each biome has its
-  own creatures (slimes, bats, shroomlings, crystal crabs, wisps, beetles, imps, golems, and
-  bog frogs, drift jellies and puffers round the ponds), its own ores and its own **seeds**.
+* Every ten floors are one biome (Mossy Burrows, Crystal Grotto, Fungal Hollow, Ember
+  Depths, Frost Caverns, Sunken Ruins), **in an order of your save's own**: every sixty
+  floors go through all six, shuffled, never the same one twice in a row, tougher each time
+  round. A quest that needs a biome **holds its floors to it until it's done**: take the
+  Guild's imp cull from floor 31 down and, if the Ember Depths aren't anywhere you can get
+  to, floors 31 to 40 turn into them (trading places with wherever they were); send out for
+  a guardian or its prize and it's on the floor the quest names. The ten floors you're in
+  never change under you. Quest words name the biome a floor is in on your save. Each biome
+  has its own creatures (slimes, bats, shroomlings, crystal crabs, wisps, beetles, imps,
+  golems, and bog frogs, drift jellies and puffers round the ponds), its own ores and its
+  own **seeds**.
   Slimes are wobbly **see-through jelly** with a nucleus and bubbles floating inside; ghosts
   are translucent too.
 * Five families turn up everywhere, **dressed for each biome**: **zombies** (mossy,
@@ -444,8 +451,9 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
 * Steel on stone throws **sparks** that glow and light up the cave around them: mining rock
   and ore, blades glancing off walls, hitting crabs, beetles, skeletons and golems, and
   blocking with a shield.
-* **Every tenth floor** a guardian (King Slime, Crystal Matriarch, Old Capwood, Ember Lord,
-  Frost Colossus, the Bone Warden) waits in an arena, blocking the stairs and a **waystone**.
+* **Every tenth floor** a guardian of its biome (King Slime, Crystal Matriarch, Old Capwood,
+  Ember Lord, Frost Colossus, the Bone Warden) waits in an arena, blocking the stairs and a
+  **waystone**.
   Guardians are **giants**, nearly three times life size, and strong with it. On your next
   trip down through the biomes the goblin king, the glass queen, the rotting gardener,
   Ashfang the Quick, the frost wraith and the mummy king take their places, calling their

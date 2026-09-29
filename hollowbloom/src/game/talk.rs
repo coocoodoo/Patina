@@ -408,7 +408,7 @@ impl Play {
             }
             Say::Offer(i) => {
                 let d = &QUESTS[i];
-                let mut t = d.ask.to_string();
+                let mut t = super::quests::fill_text(self, d.ask);
                 t.push_str("\n> ");
                 t.push_str(&goal_text(d.goal));
                 Some((

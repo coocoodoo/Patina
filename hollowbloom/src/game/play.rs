@@ -4,7 +4,7 @@ use glam::{Vec2, Vec3};
 
 use super::combat::{Bolt, Flash};
 use super::draw::Env;
-use super::dungeon::{self, Level, biome_for, is_waystone_floor, ore_item};
+use super::dungeon::{self, Level, is_waystone_floor, ore_item};
 use super::farm::{self, MARKS, tillable};
 use super::foes::{Enemy, St};
 use super::fx::{Drop, Fx, Rune, Shot};
@@ -592,7 +592,7 @@ impl Play {
                 }
             }
             Area::Hollow { depth } => {
-                let st = &BIOME_STYLES[biome_for(depth)];
+                let st = &BIOME_STYLES[self.hollow_biome(depth)];
                 Env {
                     ambient: st.ambient,
                     warmth: st.warmth,
@@ -627,7 +627,7 @@ impl Play {
                     return (Some(Song::Haven), 0, 1.0);
                 }
                 // Three themes, each biome of a pair in its own key and pace.
-                match biome_for(depth) {
+                match self.hollow_biome(depth) {
                     0 => (Some(Song::Burrows), 0, 1.0),
                     1 => (Some(Song::Glimmer), 0, 1.0),
                     2 => (Some(Song::Burrows), -2, 1.06),
@@ -645,12 +645,13 @@ impl Play {
 
     fn enter_hollow(&mut self, depth: u32, via_waystone: bool) {
         self.forget_vault();
-        let mut level = dungeon::generate(self.seed, depth, via_waystone);
+        let biome = self.biome_at(depth);
+        let mut level = dungeon::generate(self.seed, depth, biome, via_waystone);
         // A guardian comes back to its floor while someone needs something it carries.
         let rematch = via_waystone && self.guardian_wanted(depth);
         if rematch {
             level.spawns.push(dungeon::Spawn {
-                foe: dungeon::boss_for(depth),
+                foe: dungeon::boss_for(depth, biome),
                 x: level.lair.0,
                 z: level.lair.1,
                 boss: true,
@@ -665,7 +666,6 @@ impl Play {
         self.runes.clear();
         self.bolts.clear();
         self.erupting.clear();
-        let biome = biome_for(depth);
         let moon = self.moon();
         if moon.full() {
             // Under a full moon more of the Hollow's chests gleam.
@@ -2295,7 +2295,13 @@ impl Play {
         let depth = self.depth().max(1);
         let at = tile_center(x, z);
         let fortune = self.fortune();
-        let loot = loot::chest_loot(depth, biome_for(depth), gleam, fortune, &mut self.rng);
+        let loot = loot::chest_loot(
+            depth,
+            self.hollow_biome(depth),
+            gleam,
+            fortune,
+            &mut self.rng,
+        );
         self.spill(loot, at, io);
         self.fx
             .motes(at + Vec3::Y * 0.4, 16, &[GOLD, CREAM, WHITE], 0.4);
@@ -2525,7 +2531,7 @@ impl Play {
                 self.fx.burst(at + Vec3::Y * 0.3, 12, &col, 2.5, 2.0);
                 let depth = self.depth().max(1);
                 let fortune = self.fortune();
-                let loot = loot::pot_loot(depth, biome_for(depth), fortune, &mut self.rng);
+                let loot = loot::pot_loot(depth, self.hollow_biome(depth), fortune, &mut self.rng);
                 self.spill(loot, at, io);
             }
             _ => {}
@@ -2588,7 +2594,7 @@ impl Play {
     /// A seed found while working: from the Hollow's biome, or the valley's own on the farm.
     fn forage_seed(&mut self) -> Item {
         match self.area {
-            Area::Hollow { depth } => loot::biome_seed(biome_for(depth), &mut self.rng),
+            Area::Hollow { depth } => loot::biome_seed(self.hollow_biome(depth), &mut self.rng),
             _ => {
                 let seeds = [
                     Item::TurnipSeeds,

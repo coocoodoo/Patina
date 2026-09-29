@@ -9,8 +9,8 @@
 //! of channel has a bridge, so both walkways are always in reach.
 
 use super::dungeon::{
-    CRACK_CHANCE, DEEP_FOLK, Foe, GLEAM_CHANCE, Level, Spawn, biome_for, is_waystone_floor,
-    ore_weights, too_tough,
+    CRACK_CHANCE, DEEP_FOLK, Foe, GLEAM_CHANCE, Level, Spawn, is_waystone_floor, ore_weights,
+    too_tough,
 };
 use super::world::{Area, Floor, Obj, Wall, World};
 use crate::util::Rng;
@@ -152,8 +152,7 @@ fn traps(w: &World, x: i32, z: i32) -> bool {
     })
 }
 
-pub fn generate(seed: u64, depth: u32) -> Level {
-    let biome = biome_for(depth);
+pub fn generate(seed: u64, depth: u32, biome: usize) -> Level {
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x9E37_79B9) ^ 0x5E3E_5E3E);
     let grow = depth.min(30) as i32;
     let (w, h) = (46 + grow, 38 + grow * 2 / 3);
@@ -561,12 +560,13 @@ pub fn generate(seed: u64, depth: u32) -> Level {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::dungeon::biome_for;
 
     /// Some sewer floors to look at, whatever the chance says.
     fn sewers() -> Vec<Level> {
         [(1u64, 3u32), (7, 12), (42, 25), (9, 47), (123, 68), (5, 99)]
             .into_iter()
-            .map(|(seed, depth)| generate(seed, depth))
+            .map(|(seed, depth)| generate(seed, depth, biome_for(seed, depth)))
             .collect()
     }
 
@@ -596,7 +596,8 @@ mod tests {
     fn clutter_never_shuts_anywhere_in() {
         for seed in 0..40u64 {
             for depth in [4u32, 17, 33, 52, 76] {
-                let l = generate(seed * 7919 + 3, depth);
+                let seed = seed * 7919 + 3;
+                let l = generate(seed, depth, biome_for(seed, depth));
                 let w = &l.world;
                 let dist = walk(w, l.start);
                 for z in 0..w.h {

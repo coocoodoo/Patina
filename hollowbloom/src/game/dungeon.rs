@@ -1,6 +1,6 @@
 //! The Hollow: an endless dungeon. Every floor is rebuilt from `(world seed, depth)`, the
-//! biome changes every ten floors, and every tenth floor holds a guardian and a waystone
-//! that leads back to the surface.
+//! biome changes every ten floors (in an order of each save's own), and every tenth floor
+//! holds a guardian and a waystone that leads back to the surface.
 
 use super::items::Item;
 use super::world::{Area, Floor, Obj, Wall, World};
@@ -75,8 +75,31 @@ pub struct Level {
 /// How often an ordinary floor hides a secret room under a cracked tile.
 pub const CRACK_CHANCE: f32 = 0.5;
 
-pub fn biome_for(depth: u32) -> usize {
-    (((depth.max(1) - 1) / 10) as usize) % BIOMES
+/// Which biome a floor is in, as this save's Hollow goes. Every ten floors are one biome, in
+/// an order of each save's own: every run of six bands goes through all six biomes,
+/// shuffled, and no biome comes twice in a row. (A quest can hold a band to a biome it needs
+/// for a while: see `Play::biome_at`.)
+pub fn biome_for(seed: u64, depth: u32) -> usize {
+    let band = (depth.max(1) - 1) / 10;
+    biome_order(seed, band / BIOMES as u32)[(band % BIOMES as u32) as usize]
+}
+
+/// The biomes of one run of six bands of floors, in order.
+fn biome_order(seed: u64, run: u32) -> [usize; BIOMES] {
+    let mut r = Rng::new(seed ^ 0xB10E_5EED ^ (run as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    let mut order: [usize; BIOMES] = std::array::from_fn(|i| i);
+    r.shuffle(&mut order);
+    // Never the same biome twice in a row, across the seam with the run before.
+    if run > 0 && order[0] == biome_order(seed, run - 1)[BIOMES - 1] {
+        let k = 1 + r.below(BIOMES - 1);
+        order.swap(0, k);
+    }
+    order
+}
+
+/// Does this creature live in this biome (on its floors, or round its ponds)?
+pub fn lives_in(foe: Foe, biome: usize) -> bool {
+    biome_foes(biome).iter().any(|&(f, _)| f == foe) || pond_foes(biome).contains(&foe)
 }
 
 pub fn is_waystone_floor(depth: u32) -> bool {
@@ -180,10 +203,10 @@ pub fn pond_foes(biome: usize) -> &'static [Foe] {
     }
 }
 
-/// The guardian of a tenth floor: the classic six on the first trip down through the
-/// biomes, then giants of the Hollow's commoner folk the next time round, and so on.
-pub fn boss_for(depth: u32) -> Foe {
-    let biome = biome_for(depth);
+/// The guardian of a tenth floor (in `biome`): the classic six on the first trip down
+/// through the biomes, then giants of the Hollow's commoner folk the next time round, and so
+/// on.
+pub fn boss_for(depth: u32, biome: usize) -> Foe {
     let cycle = (depth.max(1) - 1) / (10 * BIOMES as u32);
     if cycle % 2 == 0 {
         [
@@ -204,6 +227,15 @@ pub fn boss_for(depth: u32) -> Foe {
             Foe::Zombie,
         ][biome]
     }
+}
+
+/// Where a guardian keeps: the first tenth floor it guards, and the biome it's found in
+/// there. `None` for creatures that never guard a floor.
+pub fn guardian_home(foe: Foe) -> Option<(u32, usize)> {
+    (0..2 * BIOMES as u32).find_map(|band| {
+        let (floor, biome) = (band * 10 + 10, band as usize % BIOMES);
+        (boss_for(floor, biome) == foe).then_some((floor, biome))
+    })
 }
 
 /// How often a treasure chest gleams: a rare one, full of well-rolled things.
@@ -329,11 +361,11 @@ impl Room {
     }
 }
 
-pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
+/// Builds a floor of the Hollow in `biome` (see `Play::biome_at`).
+pub fn generate(seed: u64, depth: u32, biome: usize, via_waystone: bool) -> Level {
     if super::sewer::is_sewer(seed, depth) {
-        return super::sewer::generate(seed, depth);
+        return super::sewer::generate(seed, depth, biome);
     }
-    let biome = biome_for(depth);
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x9E37_79B9));
     let grow = depth.min(30) as i32;
     let (w, h) = (44 + grow, 36 + grow * 2 / 3);
@@ -759,7 +791,7 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
     let lair = lair(&world, stairs);
     if is_waystone_floor(depth) && !via_waystone {
         spawns.push(Spawn {
-            foe: boss_for(depth),
+            foe: boss_for(depth, biome),
             x: lair.0,
             z: lair.1,
             boss: true,
@@ -785,8 +817,7 @@ pub fn generate(seed: u64, depth: u32, via_waystone: bool) -> Level {
 
 /// The secret room under a floor's cracked tile: one room, lit by the shaft of daylight the
 /// rope hangs in, with treasure along the back wall and its keepers standing guard.
-pub fn vault(seed: u64, depth: u32, crack: (i32, i32)) -> Level {
-    let biome = biome_for(depth);
+pub fn vault(seed: u64, depth: u32, biome: usize, crack: (i32, i32)) -> Level {
     let key = (crack.0 as u64) << 16 | crack.1 as u64;
     let mut r = Rng::new(seed ^ (depth as u64).wrapping_mul(0x51ED_2701) ^ key ^ 0x5EC2E7);
     // Plenty of rock round the room, so the view never runs off the edge of the world.
@@ -1067,14 +1098,15 @@ mod tests {
     #[test]
     fn floors_are_deterministic_and_connected() {
         for depth in [1, 7, 10, 23, 55, 101] {
-            let a = generate(42, depth, false);
-            let b = generate(42, depth, false);
+            let biome = biome_for(42, depth);
+            let a = generate(42, depth, biome, false);
+            let b = generate(42, depth, biome, false);
             assert_eq!(a.start, b.start);
             assert_eq!(a.stairs, b.stairs);
             let dist = flood(&a.world, a.start);
             let i = a.world.idx(a.stairs.0, a.stairs.1);
             assert_ne!(dist[i], u32::MAX, "stairs unreachable on floor {depth}");
-            if depth % 10 != 0 && biome_for(depth) != 3 {
+            if depth % 10 != 0 && biome != 3 {
                 assert!(
                     reachable(&a.world, a.start, a.stairs),
                     "a pond blocks the way on floor {depth}"
@@ -1090,10 +1122,11 @@ mod tests {
         let mut ponds = 0;
         let mut folk = 0;
         for depth in 1..40 {
-            let l = generate(9, depth, false);
-            if biome_for(depth) == 3 {
+            let biome = biome_for(9, depth);
+            if biome == 3 {
                 continue;
             }
+            let l = generate(9, depth, biome, false);
             ponds += l.world.floor.iter().filter(|f| **f == Floor::Water).count();
             folk += l
                 .spawns
@@ -1106,10 +1139,36 @@ mod tests {
     }
 
     #[test]
-    fn biomes_cycle() {
-        assert_eq!(biome_for(1), 0);
-        assert_eq!(biome_for(10), 0);
-        assert_eq!(biome_for(11), 1);
-        assert_eq!(biome_for(61), 0);
+    fn every_ten_floors_are_one_biome_in_each_saves_own_order() {
+        for seed in 0..50u64 {
+            let bands: Vec<usize> = (0..24).map(|b| biome_for(seed, b * 10 + 1)).collect();
+            for (b, &biome) in bands.iter().enumerate() {
+                // The whole band is one biome...
+                let lo = b as u32 * 10 + 1;
+                assert!((lo..lo + 10).all(|d| biome_for(seed, d) == biome));
+                // ...never the same as the one before it...
+                if b > 0 {
+                    assert_ne!(biome, bands[b - 1], "seed {seed} band {b}");
+                }
+            }
+            // ...and each run of six has all six.
+            for run in bands.chunks(BIOMES) {
+                let mut seen = [false; BIOMES];
+                run.iter().for_each(|&b| seen[b] = true);
+                assert!(seen.iter().all(|&s| s), "seed {seed}: {run:?}");
+            }
+        }
+        // Not the same order every time.
+        let firsts: std::collections::HashSet<[usize; 6]> = (0..40u64)
+            .map(|seed| std::array::from_fn(|b| biome_for(seed, b as u32 * 10 + 1)))
+            .collect();
+        assert!(firsts.len() > 20, "only {} orders", firsts.len());
+    }
+
+    #[test]
+    fn imps_live_in_the_ember_depths_only() {
+        assert!(lives_in(Foe::Imp, 3));
+        assert!((0..BIOMES).filter(|&b| lives_in(Foe::Imp, b)).count() == 1);
+        assert!(lives_in(Foe::Crab, 0), "round the Mossy Burrows' ponds");
     }
 }
