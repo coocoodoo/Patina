@@ -9,7 +9,7 @@ use super::fx::shot_colors;
 use super::gear::{Rarity, Slot};
 use super::home::{self, WINDOWS};
 use super::items::{Kind, Placeable, Stack};
-use super::play::Play;
+use super::play::{Play, Season};
 use super::player::ActKind;
 use super::sky::sky_light;
 use super::town::Decor;
@@ -202,8 +202,14 @@ impl Play {
             }
         }
         // Fireflies on warm summer nights.
+        // Fireflies on warm nights: a few in spring, lots in summer.
+        let flies = match env.season {
+            Some(Season::Spring) => 6,
+            Some(Season::Summer) => 14,
+            _ => 0,
+        };
         let fireflies: Vec<Vec3> = if self.area == Area::Farm && env.night > 0.5 {
-            (0..10)
+            (0..flies)
                 .map(|i| {
                     let t = self.time * 0.3 + i as f32 * 1.7;
                     let base = self.cam.target;
@@ -388,8 +394,11 @@ impl Play {
                 r.point(*f, 1, CREAM);
             }
         }
-        // Rain.
-        if self.rain && matches!(self.area, Area::Farm | Area::Town) {
+        let outdoors = matches!(self.area, Area::Farm | Area::Town);
+        if outdoors && env.season == Some(Season::Winter) {
+            // Snow instead of rain: a flurry most days, a blizzard when it would rain.
+            self.draw_snowfall(r, if self.rain { 130 } else { 36 });
+        } else if self.rain && outdoors {
             let t = self.cam.target;
             for i in 0..90 {
                 let fx = (hash2(i, 0, 1) % 1000) as f32 / 1000.0;
@@ -404,8 +413,16 @@ impl Play {
                 r.point(p + Vec3::Y * 0.12, 1, BLUE);
             }
         }
+        // Spring blossom drifting on the breeze, and butterflies on summer days.
+        if outdoors && !self.rain {
+            match env.season {
+                Some(Season::Spring) => self.draw_petals(r),
+                Some(Season::Summer) if env.night < 0.5 => self.draw_butterflies(r),
+                _ => {}
+            }
+        }
         // Autumn leaves, twirling down.
-        if env.autumn {
+        if env.season == Some(Season::Autumn) {
             let t = self.cam.target;
             for i in 0..28 {
                 let fx = (hash2(i, 5, 3) % 1000) as f32 / 1000.0;
@@ -425,6 +442,68 @@ impl Play {
             }
         }
         r.fb.outline_with(INK, super::foes::MOONLIT_TAG, RED);
+    }
+
+    /// Snowflakes drifting down around the camera, big soft ones nearest.
+    fn draw_snowfall(&self, r: &mut Renderer, n: i32) {
+        let t = self.cam.target;
+        for i in 0..n {
+            let fx = (hash2(i, 8, 5) % 1000) as f32 / 1000.0;
+            let fz = (hash2(i, 9, 5) % 1000) as f32 / 1000.0;
+            let speed = 0.16 + (hash2(i, 10, 5) % 100) as f32 / 600.0;
+            let fall = (self.time * speed + fx * 9.0).fract();
+            let sway = (self.time * 1.1 + i as f32 * 0.7).sin() * 0.3;
+            let p = Vec3::new(
+                t.x - 11.0 + fx * 22.0 + sway,
+                3.6 - fall * 3.6,
+                t.z - 7.0 + fz * 13.0,
+            );
+            let big = i % 5 == 0;
+            r.point(p, if big { 2 } else { 1 }, WHITE);
+        }
+    }
+
+    /// Cherry blossom petals, drifting sideways as they fall.
+    fn draw_petals(&self, r: &mut Renderer) {
+        let t = self.cam.target;
+        for i in 0..18 {
+            let fx = (hash2(i, 11, 5) % 1000) as f32 / 1000.0;
+            let fz = (hash2(i, 12, 5) % 1000) as f32 / 1000.0;
+            let speed = 0.12 + (hash2(i, 13, 5) % 100) as f32 / 700.0;
+            let fall = (self.time * speed + fx * 6.0).fract();
+            let drift = fall * 2.2 + (self.time * 1.3 + i as f32).sin() * 0.25;
+            let p = Vec3::new(
+                t.x - 12.0 + fx * 22.0 + drift,
+                3.2 - fall * 3.2,
+                t.z - 7.0 + fz * 13.0,
+            );
+            let col = [BLUSH, PINK, WHITE][i as usize % 3];
+            let broad = (self.time * 3.0 + i as f32 * 1.7).sin() > 0.0;
+            r.point(p, if broad && i % 4 == 0 { 2 } else { 1 }, col);
+        }
+    }
+
+    /// Butterflies fluttering about the fields, wings flicking open and shut.
+    fn draw_butterflies(&self, r: &mut Renderer) {
+        let c = self.cam.target;
+        for i in 0..7 {
+            let k = i as f32;
+            let t = self.time * 0.22 + k * 2.3;
+            let p = Vec3::new(
+                c.x + (t * 1.1 + k).sin() * 6.5 + (t * 2.3).cos() * 1.2,
+                0.5 + (self.time * 2.4 + k).sin().abs() * 0.4,
+                c.z + (t * 0.8 + k * 1.7).cos() * 3.8,
+            );
+            let col = [GOLD, PINK, SKY, WHITE, LAVENDER, ORANGE, MINT][i % 7];
+            let open = (self.time * 17.0 + k * 1.3).sin() > -0.2;
+            if open {
+                r.point(p - Vec3::X * 0.05, 1, col);
+                r.point(p + Vec3::X * 0.05, 1, col);
+            } else {
+                r.point(p + Vec3::Y * 0.03, 1, col);
+            }
+            r.point(p, 1, INK);
+        }
     }
 
     /// The townsfolk, dressed up, with a bubble over anyone who wants you.

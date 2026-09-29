@@ -329,6 +329,40 @@ fn foe_skins(bank: &mut TexBank, c: &Critters) -> FoeSkins {
     s
 }
 
+/// Winter's ground, laid out like the lawn it covers.
+pub struct SnowTex {
+    pub grass: [TexId; 4],
+    pub flowers: [TexId; 2],
+    pub rounded: Vec<[TexId; 16]>,
+    pub fillets: Vec<[TexId; 16]>,
+    pub hedge_top: TexId,
+}
+
+/// Every road with its outer corners rounded into each lawn, and each lawn with the road
+/// filling its inner corners: `[road * lawns + lawn][mask]`.
+fn corners(
+    bank: &mut TexBank,
+    roads: &[TexId],
+    lawns: &[TexId],
+) -> (Vec<[TexId; 16]>, Vec<[TexId; 16]>) {
+    let mut rounded = Vec::new();
+    let mut fillets = Vec::new();
+    for &road in roads {
+        for &lawn in lawns {
+            let (rt, gt) = (bank.get(road).clone(), bank.get(lawn).clone());
+            let mut outer = [road; 16];
+            let mut inner = [lawn; 16];
+            for mask in 1..16u8 {
+                outer[mask as usize] = bank.add(tiles::round_corners(&rt, &gt, mask, 6.0));
+                inner[mask as usize] = bank.add(tiles::round_corners(&gt, &rt, mask, 3.0));
+            }
+            rounded.push(outer);
+            fillets.push(inner);
+        }
+    }
+    (rounded, fillets)
+}
+
 pub struct Assets {
     pub foes: FoeSkins,
     pub bank: TexBank,
@@ -363,6 +397,8 @@ pub struct Assets {
     pub town: town_art::TownArt,
     /// Grass with road filling its inner corners, indexed the same way.
     pub fillets: Vec<[TexId; 16]>,
+    /// The ground under winter's snow.
+    pub snow: SnowTex,
     pub cliff_side: TexId,
     pub biomes: Vec<BiomeTex>,
     pub stone_wall_side: TexId,
@@ -453,21 +489,25 @@ impl Assets {
             street[0],
             plaza,
         ];
-        let mut rounded = Vec::new();
-        let mut fillets = Vec::new();
-        for &road in &roads {
-            for &lawn in &grass {
-                let (rt, gt) = (bank.get(road).clone(), bank.get(lawn).clone());
-                let mut outer = [road; 16];
-                let mut inner = [lawn; 16];
-                for mask in 1..16u8 {
-                    outer[mask as usize] = bank.add(tiles::round_corners(&rt, &gt, mask, 6.0));
-                    inner[mask as usize] = bank.add(tiles::round_corners(&gt, &rt, mask, 3.0));
-                }
-                rounded.push(outer);
-                fillets.push(inner);
-            }
-        }
+        let (rounded, fillets) = corners(&mut bank, &roads, &grass);
+        // Winter lays snow wherever the grass grows.
+        let snow_lawn = [
+            bank.add(tiles::snow(1, false)),
+            bank.add(tiles::snow(2, false)),
+            bank.add(tiles::snow(3, false)),
+            bank.add(tiles::snow(4, false)),
+        ];
+        let (snow_rounded, snow_fillets) = corners(&mut bank, &roads, &snow_lawn);
+        let snow = SnowTex {
+            grass: snow_lawn,
+            flowers: [
+                bank.add(tiles::snow(5, true)),
+                bank.add(tiles::snow(6, true)),
+            ],
+            rounded: snow_rounded,
+            fillets: snow_fillets,
+            hedge_top: bank.add(tiles::snowy_hedge(26)),
+        };
 
         let mut biomes = Vec::new();
         for (i, st) in BIOME_STYLES.iter().enumerate() {
@@ -560,6 +600,7 @@ impl Assets {
             stone_floor,
             rounded,
             fillets,
+            snow,
             street,
             plaza,
             checker,

@@ -360,12 +360,15 @@ pub fn new_day(w: &mut World, day: u32, rain: bool, season: u8, turned: bool) ->
     if turned {
         for z in 0..w.h {
             for x in 0..w.w {
-                if let Some(Obj::Crop { crop, .. }) = w.obj(x, z) {
-                    if !crop.grows_in(season) {
+                match w.obj(x, z) {
+                    Some(Obj::Crop { crop, .. }) if !crop.grows_in(season) => {
                         // Out of season: it wilts to a dry, straggly weed.
                         w.set_obj(x, z, Some(Obj::Weed { var: 1 }));
                         night.withered += 1;
                     }
+                    // Wildflowers die back under the snow, and come again in spring.
+                    Some(Obj::Flower { .. }) if season == WINTER => w.set_obj(x, z, None),
+                    _ => {}
                 }
             }
         }

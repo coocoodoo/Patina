@@ -275,7 +275,7 @@ impl Game {
                     wind: 1.0,
                     push: glam::Vec2::new(29.5, 11.5),
                     spin: 0.0,
-                    autumn: false,
+                    season: None,
                 };
                 // The hero, idling by the house.
                 let p = Vec3::new(29.5, 0.0, 11.5);

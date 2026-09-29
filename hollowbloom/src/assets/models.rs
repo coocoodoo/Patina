@@ -1288,8 +1288,9 @@ pub struct Props {
     pub shrubs: Vec<Mesh>,
     /// The Ward spell's bubble of light.
     pub bubble: Mesh,
-    /// Each round tree's leaves and how they look once they've turned, for autumn.
-    pub autumn: Vec<(TexId, TexId)>,
+    /// How the leaves, bushes and grass look in each season (by `Season`), as swaps from
+    /// their summer green: blossom, turned leaves, snow.
+    pub seasons: [Vec<(TexId, TexId)>; 4],
 }
 
 /// How many of `Props::tufts` (at the end) are tall meadow grass.
@@ -1352,7 +1353,16 @@ fn blades(
     }
 }
 
-fn foliage(bank: &mut TexBank) -> (Vec<Mesh>, Vec<Mesh>, Vec<Mesh>) {
+/// The foliage textures that change with the seasons.
+struct FoliageTex {
+    lawn: TexId,
+    deep: TexId,
+    leafy: TexId,
+    leaves: TexId,
+    dark: TexId,
+}
+
+fn foliage(bank: &mut TexBank) -> (Vec<Mesh>, Vec<Mesh>, Vec<Mesh>, FoliageTex) {
     let w4 = Texture::new(4, 4, 0);
     let mut r = Rng::new(0x6A55);
     let lawn = bank.add(blade_tex(LIME, GREEN, TEAL));
@@ -1482,11 +1492,18 @@ fn foliage(bank: &mut TexBank) -> (Vec<Mesh>, Vec<Mesh>, Vec<Mesh>) {
         }
         shrubs.push(m);
     }
-    (tufts, weeds, shrubs)
+    let tex = FoliageTex {
+        lawn,
+        deep,
+        leafy,
+        leaves,
+        dark,
+    };
+    (tufts, weeds, shrubs, tex)
 }
 
 pub fn props(bank: &mut TexBank) -> Props {
-    let (tufts, weeds, shrubs) = foliage(bank);
+    let (tufts, weeds, shrubs, ft) = foliage(bank);
     let shimmer = bank.add(tiles::crystal([WHITE, MINT, AQUA]));
     let mut bubble = Mesh::new();
     lathe(
@@ -1522,8 +1539,64 @@ pub fn props(bank: &mut TexBank) -> Props {
         bank.add(tiles::leaves([SALMON, RED, CRIMSON, MAROON], 3)),
         bank.add(tiles::leaves([ORANGE, CLAY, RUST, MAROON], 4)),
     ];
-    let autumn = leaves.iter().copied().zip(turned).collect();
     let pine_leaves = bank.add(tiles::canopy([GREEN, TEAL, DEEP_TEAL, INK], 5));
+    // Spring: the green trees blossom pink and white, and the bushes flower.
+    let spring = vec![
+        (
+            leaves[0],
+            bank.add(tiles::blossom(
+                tiles::canopy([LIME, GREEN, TEAL, DEEP_TEAL], 1),
+                [WHITE, BLUSH],
+                1,
+            )),
+        ),
+        (
+            leaves[1],
+            bank.add(tiles::blossom(
+                tiles::leaves([CREAM, LIME, GREEN, TEAL], 2),
+                [BLUSH, PINK],
+                2,
+            )),
+        ),
+        (
+            ft.leaves,
+            bank.add(tiles::blossom(
+                tiles::canopy([LIME, GREEN, TEAL, DEEP_TEAL], 61),
+                [WHITE, GOLD],
+                61,
+            )),
+        ),
+    ];
+    // Autumn: the bushes turn with the trees, and the grass dries gold at the tips.
+    let mut autumn: Vec<(TexId, TexId)> = leaves.iter().copied().zip(turned).collect();
+    autumn.extend([
+        (ft.lawn, bank.add(blade_tex(GOLD, LIME, TEAL))),
+        (ft.deep, bank.add(blade_tex(SAND, KHAKI, TEAL))),
+        (
+            ft.leaves,
+            bank.add(tiles::canopy([GOLD, ORANGE, CLAY, RUST], 61)),
+        ),
+        (
+            ft.dark,
+            bank.add(tiles::canopy([ORANGE, RUST, MAROON, INK], 62)),
+        ),
+    ]);
+    // Winter: snow on every tree and bush, the pines too, and frost on the grass.
+    let mut winter = Vec::new();
+    for (i, &l) in leaves
+        .iter()
+        .chain([&pine_leaves, &ft.leaves, &ft.dark])
+        .enumerate()
+    {
+        let snowy = tiles::snowcap(bank.get(l).clone(), i as u64);
+        winter.push((l, bank.add(snowy)));
+    }
+    winter.extend([
+        (ft.lawn, bank.add(blade_tex(WHITE, SKY, TEAL))),
+        (ft.deep, bank.add(blade_tex(WHITE, SKY, DEEP_TEAL))),
+        (ft.leafy, bank.add(blade_tex(SKY, GREEN, DEEP_TEAL))),
+    ]);
+    let seasons = [spring, Vec::new(), autumn, winter];
 
     // Round trees: trunk plus two or three leafy blobs.
     let mut trees = Vec::new();
@@ -2486,7 +2559,7 @@ pub fn props(bank: &mut TexBank) -> Props {
         hollow,
         stall,
         sign,
-        autumn,
+        seasons,
     }
 }
 

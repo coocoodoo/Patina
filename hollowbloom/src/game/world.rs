@@ -312,6 +312,8 @@ pub struct World {
     pub style: u8,
     /// Accumulated damage on walls being mined, by tile index.
     pub wall_dmg: std::collections::HashMap<usize, i16>,
+    /// Winter: snow lies on the lawns and hedges (see `set_snow`).
+    snow: bool,
     chunks: Vec<Mesh>,
     /// Tufts of grass on the open lawn, in `TUFTS`-tile blocks, drawn swaying in the breeze.
     grass: Vec<Mesh>,
@@ -343,6 +345,7 @@ impl World {
             biome: biome.min(BIOMES - 1),
             style: 0,
             wall_dmg: Default::default(),
+            snow: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
             dirty: vec![true; (cw * ch) as usize],
@@ -479,6 +482,19 @@ impl World {
     pub fn touch_all(&mut self) {
         self.dirty.fill(true);
         self.grass_dirty.fill(true);
+    }
+
+    /// Lays or clears winter's snow, re-meshing the ground if that changes it.
+    pub fn set_snow(&mut self, snow: bool) {
+        if self.snow != snow {
+            self.snow = snow;
+            self.dirty.fill(true);
+        }
+    }
+
+    #[cfg(test)]
+    pub fn snowy(&self) -> bool {
+        self.snow
     }
 
     /// True if movement is blocked at this tile.
@@ -782,13 +798,18 @@ impl World {
         let lawn = (h % 4) as usize;
         match f {
             Floor::Grass => {
+                let (fillets, flowers, grass) = if self.snow {
+                    (&a.snow.fillets, &a.snow.flowers, &a.snow.grass)
+                } else {
+                    (&a.fillets, &a.grass_flowers, &a.grass)
+                };
                 if let Some((road, mask)) = self.inner_corners(x, z) {
-                    return a.fillets[road * 4 + lawn][mask as usize];
+                    return fillets[road * 4 + lawn][mask as usize];
                 }
                 if h % 11 == 0 {
-                    a.grass_flowers[(h as usize / 11) % 2]
+                    flowers[(h as usize / 11) % 2]
                 } else {
-                    a.grass[lawn]
+                    grass[lawn]
                 }
             }
             Floor::Path
@@ -800,7 +821,12 @@ impl World {
                 let road = self.road(x, z).unwrap_or(0);
                 let mask = self.outer_corners(x, z);
                 if mask != 0 {
-                    return a.rounded[road * 4 + lawn][mask as usize];
+                    let rounded = if self.snow {
+                        &a.snow.rounded
+                    } else {
+                        &a.rounded
+                    };
+                    return rounded[road * 4 + lawn][mask as usize];
                 }
                 match f {
                     Floor::Path => a.path[(h % 2) as usize],
@@ -845,7 +871,9 @@ impl World {
                 b.ore_top[o as usize % b.ore_top.len()],
             ),
             Wall::Bedrock => (b.side, a.bedrock),
+            Wall::Cliff if self.snow => (a.cliff_side, a.snow.grass[1]),
             Wall::Cliff => (a.cliff_side, a.grass[1]),
+            Wall::Hedge if self.snow => (a.hedge_side, a.snow.hedge_top),
             Wall::Brick => (a.stone_wall_side, a.stone_wall_top),
             Wall::Timber => (a.wood_wall_side, a.wood_wall_top),
             Wall::Hedge => (a.hedge_side, a.hedge_top),
@@ -1037,5 +1065,34 @@ impl World {
             }
         }
         (x, z)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn winter_lays_snow_on_the_lawn_and_hedges() {
+        let a = Assets::new();
+        let mut w = World::new(4, 4, Area::Farm, 0);
+        for z in 0..4 {
+            for x in 0..4 {
+                w.set_floor(x, z, Floor::Grass);
+            }
+        }
+        let lawn = |w: &World, a: &Assets| w.floor_tex(a, 1, 1, Floor::Grass);
+        let green = lawn(&w, &a);
+        assert!(a.grass.contains(&green) || a.grass_flowers.contains(&green));
+        w.dirty.fill(false);
+        w.set_snow(true);
+        assert!(w.dirty.iter().all(|d| *d), "the ground is re-meshed");
+        let white = lawn(&w, &a);
+        assert!(a.snow.grass.contains(&white) || a.snow.flowers.contains(&white));
+        assert_eq!(w.wall_tex(&a, Wall::Hedge).1, a.snow.hedge_top);
+        // Laying it again changes nothing.
+        w.dirty.fill(false);
+        w.set_snow(true);
+        assert!(w.dirty.iter().all(|d| !*d));
     }
 }

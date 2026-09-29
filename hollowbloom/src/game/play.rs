@@ -500,6 +500,13 @@ impl Play {
         super::sky::MoonPhase::of_day(self.clock.day)
     }
 
+    /// Snow lies on the farm and in town all winter, and melts with the spring.
+    pub fn sync_season(&mut self) {
+        let winter = self.clock.season() == Season::Winter;
+        self.farm.set_snow(winter);
+        self.town.set_snow(winter);
+    }
+
     pub fn env(&self) -> Env {
         match self.area {
             Area::Home => {
@@ -514,7 +521,7 @@ impl Play {
                     wind: 0.0,
                     push: self.player.pos,
                     spin: self.house_spin,
-                    autumn: false,
+                    season: None,
                 }
             }
             Area::Inside(_) => Env {
@@ -526,7 +533,7 @@ impl Play {
                 wind: 0.0,
                 push: self.player.pos,
                 spin: 0.0,
-                autumn: false,
+                season: None,
             },
             Area::Farm | Area::Town => {
                 const KEYS: [(f32, f32, f32); 9] = [
@@ -559,6 +566,11 @@ impl Play {
                     amb *= 0.84;
                     warm = (warm - 0.9).max(0.5);
                 }
+                if self.clock.season() == Season::Winter {
+                    // Snow throws the moonlight back: crisp days, and pale blue nights.
+                    amb = amb.max(0.6);
+                    warm = (warm - 1.4).max(0.0);
+                }
                 let night = ((m - 1150.0) / 110.0).clamp(0.0, 1.0);
                 Env {
                     ambient: amb,
@@ -570,7 +582,7 @@ impl Play {
                     wind: if self.rain { 1.6 } else { 1.0 - night * 0.35 },
                     push: self.player.pos,
                     spin: 0.0,
-                    autumn: self.clock.season() == Season::Autumn,
+                    season: Some(self.clock.season()),
                 }
             }
             Area::Hollow { depth } => {
@@ -584,7 +596,7 @@ impl Play {
                     wind: 0.0,
                     push: self.player.pos,
                     spin: 0.0,
-                    autumn: false,
+                    season: None,
                 }
             }
         }
@@ -909,6 +921,7 @@ impl Play {
         self.time += dt;
         self.pad = io.input.pad_active;
         self.update_camera(io.view, dt);
+        self.sync_season();
 
         // Fades run even over menus.
         if let Some(f) = &mut self.fade {

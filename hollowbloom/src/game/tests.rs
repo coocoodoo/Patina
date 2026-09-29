@@ -3080,3 +3080,16 @@ fn seasonal_crops_keep_to_their_season() {
         "{notes:?}"
     );
 }
+
+#[test]
+fn snow_comes_with_winter_and_melts_in_spring() {
+    use super::play::SEASON_DAYS;
+    let mut s = Sim::new();
+    s.play.clock.day = 3 * SEASON_DAYS + 2;
+    s.frames(1);
+    assert!(s.play.farm.snowy() && s.play.town.snowy());
+    assert_eq!(s.play.env().season, Some(super::play::Season::Winter));
+    s.play.clock.day = 4 * SEASON_DAYS + 1;
+    s.frames(1);
+    assert!(!s.play.farm.snowy() && !s.play.town.snowy());
+}

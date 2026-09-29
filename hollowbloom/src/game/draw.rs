@@ -6,6 +6,7 @@ use glam::{Mat4, Vec2, Vec3};
 
 use super::home::{self, Furn};
 use super::items::{Item, Stack};
+use super::play::Season;
 use super::world::{Floor, Obj, World};
 use crate::assets::Assets;
 use crate::assets::models::{ARM_L, ARM_R, BODY, HEAD, Humanoid, LEG_L, LEG_R};
@@ -32,8 +33,8 @@ pub struct Env {
     pub push: Vec2,
     /// Seconds left of a spin given to the house globe.
     pub spin: f32,
-    /// Outdoors in autumn: the trees have turned.
-    pub autumn: bool,
+    /// Outdoors, the season: blossom, turned leaves or snow (None indoors and below).
+    pub season: Option<Season>,
 }
 
 impl Env {
@@ -201,8 +202,8 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     r.remap.push((a.water[0], a.water[frame]));
     r.remap
         .push((a.lava[0], a.lava[((env.time * 2.0) as usize) % 2]));
-    if env.autumn {
-        r.remap.extend_from_slice(&a.props.autumn);
+    if let Some(s) = env.season {
+        r.remap.extend_from_slice(&a.props.seasons[s as usize]);
     }
     let opts = DrawOpts::default();
     for chunk in w.visible_chunks(rect) {

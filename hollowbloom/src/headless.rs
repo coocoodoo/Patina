@@ -3384,3 +3384,153 @@ pub fn pet_shots(dir: &str) {
     snap(&mut game, &mut r, &input, dir, "q02_journal");
     let _ = Area::Farm;
 }
+
+/// The farm and town through the year: blossom and drifting petals in spring, butterflies
+/// and fireflies in summer, turned leaves in autumn and snow in winter, with each season's
+/// crops growing in the starter field.
+pub fn season_shots(dir: &str) {
+    use crate::game::items::{Kind, seasonal_seeds};
+    use crate::game::play::SEASON_DAYS;
+    use crate::game::world::Area;
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20260321);
+    tick(&mut game, &input, &audio, 5);
+    // A tree near the house, for close-ups.
+    let tree = {
+        let p = play(&mut game);
+        let mut best = (0, 0, i32::MAX);
+        for z in 2..p.farm.h - 2 {
+            for x in 2..p.farm.w - 2 {
+                if matches!(p.farm.obj(x, z), Some(Obj::Tree { .. })) {
+                    let d = (x - 29).abs() + (z - 13).abs();
+                    if d < best.2 {
+                        best = (x, z, d);
+                    }
+                }
+            }
+        }
+        Vec3::new(best.0 as f32 + 0.5, 0.6, best.1 as f32 + 0.5)
+    };
+    let names = ["spring", "summer", "autumn", "winter"];
+    for (i, name) in names.iter().enumerate() {
+        {
+            let p = play(&mut game);
+            p.menu = Menu::None;
+            p.banner = None;
+            p.rain = false;
+            p.area = Area::Farm;
+            p.clock.day = i as u32 * SEASON_DAYS + 6;
+            p.clock.min = 640.0;
+            p.player.pos = Vec2::new(29.5, 12.6);
+            p.player.facing = Vec2::new(0.0, 1.0);
+            // This season's crops in the starter field: ripe in front, growing behind.
+            let crops: Vec<Crop> = seasonal_seeds(1 << i)
+                .iter()
+                .filter_map(|s| match s.def().kind {
+                    Kind::Seed(c) if c.def().seasons & (1 << i) != 0 => Some(c),
+                    _ => None,
+                })
+                .collect();
+            for z in 13..18 {
+                for x in 23..36 {
+                    p.farm.set_obj(x, z, None);
+                    p.farm.set_floor(x, z, Floor::Tilled);
+                    p.farm.set_flag(x, z, WATERED, z % 2 == 0);
+                }
+            }
+            for (k, c) in crops.iter().take(12).enumerate() {
+                let x = 23 + k as i32;
+                let d = c.def();
+                for (z, days) in [(14, d.days * 2 / 3), (15, d.days), (16, d.days)] {
+                    p.farm.set_obj(
+                        x,
+                        z,
+                        Some(Obj::Crop {
+                            crop: *c,
+                            days,
+                            harvested: false,
+                        }),
+                    );
+                }
+            }
+        }
+        tick(&mut game, &input, &audio, 40);
+        let n = i * 3 + 1;
+        snap_on(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("s{n:02}_{name}_field"),
+            Some(Vec3::new(29.0, 0.0, 14.5)),
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("s{:02}_{name}_tree", n + 1),
+            tree,
+            9.0,
+        );
+        // Evening, for the fireflies (and the snow under the lamps).
+        play(&mut game).clock.min = 1290.0;
+        tick(&mut game, &input, &audio, 20);
+        snap_on(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("s{:02}_{name}_night", n + 2),
+            Some(Vec3::new(29.0, 0.0, 13.0)),
+        );
+    }
+    // A winter storm, and the town in the snow.
+    {
+        let p = play(&mut game);
+        p.clock.min = 700.0;
+        p.rain = true;
+    }
+    tick(&mut game, &input, &audio, 20);
+    snap_on(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "s13_winter_storm",
+        Some(Vec3::new(29.0, 0.0, 14.0)),
+    );
+    {
+        let p = play(&mut game);
+        p.rain = false;
+        p.fade = None;
+        p.start_fade(Trans::Bus { to_town: true });
+    }
+    tick(&mut game, &input, &audio, 80);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.bus = None;
+        p.clock.min = 700.0;
+    }
+    tick(&mut game, &input, &audio, 5);
+    snap(&mut game, &mut r, &input, dir, "s14_winter_town");
+    // And the same street in spring.
+    play(&mut game).clock.day = 8;
+    tick(&mut game, &input, &audio, 5);
+    snap(&mut game, &mut r, &input, dir, "s15_spring_town");
+}

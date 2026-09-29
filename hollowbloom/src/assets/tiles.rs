@@ -54,6 +54,82 @@ pub fn grass(seed: u64, flowers: bool) -> Texture {
     t
 }
 
+/// Winter's lawn: soft snow with drifts in its shadows, and now and then a sprig of
+/// grass or a snowdrop poking through.
+pub fn snow(seed: u64, sprigs: bool) -> Texture {
+    let mut t = tex(WHITE);
+    let mut r = Rng::new(seed ^ 0x5A0_5A0);
+    // Drifts: blue hollows between the heaps.
+    for _ in 0..2 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        blob(&mut t, x, y, 2, 1, SKY);
+    }
+    // Sparkles catching the light, with a little shadow under each.
+    for _ in 0..3 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        t.set_wrap(x, y + 1, SKY);
+    }
+    if sprigs {
+        for i in 0..2 {
+            let (x, y) = (r.range(1, T - 1), r.range(2, T - 1));
+            if i == 0 {
+                // A snowdrop's nodding bell on a green stem.
+                t.set_wrap(x, y, WHITE);
+                t.set_wrap(x, y + 1, GREEN);
+                t.set_wrap(x + 1, y + 1, SKY);
+                t.set_wrap(x, y - 1, GREEN);
+            } else {
+                t.set_wrap(x, y, TEAL);
+                t.set_wrap(x + 1, y - 1, GREEN);
+                t.set_wrap(x, y + 1, SKY);
+            }
+        }
+    }
+    t
+}
+
+/// A hedge's top under a cap of snow.
+pub fn snowy_hedge(seed: u64) -> Texture {
+    let mut t = hedge(seed);
+    let mut r = Rng::new(seed ^ 0x51);
+    for _ in 0..7 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        blob(&mut t, x, y, 2, 1, WHITE);
+    }
+    speckle(&mut t, &mut r, SKY, 5);
+    t
+}
+
+/// Leaves in blossom: the canopy, sprinkled with little flowers.
+pub fn blossom(base: Texture, petals: [u8; 2], seed: u64) -> Texture {
+    let mut t = base;
+    let mut r = Rng::new(seed ^ 0xB105);
+    let [petal, heart] = petals;
+    // Little five-petal flowers: a cross of petals round a darker heart.
+    for _ in 0..9 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
+            t.set_wrap(x + dx, y + dy, petal);
+        }
+        t.set_wrap(x, y, heart);
+    }
+    speckle(&mut t, &mut r, petal, 6);
+    t
+}
+
+/// Leaves under snow: big white clumps with blue shadows, the green showing between.
+pub fn snowcap(base: Texture, seed: u64) -> Texture {
+    let mut t = base;
+    let mut r = Rng::new(seed ^ 0x5C4);
+    for _ in 0..9 {
+        let (x, y) = (r.range(0, T), r.range(0, T));
+        blob(&mut t, x, y + 1, 3, 1, SKY);
+        blob(&mut t, x, y, 3, 1, WHITE);
+    }
+    speckle(&mut t, &mut r, WHITE, 8);
+    t
+}
+
 pub fn dirt_path(seed: u64) -> Texture {
     let mut t = tex(SAND);
     let mut r = Rng::new(seed);
