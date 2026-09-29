@@ -1,12 +1,16 @@
-//! Audio: a mixer thread that plays procedural sound effects and chiptune music.
+//! Audio: a mixer thread that plays procedural sound effects and the music (recorded tracks
+//! where there are some, the chiptune band for the rest).
 //!
 //! Output goes through ALSA on Linux (loaded at run time, so nothing is needed to build) and
 //! winmm on Windows. Anything else, or a machine without a sound device, runs silently.
+
+use std::sync::Arc;
 
 mod backend;
 pub mod music;
 mod songs;
 pub mod synth;
+pub mod track;
 
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 
@@ -83,11 +87,55 @@ struct Voice {
     vol: f32,
 }
 
+/// Whoever's playing a song: the band, or a recorded track.
+enum Source {
+    Band(Box<music::Player>),
+    Track(track::TrackPlayer),
+}
+
+/// A song playing, fading in or out.
+struct Playing {
+    src: Source,
+    gain: f32,
+    target: f32,
+}
+
+impl Playing {
+    /// A track still being decoded isn't ready (and doesn't start fading in until it is).
+    fn ready(&self) -> bool {
+        match &self.src {
+            Source::Band(_) => true,
+            Source::Track(t) => t.ready(),
+        }
+    }
+
+    fn next(&mut self) -> (f32, f32) {
+        match &mut self.src {
+            Source::Band(p) => {
+                let s = p.next();
+                (s, s)
+            }
+            Source::Track(t) => t.next(),
+        }
+    }
+}
+
+/// How many decoded tracks to keep, so going in and out of places doesn't decode them again.
+const KEEP: usize = 3;
+
+/// A track that's come back to within this long carries on from where it left off (out of a
+/// shop and back into town, say) rather than starting over.
+const RESUME: std::time::Duration = std::time::Duration::from_secs(180);
+
 struct Mixer {
     bank: Vec<Vec<f32>>,
     voices: Vec<Voice>,
-    music: Option<music::Player>,
-    fading: Option<music::Player>,
+    music: Option<Playing>,
+    fading: Option<Playing>,
+    /// Recently decoded tracks, the latest last.
+    decoded: Vec<(Song, Arc<track::Pcm>)>,
+    /// Where tracks got to when they stopped, and when.
+    left_off: Vec<(Song, usize, std::time::Instant)>,
     music_vol: f32,
     sfx_vol: f32,
 }
@@ -99,8 +147,70 @@ impl Mixer {
             voices: Vec::new(),
             music: None,
             fading: None,
+            decoded: Vec::new(),
+            left_off: Vec::new(),
             music_vol: 0.7,
             sfx_vol: 0.8,
+        }
+    }
+
+    /// Starts a song: its recorded track if it has one (decoded already, or decoding in the
+    /// background), otherwise the band.
+    fn start(&mut self, song: Song, transpose: i32, tempo: f32) -> Playing {
+        let src = match track::track(song) {
+            Some(t) => {
+                let pcm = self
+                    .decoded
+                    .iter()
+                    .find(|(s, _)| *s == song)
+                    .map(|(_, p)| p.clone());
+                let mut p = track::TrackPlayer::new(t, pcm);
+                if let Some(&(_, pos, when)) = self.left_off.iter().find(|(s, _, _)| *s == song) {
+                    if when.elapsed() < RESUME {
+                        p.resume(pos);
+                    }
+                }
+                if p.failed {
+                    Source::Band(Box::new(music::Player::new(song, transpose, tempo)))
+                } else {
+                    Source::Track(p)
+                }
+            }
+            None => Source::Band(Box::new(music::Player::new(song, transpose, tempo))),
+        };
+        Playing {
+            src,
+            gain: 0.0,
+            target: 1.0,
+        }
+    }
+
+    /// Notes where a song that's stopped had got to.
+    fn retire(&mut self, p: Playing) {
+        if let Source::Track(t) = p.src {
+            self.left_off.retain(|(s, _, _)| *s != t.song);
+            self.left_off
+                .push((t.song, t.pos(), std::time::Instant::now()));
+        }
+    }
+
+    /// Picks up tracks that have finished decoding (keeping them for next time), and hands
+    /// any that couldn't be decoded to the band.
+    fn poll_tracks(&mut self) {
+        for p in [&mut self.music, &mut self.fading].into_iter().flatten() {
+            let Source::Track(t) = &mut p.src else {
+                continue;
+            };
+            if let Some(pcm) = t.poll() {
+                self.decoded.retain(|(s, _)| *s != t.song);
+                self.decoded.push((t.song, pcm));
+                if self.decoded.len() > KEEP {
+                    self.decoded.remove(0);
+                }
+            }
+            if t.failed {
+                p.src = Source::Band(Box::new(music::Player::new(t.song, 0, 1.0)));
+            }
         }
     }
 
@@ -126,9 +236,11 @@ impl Mixer {
             Cmd::Music(next) => {
                 if let Some(mut old) = self.music.take() {
                     old.target = 0.0;
-                    self.fading = Some(old);
+                    if let Some(gone) = self.fading.replace(old) {
+                        self.retire(gone);
+                    }
                 }
-                self.music = next.map(|(s, tr, tempo)| music::Player::new(s, tr, tempo));
+                self.music = next.map(|(s, tr, tempo)| self.start(s, tr, tempo));
             }
             Cmd::Volume(m, s) => {
                 self.music_vol = m.clamp(0.0, 1.0);
@@ -138,16 +250,22 @@ impl Mixer {
     }
 
     fn render(&mut self, out: &mut [i16]) {
+        self.poll_tracks();
         let fade_step = 1.0 / (synth::RATE * 0.9);
         for frame in out.chunks_exact_mut(2) {
-            let mut m = 0.0;
+            let (mut ml, mut mr) = (0.0, 0.0);
             for p in [&mut self.music, &mut self.fading].into_iter().flatten() {
+                if !p.ready() {
+                    continue;
+                }
                 if p.gain < p.target {
                     p.gain = (p.gain + fade_step).min(p.target);
                 } else if p.gain > p.target {
                     p.gain = (p.gain - fade_step).max(p.target);
                 }
-                m += p.next() * p.gain;
+                let (l, r) = p.next();
+                ml += l * p.gain;
+                mr += r * p.gain;
             }
             let mut s = 0.0;
             for v in &mut self.voices {
@@ -159,16 +277,22 @@ impl Mixer {
                 }
                 v.pos += v.rate;
             }
-            let mix = (m * self.music_vol * 0.8 + s * self.sfx_vol * 0.55).clamp(-1.0, 1.0);
-            let smp = (mix * 30000.0) as i16;
-            frame[0] = smp;
-            frame[1] = smp;
+            let sfx = s * self.sfx_vol * 0.55;
+            let music = self.music_vol * 0.8;
+            frame[0] = ((ml * music + sfx).clamp(-1.0, 1.0) * 30000.0) as i16;
+            frame[1] = ((mr * music + sfx).clamp(-1.0, 1.0) * 30000.0) as i16;
         }
         let bank = &self.bank;
         self.voices
             .retain(|v| (v.pos as usize) + 1 < bank[v.buf].len());
-        if self.fading.as_ref().is_some_and(|f| f.gain <= 0.0) {
-            self.fading = None;
+        if self
+            .fading
+            .as_ref()
+            .is_some_and(|f| f.gain <= 0.0 && f.target <= 0.0)
+        {
+            if let Some(gone) = self.fading.take() {
+                self.retire(gone);
+            }
         }
     }
 }
@@ -218,6 +342,27 @@ mod tests {
         }
         assert!(peak > 1000, "expected audible output, peak {peak}");
         assert!(peak <= 30000);
+    }
+
+    #[test]
+    fn recorded_tracks_play_once_decoded() {
+        let mut m = Mixer::new();
+        m.apply(Cmd::Music(Some((Song::Night, 0, 1.0))));
+        let mut buf = vec![0i16; FRAMES * 2];
+        let mut peak = 0i32;
+        let mut wide = false;
+        for _ in 0..3000 {
+            m.render(&mut buf);
+            peak = peak.max(buf.iter().map(|s| (*s as i32).abs()).max().unwrap_or(0));
+            wide |= buf.chunks_exact(2).any(|f| f[0] != f[1]);
+            if peak > 2000 && wide {
+                break;
+            }
+            // Give the decoder a moment.
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(peak > 2000, "expected the night track, peak {peak}");
+        assert!(wide, "expected stereo");
     }
 
     #[test]

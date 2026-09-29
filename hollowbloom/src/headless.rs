@@ -1477,7 +1477,7 @@ pub fn music(dir: &str) {
             .map(|_| ((p.next() * 0.7 * 0.8).clamp(-1.0, 1.0) * 30000.0) as i16)
             .collect();
         let path = dir.join(format!("{}.wav", song.name()));
-        match write_wav(&path, &pcm, RATE as u32) {
+        match write_wav(&path, &pcm, 1, RATE as u32) {
             Ok(()) => println!("wrote {} ({first:.0}s)", path.display()),
             Err(e) => eprintln!("failed to write {}: {e}", path.display()),
         }
@@ -1491,8 +1491,28 @@ pub fn music(dir: &str) {
     }
 }
 
-/// Mono 16-bit PCM in a WAV file.
-fn write_wav(path: &Path, pcm: &[i16], rate: u32) -> std::io::Result<()> {
+/// `--decode IN.mp3 OUT.wav`: an MP3 decoded just as the game decodes its tracks, for
+/// finding loop points in exactly what the game plays.
+pub fn decode_track(input: &str, output: &str) {
+    let bytes = match std::fs::read(input) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("cannot read {input}: {e}");
+            return;
+        }
+    };
+    let mp3: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+    match crate::audio::track::decode(mp3) {
+        Ok(pcm) => match write_wav(Path::new(output), &pcm.data, 2, 44_100) {
+            Ok(()) => println!("wrote {output} ({} frames)", pcm.frames()),
+            Err(e) => eprintln!("failed to write {output}: {e}"),
+        },
+        Err(e) => eprintln!("cannot decode {input}: {e}"),
+    }
+}
+
+/// 16-bit PCM (interleaved if there's more than one channel) in a WAV file.
+fn write_wav(path: &Path, pcm: &[i16], channels: u16, rate: u32) -> std::io::Result<()> {
     let data = pcm.len() as u32 * 2;
     let mut b = Vec::with_capacity(44 + data as usize);
     b.extend_from_slice(b"RIFF");
@@ -1500,10 +1520,10 @@ fn write_wav(path: &Path, pcm: &[i16], rate: u32) -> std::io::Result<()> {
     b.extend_from_slice(b"WAVEfmt ");
     b.extend_from_slice(&16u32.to_le_bytes());
     b.extend_from_slice(&1u16.to_le_bytes());
-    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&channels.to_le_bytes());
     b.extend_from_slice(&rate.to_le_bytes());
-    b.extend_from_slice(&(rate * 2).to_le_bytes());
-    b.extend_from_slice(&2u16.to_le_bytes());
+    b.extend_from_slice(&(rate * 2 * channels as u32).to_le_bytes());
+    b.extend_from_slice(&(2 * channels).to_le_bytes());
     b.extend_from_slice(&16u16.to_le_bytes());
     b.extend_from_slice(b"data");
     b.extend_from_slice(&data.to_le_bytes());

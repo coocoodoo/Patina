@@ -483,6 +483,7 @@ hollowbloom --light-shots DIR     # the sun's shadows through the day, the moon,
 hollowbloom --monster-shots DIR   # every monster family in every biome, the moon, the giants
 hollowbloom --feature-shots DIR   # recipe cards, the Steam Deck layout, bombs and secret rooms
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
+hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)
 hollowbloom --bench               # rendering speed (about 5 ms per frame at 480x270)
 hollowbloom --palette-chart FILE  # the light maps: every colour at every light level
@@ -535,6 +536,14 @@ hollowbloom --mute                # no sound
   town's buildings are generated from a short description each (size, walls, roof, awning,
   sign), and villagers find their way about with a simple breadth-first path search over
   the town's tiles.
+* **Recorded music**: songs can also have a recorded track in `music/` (the title, the
+  farm's morning, afternoon and night, and the town so far, made with Google's Lyria 3),
+  built into the executable and decoded in the background by a pure-Rust MP3 decoder
+  (Symphonia). Each plays all the way through and starts again, or loops between two
+  points with the seam blended, at a matched loudness; a track you come back to within
+  three minutes carries on where it left off. Songs without a track are played by the
+  band. `hollowbloom --decode` and `tools/find_loop.py` find a new track's loop and
+  loudness.
 * **Audio** uses ALSA on Linux (loaded with `dlopen`) and winmm on Windows, from a mixer
   thread.
 

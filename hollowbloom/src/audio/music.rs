@@ -579,8 +579,6 @@ pub struct Player {
     samples_per_tick: f32,
     chans: [Chan; PARTS],
     transpose: f32,
-    pub gain: f32,
-    pub target: f32,
 }
 
 fn midi_hz(m: f32) -> f32 {
@@ -609,8 +607,6 @@ impl Player {
             samples_per_tick: RATE * 60.0 / (t.bpm * tempo * 4.0),
             chans: Default::default(),
             transpose: transpose as f32,
-            gain: 0.0,
-            target: 1.0,
         }
     }
 
