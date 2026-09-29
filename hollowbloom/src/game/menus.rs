@@ -1427,6 +1427,9 @@ impl Play {
         pointer: bool,
     ) {
         let (w, h) = (c.w(), c.h());
+        // Only a mouse that's pointing hovers over things; otherwise the cursor picks what
+        // to show (a Deck's pointer sits parked wherever it was left, often over a slot).
+        let mouse = if pointer { mouse } else { Vec2::splat(-1000.0) };
         match &self.menu {
             Menu::None => {}
             Menu::Summary => {
@@ -1684,14 +1687,18 @@ impl Play {
                         },
                     );
                     if self.held.is_none() {
+                        let at = |i: usize| {
+                            if i < 30 {
+                                (inv.slots.get(i).copied().flatten(), cg.slot_pos(i))
+                            } else {
+                                (self.player.inv.slots[i - 30], bg.slot_pos(i - 30))
+                            }
+                        };
                         let hover = cg
                             .hit(mouse)
-                            .map(|i| (inv.slots[i], cg.slot_pos(i)))
-                            .or_else(|| {
-                                bg.hit(mouse)
-                                    .map(|i| (self.player.inv.slots[i], bg.slot_pos(i)))
-                            });
-                        if let Some((Some(s), (sx, sy))) = hover {
+                            .or_else(|| bg.hit(mouse).map(|i| i + 30))
+                            .map_or_else(|| at(*cursor), at);
+                        if let (Some(s), (sx, sy)) = hover {
                             self.tip_at(c, a, &l, sx, sy, &s);
                         }
                     }
@@ -2140,15 +2147,16 @@ impl Play {
             &label,
             if ok { WHITE } else { ROSEWOOD },
         );
-        // Hovering a gear recipe shows what the base item is like.
-        for row in 0..rows {
-            let y = l.py + 36 + row as i32 * 18;
-            if inside(mouse, l.px + 6, y, 120, 17) {
-                if let Some(r) = list.get(scroll + row) {
-                    if r.out.base().is_some() && self.known.contains(&r.out) {
-                        let s = Stack::new(r.out, 1);
-                        self.stack_tooltip(c, a, l.px + l.pw + 4, y, &s);
-                    }
+        // A gear recipe hovered (or else picked) shows what the base item is like.
+        let row = (0..rows)
+            .find(|&row| inside(mouse, l.px + 6, l.py + 36 + row as i32 * 18, 120, 17))
+            .or_else(|| recipe.checked_sub(scroll).filter(|&row| row < rows));
+        if let Some(row) = row {
+            if let Some(r) = list.get(scroll + row) {
+                if r.out.base().is_some() && self.known.contains(&r.out) {
+                    let s = Stack::new(r.out, 1);
+                    let y = l.py + 36 + row as i32 * 18;
+                    self.stack_tooltip(c, a, l.px + l.pw + 4, y, &s);
                 }
             }
         }
@@ -2276,10 +2284,8 @@ impl Play {
                     } else {
                         c.text(l.px + 10, y, &format!("{} - keep this one!", s.name()), INK);
                     }
-                    if g.hit(mouse).is_some() {
-                        let (sx, sy) = g.slot_pos(i);
-                        self.tip_at(c, a, &l, sx, sy, &s);
-                    }
+                    let (sx, sy) = g.slot_pos(i);
+                    self.tip_at(c, a, &l, sx, sy, &s);
                 }
             }
         }

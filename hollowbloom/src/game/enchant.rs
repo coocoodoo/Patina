@@ -533,13 +533,20 @@ impl Play {
                 c.px(x, y, [LAVENDER, MINT, BLUSH, WHITE][k % 4]);
             }
         }
-        // Tooltips.
-        if let Some(i) = g.hit(mouse) {
+        // Tooltips: for what's under the mouse, or else under the cursor.
+        let hovered = g.hit(mouse).is_some()
+            || worn_hit(&l, BAG_TOP, mouse).is_some()
+            || inside(mouse, gx, gy, 18, 18)
+            || inside(mouse, sx, sy, 18, 18);
+        let bag = g.hit(mouse).or((!hovered && cursor < 40).then_some(cursor));
+        let worn = worn_hit(&l, BAG_TOP, mouse)
+            .or((!hovered && (40..45).contains(&cursor)).then(|| cursor - 40));
+        if let Some(i) = bag {
             if let Some(s) = self.player.inv.slots[i] {
                 let (x, y) = g.slot_pos(i);
                 self.stack_tooltip(c, a, x + 22, y - 30, &s);
             }
-        } else if let Some(i) = worn_hit(&l, BAG_TOP, mouse) {
+        } else if let Some(i) = worn {
             if let Some(s) = self.player.equip[i] {
                 let (x, y) = worn_pos(&l, BAG_TOP, i);
                 self.stack_tooltip(c, a, x + 22, y - 30, &s);

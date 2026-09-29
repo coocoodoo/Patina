@@ -7,6 +7,7 @@
 use glam::{Mat4, Vec3};
 
 use super::Io;
+use super::draw::HAND;
 use super::dungeon::biome_for;
 use super::gear::{Class, Stat};
 use super::items::{Item, Stack};
@@ -814,7 +815,7 @@ pub fn rod_tip(pos: Vec3, yaw: f32, lift: f32) -> Vec3 {
     let s = HERO.scale;
     let root = Mat4::from_translation(pos) * Mat4::from_rotation_y(yaw);
     let right = root
-        * Mat4::from_translation(Vec3::new(SHOULDER_X * s, SHOULDER * s, 0.0))
+        * Mat4::from_translation(Vec3::new(HAND * SHOULDER_X * s, SHOULDER * s, 0.0))
         * Mat4::from_rotation_x(-1.5 - lift * 1.5);
     let hand = right * Mat4::from_translation(Vec3::new(0.0, -0.22, 0.02));
     hand.transform_point3(Vec3::new(0.0, -ROD_LEN, 0.0))
@@ -1464,5 +1465,13 @@ mod tests {
             );
         }
         assert!(FISH.len() >= 40);
+    }
+
+    #[test]
+    fn the_rod_is_held_in_the_right_hand() {
+        // Facing +z, the hero's right is -x (and facing +x, it's +z).
+        assert!(rod_tip(Vec3::ZERO, 0.0, 0.0).x < -0.1);
+        let east = rod_tip(Vec3::ZERO, std::f32::consts::FRAC_PI_2, 0.0);
+        assert!(east.z > 0.1, "{east:?}");
     }
 }

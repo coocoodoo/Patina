@@ -1425,19 +1425,22 @@ impl Play {
             &self.player.inv,
             (cursor >= cap).then(|| cursor - cap),
         );
-        let hover = tg
-            .hit(mouse)
-            .and_then(|i| {
+        // What's under the mouse, or else under the cursor.
+        let at = |i: usize| {
+            if i < cap {
                 tank.slots
                     .get(i)
                     .copied()
                     .flatten()
                     .map(|s| (s, tg.slot_pos(i)))
-            })
-            .or_else(|| {
-                bg.hit(mouse)
-                    .and_then(|i| self.player.inv.slots[i].map(|s| (s, bg.slot_pos(i))))
-            });
+            } else {
+                self.player.inv.slots[i - cap].map(|s| (s, bg.slot_pos(i - cap)))
+            }
+        };
+        let hover = tg
+            .hit(mouse)
+            .or_else(|| bg.hit(mouse).map(|i| i + cap))
+            .map_or_else(|| at(cursor), at);
         if let Some((s, (sx, sy))) = hover {
             self.tip_at(c, a, &l, sx, sy, &s);
         }

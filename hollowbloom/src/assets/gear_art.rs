@@ -1977,24 +1977,27 @@ fn held_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                 }
             }
         }
+        // The chopping tools' heads lie in the plane they swing through, with the business
+        // end towards -z, the way the swing carries it, so a pick lands on its point and an
+        // axe on its edge.
         L::Pick(c) => {
             let (h, t) = (solid(bank, RUST), metal(bank, c));
             handle(&mut m, h, 0.4);
-            bx(&mut m, v(-0.2, -0.44, -0.03), v(0.2, -0.38, 0.03), t);
-            bx(&mut m, v(-0.24, -0.42, -0.02), v(-0.18, -0.34, 0.02), t);
-            bx(&mut m, v(0.18, -0.42, -0.02), v(0.24, -0.34, 0.02), t);
+            bx(&mut m, v(-0.03, -0.44, -0.2), v(0.03, -0.38, 0.2), t);
+            bx(&mut m, v(-0.02, -0.42, -0.24), v(0.02, -0.34, -0.18), t);
+            bx(&mut m, v(-0.02, -0.42, 0.18), v(0.02, -0.34, 0.24), t);
         }
         L::Axe(c) => {
             let (h, t) = (solid(bank, RUST), metal(bank, c));
             handle(&mut m, h, 0.4);
-            bx(&mut m, v(0.0, -0.46, -0.025), v(0.16, -0.3, 0.025), t);
-            bx(&mut m, v(-0.05, -0.43, -0.02), v(0.0, -0.33, 0.02), t);
+            bx(&mut m, v(-0.025, -0.46, -0.16), v(0.025, -0.3, 0.0), t);
+            bx(&mut m, v(-0.02, -0.43, 0.0), v(0.02, -0.33, 0.05), t);
         }
         L::Hoe(c) => {
             let (h, t) = (solid(bank, RUST), metal(bank, c));
             handle(&mut m, h, 0.42);
-            bx(&mut m, v(-0.02, -0.46, -0.02), v(0.14, -0.4, 0.02), t);
-            bx(&mut m, v(0.1, -0.5, -0.03), v(0.15, -0.4, 0.03), t);
+            bx(&mut m, v(-0.02, -0.46, -0.14), v(0.02, -0.4, 0.02), t);
+            bx(&mut m, v(-0.03, -0.5, -0.15), v(0.03, -0.4, -0.1), t);
         }
         L::Sickle(c) => {
             let (h, t) = (solid(bank, RUST), metal(bank, c));

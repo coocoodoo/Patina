@@ -1215,22 +1215,23 @@ fn draw_body(
     }
     let body = root * Mat4::from_translation(Vec3::new(0.0, h.hip - 0.02 + bob, 0.0));
     r.mesh(&a.bank, &h.parts[BODY], &body, o);
-    // Arms: the right arm follows the swing.
+    // Arms: the right follows the swing, the left carries any shield.
     let guard = fit.shield.is_some() && matches!(pose.swing, None | Some((_, Swing::Slash)));
+    let off = -HAND;
     let left = root
-        * Mat4::from_translation(Vec3::new(-h.shoulder_x, h.shoulder + bob, 0.0))
+        * Mat4::from_translation(Vec3::new(off * h.shoulder_x, h.shoulder + bob, 0.0))
         * Mat4::from_rotation_x(if guard {
             -0.5 - sw * 0.2
         } else {
             -sw * 0.6 * (1.0 - pose.reach * 0.7) - pose.reach * 1.45
         })
-        * Mat4::from_rotation_z(-0.12 * (1.0 - pose.reach));
+        * Mat4::from_rotation_z(off * 0.12 * (1.0 - pose.reach));
     r.mesh(&a.bank, &h.parts[ARM_L], &left, o);
     if let Some(shield) = fit.shield {
         // Worn on the forearm, facing outwards and a little forwards.
         let m = left
-            * Mat4::from_translation(Vec3::new(-0.07, -0.16, 0.02))
-            * Mat4::from_rotation_y(-1.2);
+            * Mat4::from_translation(Vec3::new(off * 0.07, -0.16, 0.02))
+            * Mat4::from_rotation_y(off * 1.2);
         r.mesh(&a.bank, shield, &m, o);
     }
     let (rx, rz, twist) = match pose.swing {
@@ -1243,8 +1244,9 @@ fn draw_body(
             )
         }
         Some((t, Swing::Chop)) => {
+            // From overhead, a little behind, down to the ground in front.
             let k = ease_out(t);
-            (-2.7 + k * 3.3, 0.0, 0.0)
+            (-3.3 + k * 2.55, 0.0, 0.0)
         }
         Some((t, Swing::Pour)) => (-1.2, 0.0, (t * PI).sin() * 0.3),
         Some((t, Swing::Use)) => (-1.3 * (t * PI).sin(), 0.0, 0.0),
@@ -1264,11 +1266,12 @@ fn draw_body(
             0.0,
         ),
     };
+    // The turns above are for an arm on the +x side: mirrored to the hand's side.
     let right = root
-        * Mat4::from_translation(Vec3::new(h.shoulder_x, h.shoulder + bob, 0.0))
-        * Mat4::from_rotation_y(twist)
+        * Mat4::from_translation(Vec3::new(HAND * h.shoulder_x, h.shoulder + bob, 0.0))
+        * Mat4::from_rotation_y(HAND * twist)
         * Mat4::from_rotation_x(rx)
-        * Mat4::from_rotation_z(rz);
+        * Mat4::from_rotation_z(HAND * rz);
     r.mesh(&a.bank, &h.parts[ARM_R], &right, o);
     if let Some(tool) = held {
         let hand = right * Mat4::from_translation(Vec3::new(0.0, -h.hand, 0.02));
@@ -1309,6 +1312,10 @@ fn ease_out(t: f32) -> f32 {
     1.0 - (1.0 - t) * (1.0 - t)
 }
 
+/// The side of a figure the hand holding tools and weapons is on, as x in its own space
+/// (where it faces +z): -1 is its right.
+pub const HAND: f32 = -1.0;
+
 /// How far round a slash swings the sword arm: from this far round on its own side (radians)
 /// to as far round the other way.
 const SLASH_TWIST: f32 = 1.3;
@@ -1319,8 +1326,8 @@ pub fn slash_arc(r: &mut Renderer, pos: Vec3, yaw: f32, t: f32, reach: f32, colo
     if t > 0.7 {
         return;
     }
-    let start = SLASH_TWIST;
-    let end = SLASH_TWIST * (1.0 - 2.0 * ease_out(t));
+    let start = HAND * SLASH_TWIST;
+    let end = HAND * SLASH_TWIST * (1.0 - 2.0 * ease_out(t));
     let steps = 10;
     for i in 0..=steps {
         let ang = start + (end - start) * i as f32 / steps as f32;
