@@ -18,8 +18,8 @@ use crate::palette::*;
 use crate::ui::{Canvas, Style};
 
 const PW: i32 = 300;
-const PH: i32 = 190;
-const BAG_TOP: i32 = 92;
+const PH: i32 = 196;
+const BAG_TOP: i32 = 90;
 const BUTTON: usize = 45;
 
 fn layout(w: i32, h: i32) -> Layout {
@@ -69,6 +69,23 @@ impl Play {
     fn picked_fodder(&self, i: Option<usize>) -> Option<Stack> {
         let s = self.player.inv.slots.get(i?).copied().flatten()?;
         armour(&s).then_some(s)
+    }
+
+    /// Can this piece be chosen, with `target` on the anvil? Only armour; and once a piece
+    /// is on it, only that piece (to take it off again) and armour of its own kind in the
+    /// bag (to melt into it).
+    fn anvil_pickable(&self, target: Option<Pick>, st: &Stack, at: Pick) -> bool {
+        if !armour(st) {
+            return false;
+        }
+        match target {
+            None => true,
+            Some(t) if t == at => true,
+            Some(t) => {
+                matches!(at, Pick::Bag(_))
+                    && self.picked_armour(Some(t)).map(|t| t.item.class()) == Some(st.item.class())
+            }
+        }
     }
 
     /// Why striking would not work, if it would not.
@@ -128,7 +145,14 @@ impl Play {
         if self.picked_armour(target).is_none() {
             target = None;
         }
-        if self.picked_fodder(fodder).is_none() || target == fodder.map(Pick::Bag) {
+        let fits = |f: usize| {
+            self.player.inv.slots[f]
+                .is_some_and(|st| self.anvil_pickable(target, &st, Pick::Bag(f)))
+        };
+        if self.picked_fodder(fodder).is_none()
+            || target == fodder.map(Pick::Bag)
+            || !fodder.is_some_and(fits)
+        {
             fodder = None;
         }
         let l = layout(w, h);
@@ -180,7 +204,7 @@ impl Play {
         if let Some(c) = chosen {
             match c {
                 0..40 => match self.player.inv.slots[c] {
-                    Some(st) if armour(&st) => {
+                    Some(st) if self.anvil_pickable(target, &st, Pick::Bag(c)) => {
                         // The first piece chosen is the one to forge, the next the one to
                         // melt; choosing either again puts it back.
                         if target == Some(Pick::Bag(c)) {
@@ -196,16 +220,14 @@ impl Play {
                         armed = false;
                         io.audio.play_at(Sfx::UiSelect, 0.7, 1.1);
                     }
-                    Some(_) => {
-                        msg = Some(("Only armour goes on the anvil.".into(), SHADOW));
-                        io.audio.play(Sfx::Denied);
-                    }
+                    Some(_) => io.audio.play(Sfx::Denied),
                     None => {}
                 },
                 40..45 => {
                     // Worn armour can be forged (but take it off to melt it down).
                     let slot = SLOTS[c - 40];
-                    if self.player.equip[slot as usize].is_some() {
+                    let worn = self.player.equip[slot as usize];
+                    if worn.is_some_and(|st| self.anvil_pickable(target, &st, Pick::Worn(slot))) {
                         target = if target == Some(Pick::Worn(slot)) {
                             None
                         } else {
@@ -289,6 +311,7 @@ impl Play {
         cursor: usize,
         msg: &Option<(String, u8)>,
         glow: f32,
+        armed: bool,
         mouse: Vec2,
     ) {
         let (w, h) = (c.w(), c.h());
@@ -333,13 +356,7 @@ impl Play {
             (Some(f), Some(s)) => {
                 let r = f.rarity().unwrap_or_default();
                 c.text(fx + 22, fy, &f.name(), r.ink());
-                let same = ts.and_then(|t| t.item.class()) == f.item.class();
-                let t = if same {
-                    format!("+{} xp (own kind!)", s.xp)
-                } else {
-                    format!("+{} forge xp", s.xp)
-                };
-                c.text(fx + 22, fy + 9, &t, CLAY);
+                c.text(fx + 22, fy + 9, &format!("+{} forge xp", s.xp), CLAY);
             }
             (Some(f), None) => {
                 let r = f.rarity().unwrap_or_default();
@@ -350,17 +367,8 @@ impl Play {
                 c.text(fx + 22, fy + 4, "Armour to melt", KHAKI);
             }
         }
-        // Advice, or what just happened.
         let problem = self.forge_problem(ts, fs);
-        let (text, col) = match (msg, &problem) {
-            (Some((m, col)), _) => (m.clone(), *col),
-            (None, Some(p)) => (p.clone(), SHADOW),
-            (None, None) => ("Ready! Strike while the iron's hot.".to_string(), TEAL),
-        };
-        let lines = c.font.wrap(&text, 140);
-        for (k, t) in lines.iter().take(2).enumerate() {
-            c.text(l.px + 10, l.py + 67 + k as i32 * 9, t, col);
-        }
+        let _ = msg;
 
         // Its forge level, as pips, and how far along the next it is.
         let (rx, ry) = (l.px + 156, l.py + 22);
@@ -441,7 +449,8 @@ impl Play {
         if cursor == BUTTON {
             c.frame(bx - 1, by - 1, bw + 2, bh + 2, GOLD);
         }
-        let label = "Strike";
+        // Melting down something precious asks for a second press.
+        let label = if armed { "Sure? Strike" } else { "Strike" };
         let cost = s.map_or(0, |s| s.cost);
         if cost > 0 {
             let mw = money_width(c, cost);
@@ -485,6 +494,21 @@ impl Play {
                 None
             },
         );
+        // Whatever can't go on the anvil now is greyed out: all but armour, and once a
+        // piece is on it, all but armour of its own kind.
+        for (i, st) in self.player.inv.slots.iter().enumerate().take(40) {
+            if st.is_some_and(|st| !self.anvil_pickable(target, &st, Pick::Bag(i))) {
+                let (x, y) = g.slot_pos(i);
+                c.shade(x + 1, y + 1, 16, 16, 2);
+            }
+        }
+        for (i, slot) in SLOTS.iter().enumerate() {
+            let at = Pick::Worn(*slot);
+            if self.player.equip[i].is_some_and(|st| !self.anvil_pickable(target, &st, at)) {
+                let (x, y) = worn_pos(&l, BAG_TOP, i);
+                c.shade(x + 1, y + 1, 16, 16, 2);
+            }
+        }
         let mark = |c: &mut Canvas, x: i32, y: i32, col: u8| {
             c.frame(x - 1, y - 1, 20, 20, col);
         };
@@ -506,16 +530,15 @@ impl Play {
         // Armour in the bag twinkles: it could go on the anvil.
         for (i, st) in self.player.inv.slots.iter().enumerate().take(40) {
             let Some(st) = st else { continue };
-            if armour(st) && (self.time * 3.0 + i as f32).sin() > 0.7 {
+            let fodder_ok = target.is_some() && target != Some(Pick::Bag(i));
+            if fodder_ok
+                && self.anvil_pickable(target, st, Pick::Bag(i))
+                && (self.time * 3.0 + i as f32).sin() > 0.7
+            {
                 let (x, y) = g.slot_pos(i);
                 c.px(x + 15, y + 2, WHITE);
                 c.px(x + 14, y + 3, GOLD);
             }
-        }
-        let rx = g.x + g.w() + 6;
-        let tips = ["Armour", "+ armour", "+ coins", "= stronger!"];
-        for (k, t) in tips.iter().enumerate() {
-            c.text(rx, g.y + 2 + k as i32 * 11, t, KHAKI);
         }
         // Sparks flying off a strike.
         if glow > 0.0 {

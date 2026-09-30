@@ -2176,8 +2176,8 @@ impl Play {
                 cursor,
                 msg,
                 glow,
-                ..
-            } => self.draw_anvil(c, a, *target, *fodder, *cursor, msg, *glow, mouse),
+                armed,
+            } => self.draw_anvil(c, a, *target, *fodder, *cursor, msg, *glow, *armed, mouse),
         }
         // The stack being carried rides on the cursor (or follows the mouse).
         if let Some(hs) = self.held {

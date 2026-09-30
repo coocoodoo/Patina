@@ -634,10 +634,10 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   by your house (or the one at every waystone) for a few coins; each piece has three sockets,
   and enchanting can raise its rarity.
 * **Hilde's anvil**, in the Petalplate Armory (open 9am to 5pm), **forges armour**: choose a
-  piece to forge, and another piece of armour to **melt down into it**, pay Hilde for the fire,
-  and the first soaks up the second's **forge experience** (more from a piece found deeper
-  down or rarer, a quarter more again melted into its own kind, a helm into a helm, and
-  half of whatever forging it had itself). Every **forge level, up to +10**, makes the
+  piece to forge, and another piece of its own kind to **melt down into it** (a helm into a
+  helm; everything else greys out), pay Hilde for the fire, and the first soaks up the
+  second's **forge experience** (more from a piece found deeper down or rarer, and half of
+  whatever forging it had itself). Every **forge level, up to +10**, makes the
   piece a little stronger (its defense by 8% a level and its other stats by 4%, always at
   least a point), and it wears its level in its name and in the corner of its slot: an
   "Iron Helm +3". Each level asks half again as much experience as the last, and armour

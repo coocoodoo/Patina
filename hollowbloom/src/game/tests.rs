@@ -4699,7 +4699,7 @@ fn hilde_forges_armour_on_her_anvil() {
     let mut ready = forged;
     ready.gear.as_mut().unwrap().xp = forge_total(17, 1) - 1;
     s.play.player.inv.slots[10] = Some(ready);
-    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::LeatherBoots, Gear::plain(6)));
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::CopperHelm, Gear::plain(6)));
     s.play.menu = anvil(Pick::Bag(10), 11);
     s.tap(KeyCode::Enter, 2);
     let up = s.play.player.inv.slots[10].unwrap();
@@ -4730,7 +4730,7 @@ fn the_anvil_minds_what_goes_on_it() {
     // Something precious asks for a second strike before it's melted.
     let mut fine = Gear::plain(20);
     fine.rarity = Rarity::Epic;
-    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::CopperMail, fine));
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::CopperHelm, fine));
     s.play.money = 10_000;
     s.play.menu = anvil(Pick::Bag(10), 11);
     s.tap(KeyCode::Enter, 2);
@@ -4741,8 +4741,15 @@ fn the_anvil_minds_what_goes_on_it() {
         s.play.player.inv.slots[11].is_none(),
         "melted on the second strike"
     );
-    // No coins, no fire.
+    // Only its own kind can be melted into it: boots won't go into a helm.
     s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::LeatherBoots, Gear::plain(6)));
+    s.play.money = 10_000;
+    s.play.menu = anvil(Pick::Bag(10), 11);
+    s.tap(KeyCode::Enter, 2);
+    assert!(s.play.player.inv.slots[11].is_some(), "boots stay put");
+    assert!(matches!(s.play.menu, Menu::Anvil { fodder: None, .. }));
+    // No coins, no fire.
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::CopperHelm, Gear::plain(6)));
     s.play.money = 0;
     s.play.menu = anvil(Pick::Bag(10), 11);
     s.tap(KeyCode::Enter, 2);
