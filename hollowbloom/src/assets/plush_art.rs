@@ -13,7 +13,7 @@ use crate::palette::*;
 use crate::render::{Mesh, TexBank, Texture};
 
 /// How many monster backpacks there are, in the order of `ICONS` (and of the items).
-pub const PLUSHES: usize = 26;
+pub const PLUSHES: usize = 29;
 
 /// Their icons' names, in order.
 pub const ICONS: [&str; PLUSHES] = [
@@ -43,6 +43,9 @@ pub const ICONS: [&str; PLUSHES] = [
     "pack_griffin",
     "pack_cactling",
     "pack_cobra",
+    "pack_gazer",
+    "pack_slug",
+    "pack_ogre",
 ];
 
 fn v(x: f32, y: f32, z: f32) -> Vec3 {
@@ -2095,12 +2098,178 @@ fn cobra(k: &mut Kit, bank: &mut TexBank) -> Mesh {
     m
 }
 
+fn gazer(k: &mut Kit, bank: &mut TexBank) -> Mesh {
+    let mut m = Mesh::new();
+    // A round violet ball with one big eye, bat's wings spread, little horns, and
+    // tentacles dangling below.
+    for sx in [-1.0f32, 1.0] {
+        let p = |x: f32, y: f32| v(sx * x, y, -0.16);
+        fan(
+            k,
+            bank,
+            &mut m,
+            &[
+                p(0.08, 0.16),
+                p(0.16, 0.25),
+                p(0.27, 0.22),
+                p(0.3, 0.14),
+                p(0.25, 0.08),
+                p(0.14, 0.1),
+            ],
+            GRAPE,
+        );
+        cone(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.05, 0.26, -0.2),
+            v(sx * 0.4, 1.0, -0.2),
+            0.06,
+            0.02,
+            SHADOW,
+        );
+    }
+    let b = (v(0.0, 0.16, -0.2), v(0.11, 0.11, 0.1));
+    ball(k, bank, &mut m, b.0, b.1, PURPLE);
+    dab(k, bank, &mut m, b, (0.0, 0.165), (0.12, 0.1), 0.0, WHITE);
+    dab(k, bank, &mut m, b, (0.0, 0.165), (0.06, 0.06), 0.006, GREEN);
+    dab(k, bank, &mut m, b, (0.0, 0.165), (0.016, 0.05), 0.012, INK);
+    dab(
+        k,
+        bank,
+        &mut m,
+        b,
+        (0.0, 0.225),
+        (0.13, 0.025),
+        0.004,
+        GRAPE,
+    );
+    for x in [-0.05f32, 0.0, 0.05] {
+        stick(
+            k,
+            bank,
+            &mut m,
+            v(x, 0.07, -0.2),
+            v(x * 1.4, -0.03, -0.22),
+            0.012,
+            GRAPE,
+        );
+    }
+    m
+}
+
+fn slug(k: &mut Kit, bank: &mut TexBank) -> Mesh {
+    let mut m = Mesh::new();
+    // A squishy dark slug curled up the back, bone-white spines along it, its eyes up on
+    // stalks peering back at you.
+    let b = (v(0.0, 0.12, -0.2), v(0.1, 0.13, 0.08));
+    ball(k, bank, &mut m, b.0, b.1, GRAPE);
+    dab(k, bank, &mut m, b, (0.0, 0.1), (0.1, 0.12), 0.0, INK);
+    for (x, y) in [(-0.05f32, 0.06f32), (0.04, 0.15), (-0.02, 0.2)] {
+        dab(k, bank, &mut m, b, (x, y), (0.02, 0.02), 0.004, PURPLE);
+    }
+    for (y, len) in [(0.22f32, 0.07f32), (0.15, 0.09), (0.07, 0.08)] {
+        for sx in [-1.0f32, 1.0] {
+            cone(
+                k,
+                bank,
+                &mut m,
+                v(sx * 0.08, y, -0.19),
+                v(sx, 0.4, 0.2),
+                len,
+                0.02,
+                SAND,
+            );
+        }
+    }
+    for sx in [-1.0f32, 1.0] {
+        stick(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.03, 0.22, -0.26),
+            v(sx * 0.06, 0.32, -0.28),
+            0.01,
+            INK,
+        );
+        ball(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.06, 0.335, -0.28),
+            v(0.022, 0.022, 0.022),
+            CREAM,
+        );
+        ball(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.06, 0.335, -0.3),
+            v(0.008, 0.01, 0.006),
+            INK,
+        );
+    }
+    m
+}
+
+fn ogre(k: &mut Kit, bank: &mut TexBank) -> Mesh {
+    let mut m = Mesh::new();
+    // A big violet ogre's head: heavy brow, red eyes, tusks jutting up, pointed ears and a
+    // topknot.
+    let b = (v(0.0, 0.14, -0.2), v(0.13, 0.13, 0.1));
+    ball(k, bank, &mut m, b.0, b.1, PURPLE);
+    dab(k, bank, &mut m, b, (0.0, 0.2), (0.18, 0.03), 0.0, GRAPE);
+    for sx in [-1.0f32, 1.0] {
+        dab(
+            k,
+            bank,
+            &mut m,
+            b,
+            (sx * 0.05, 0.17),
+            (0.03, 0.022),
+            0.004,
+            RED,
+        );
+        let z = face(b.0, b.1, sx * 0.06, 0.07);
+        cone(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.06, 0.07, z - 0.005),
+            v(sx * 0.2, 1.0, -0.3),
+            0.07,
+            0.018,
+            CREAM,
+        );
+        cone(
+            k,
+            bank,
+            &mut m,
+            v(sx * 0.12, 0.17, -0.2),
+            v(sx, 0.4, 0.0),
+            0.08,
+            0.03,
+            GRAPE,
+        );
+    }
+    dab(k, bank, &mut m, b, (0.0, 0.08), (0.1, 0.02), 0.0, INK);
+    ball(
+        k,
+        bank,
+        &mut m,
+        v(0.0, 0.29, -0.2),
+        v(0.03, 0.035, 0.03),
+        INK,
+    );
+    m
+}
+
 /// Makes monster backpack `p` (see `ICONS`), as it hangs on the back before it's grown.
 pub(super) fn plush(p: usize, k: &mut Kit, bank: &mut TexBank) -> Mesh {
     let make = [
         slime, bat, shroom, crab, wisp, beetle, imp, skeleton, golem, ghost, frog, jelly, puffer,
         zombie, brute, sneak, bug, snail, bookworm, drake, leafling, werewolf, minotaur, griffin,
-        cactling, cobra,
+        cactling, cobra, gazer, slug, ogre,
     ];
     make[p](k, bank)
 }
@@ -2598,10 +2767,67 @@ const COBRA: &[&str] = &[
     "..KKKKKKKKKKKK..",
 ];
 
+const GAZER: &[&str] = &[
+    "................",
+    "......K..K......",
+    ".....KhKKhK.....",
+    ".KK.KVVVVVVK.KK.",
+    "KvvKVVwwwwVVKvvK",
+    "KvvvVwwggwwVvvvK",
+    ".KvvVwgKKgwVvvK.",
+    "..KKVwgKKgwVKK..",
+    "....KVwggwVK....",
+    "....KVVwwVVK....",
+    ".....KVVVVK.....",
+    "......KVVK......",
+    ".....KvKKvK.....",
+    ".....Kv..vK.....",
+    "......K..K......",
+    "................",
+];
+
+const SLUG: &[&str] = &[
+    "................",
+    "...Ky......yK...",
+    "...KK......KK...",
+    "....KK....KK....",
+    ".....KKKKKK.....",
+    "...KnKvvvvKnK...",
+    "..KnKvvVvvvKnK..",
+    "...KvvvvvvVvK...",
+    "..KnKvVvvvvKnK..",
+    "...KvvvvvVvvK...",
+    "..KnKvvvvvvKnK..",
+    "...KvvVvvvvvK...",
+    "....KvvvvvvK....",
+    ".....KDDDDK.....",
+    "......KKKK......",
+    "................",
+];
+
+const OGRE: &[&str] = &[
+    "................",
+    "......KKKK......",
+    ".......KK.......",
+    "....KKKKKKKK....",
+    "..KKVVVVVVVVKK..",
+    ".KvKvvvvvvvvKvK.",
+    ".KvVVVVVVVVVVvK.",
+    "..KVKrKVVKrKVK..",
+    "..KVVVVVVVVVVK..",
+    "..KVVVKKKVVVVK..",
+    "..KVyVVVVVVyVK..",
+    "..KVyKKKKKKyVK..",
+    "...KVVVVVVVVK...",
+    "....KKVVVVKK....",
+    "......KKKK......",
+    "................",
+];
+
 const ART: [&[&str]; PLUSHES] = [
     SLIME, BAT, SHROOM, CRAB, WISP, BEETLE, IMP, SKELETON, GOLEM, GHOST, FROG, JELLY, PUFFER,
     ZOMBIE, BRUTE, SNEAK, BUG, SNAIL, BOOKWORM, DRAKE, LEAFLING, WEREWOLF, MINOTAUR, GRIFFIN,
-    CACTLING, COBRA,
+    CACTLING, COBRA, GAZER, SLUG, OGRE,
 ];
 
 /// Monster backpack `p`'s icon.

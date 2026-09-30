@@ -4449,3 +4449,202 @@ fn a_sand_cobra_rears_up_to_strike_and_spits_from_further_off() {
     }
     assert!(spat, "it never spat");
 }
+
+/// Down to the first floor of the starless rift in this save, far enough in that the rift's
+/// folk are about.
+fn into_the_rift(s: &mut Sim) -> u32 {
+    use super::rift::is_rift;
+    let depth = (12..400)
+        .find(|&d| is_rift(s.play.seed, d, s.play.biome_at(d)))
+        .expect("a rift floor");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    s.frames(60);
+    depth
+}
+
+/// Somewhere on the rift's islands with open ground `r` tiles either side, and a tile above
+/// and below (off the bridges).
+fn open_ground(s: &Sim, r: i32) -> (i32, i32) {
+    let w = s.play.world();
+    (2..w.h - 2)
+        .flat_map(|z| (r + 1..w.w - r - 1).map(move |x| (x, z)))
+        .find(|&(x, z)| {
+            (-1..=1).all(|dz| {
+                (-r..=r)
+                    .all(|dx| !w.blocked(x + dx, z + dz) && w.floor(x + dx, z + dz) != Floor::Span)
+            })
+        })
+        .expect("open ground")
+}
+
+#[test]
+fn the_rift_is_starless_and_home_to_its_own_folk() {
+    use super::dungeon::Foe;
+    use super::foes::Enemy;
+    use crate::palette::INK;
+    let mut s = Sim::new();
+    let depth = into_the_rift(&mut s);
+    assert!(s.play.world().rift);
+    let banner = s.play.banner.as_ref().expect("the floor's banner");
+    assert!(banner.sub.ends_with("the starless rift"), "{}", banner.sub);
+    let env = s.play.env();
+    assert!(env.ambient <= 0.6 && env.clear == INK);
+    assert!(!s.play.foes.is_empty());
+    assert!(
+        s.play.foes.iter().all(|f| f.rift),
+        "everyone here is of the rift"
+    );
+    // Its imps are void imps; anywhere else an imp is just an imp.
+    let imp = || Enemy::new(Foe::Imp, 1.0, 1.0, depth, 0, false, 1);
+    assert_eq!(imp().in_the_rift().name(), "Void Imp");
+    assert_ne!(imp().name(), "Void Imp");
+    for foe in [Foe::Gazer, Foe::Slug, Foe::Ogre] {
+        assert!(
+            super::rift::rift_folk(depth).iter().any(|&(f, _)| f == foe),
+            "{foe:?} lives in the rift"
+        );
+    }
+}
+
+#[test]
+fn a_gazer_stares_you_down_then_fires_along_its_stare() {
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, GAZE_BOLT, GAZE_SECS, GAZER_Y, St};
+    use super::fx::ShotKind;
+    use crate::palette::LIME;
+    let mut s = Sim::new();
+    let depth = into_the_rift(&mut s);
+    s.play.foes.clear();
+    s.play.shots.clear();
+    let (x, z) = open_ground(&s, 3);
+    s.stand(x - 2, z, Vec2::new(1.0, 0.0));
+    let mut g = Enemy::new(
+        Foe::Gazer,
+        x as f32 + 1.5,
+        z as f32 + 0.5,
+        depth,
+        0,
+        false,
+        4,
+    )
+    .in_the_rift();
+    g.alert = true;
+    g.t = 0.0;
+    s.play.foes.push(g);
+    assert!(s.play.foes[0].y >= GAZER_Y * 0.9, "it hovers out of reach");
+    s.frames(2);
+    assert_eq!(s.play.foes[0].st, St::Windup, "it fixes you with its eye");
+    let stare = s.play.foes[0].dir;
+    let to_you = (s.play.player.pos - s.play.foes[0].pos).normalize();
+    assert!(
+        stare.dot(to_you) > 0.95,
+        "its stare locks on where you stand"
+    );
+    // You step out of the line; the bolt still flies down it.
+    s.play.player.pos.y += 1.5;
+    let mut bolt = None;
+    for _ in 0..(GAZE_SECS * 60.0) as usize + 10 {
+        s.frames(1);
+        s.play.player.hp = s.play.player.max_hp();
+        if let Some(b) = s.play.shots.iter().find(|b| b.kind == ShotKind::Spark) {
+            bolt = Some((b.vel, b.color));
+            break;
+        }
+    }
+    let (vel, color) = bolt.expect("it fired down its stare");
+    assert_eq!(color, LIME);
+    assert!((vel.length() - GAZE_BOLT).abs() < 0.01);
+    assert!(
+        vel.normalize().dot(stare) > 0.999,
+        "straight down the line it stared"
+    );
+    assert_eq!(s.play.foes[0].st, St::Rest);
+}
+
+#[test]
+fn a_spineback_slug_bristles_and_flings_its_spines() {
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, SPINE_WINDUP, St};
+    use super::fx::ShotKind;
+    let mut s = Sim::new();
+    let depth = into_the_rift(&mut s);
+    s.play.foes.clear();
+    s.play.shots.clear();
+    let (x, z) = open_ground(&s, 3);
+    s.stand(x - 2, z, Vec2::new(1.0, 0.0));
+    let mut g = Enemy::new(
+        Foe::Slug,
+        x as f32 + 1.5,
+        z as f32 + 0.5,
+        depth,
+        0,
+        false,
+        4,
+    )
+    .in_the_rift();
+    g.alert = true;
+    g.t = 0.0;
+    s.play.foes.push(g);
+    s.frames(2);
+    assert_eq!(s.play.foes[0].st, St::Windup, "it hunches up, bristling");
+    assert!(s.play.shots.is_empty());
+    s.frames((SPINE_WINDUP * 60.0) as usize + 2);
+    s.play.player.hp = s.play.player.max_hp();
+    let spines = s
+        .play
+        .shots
+        .iter()
+        .filter(|b| b.kind == ShotKind::Needle)
+        .count();
+    assert_eq!(spines, 3, "a fan of three spines");
+    assert_eq!(s.play.foes[0].st, St::Rest);
+}
+
+#[test]
+fn a_rift_ogre_pounds_the_ground_with_both_fists() {
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, St};
+    use super::fx::ShotKind;
+    use crate::palette::LAVENDER;
+    let mut s = Sim::new();
+    let depth = into_the_rift(&mut s);
+    s.play.foes.clear();
+    s.play.shots.clear();
+    let (x, z) = open_ground(&s, 3);
+    s.stand(x - 1, z, Vec2::new(1.0, 0.0));
+    let mut o = Enemy::new(
+        Foe::Ogre,
+        x as f32 + 0.9,
+        z as f32 + 0.5,
+        depth,
+        0,
+        false,
+        4,
+    )
+    .in_the_rift();
+    o.alert = true;
+    s.play.foes.push(o);
+    s.frames(2);
+    assert_eq!(s.play.foes[0].st, St::Windup, "fists up");
+    let mut pounded = false;
+    for _ in 0..90 {
+        s.frames(1);
+        s.play.player.hp = s.play.player.max_hp();
+        let quake = s
+            .play
+            .shots
+            .iter()
+            .filter(|b| b.kind == ShotKind::Spark && b.color == LAVENDER)
+            .count();
+        if quake > 0 {
+            assert_eq!(quake, 5, "the ground cracks out in a fan");
+            pounded = true;
+            break;
+        }
+    }
+    assert!(pounded, "it never brought its fists down");
+}

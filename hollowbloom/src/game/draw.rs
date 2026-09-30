@@ -1743,6 +1743,8 @@ pub enum Swing {
     Raise,
     /// Holding a fishing rod out, raised by the progress (0 level, 1 high over the shoulder).
     Fish,
+    /// Both fists raised high overhead and brought down together on the ground.
+    Pound,
 }
 
 /// What a humanoid is wearing and holding.
@@ -1829,24 +1831,6 @@ fn draw_body(
         r.mesh(&a.bank, pack, &(body * jostle), o);
     }
     // Arms: the right follows the swing, the left carries any shield.
-    let guard = fit.shield.is_some() && matches!(pose.swing, None | Some((_, Swing::Slash)));
-    let off = -HAND;
-    let left = root
-        * Mat4::from_translation(Vec3::new(off * h.shoulder_x, h.shoulder + bob, 0.0))
-        * Mat4::from_rotation_x(if guard {
-            -0.5 - sw * 0.2
-        } else {
-            -sw * 0.6 * (1.0 - pose.reach * 0.7) - pose.reach * 1.45
-        })
-        * Mat4::from_rotation_z(off * 0.12 * (1.0 - pose.reach));
-    r.mesh(&a.bank, &h.parts[ARM_L], &left, o);
-    if let Some(shield) = fit.shield {
-        // Worn on the forearm, facing outwards and a little forwards.
-        let m = left
-            * Mat4::from_translation(Vec3::new(off * 0.07, -0.16, 0.02))
-            * Mat4::from_rotation_y(off * 1.2);
-        r.mesh(&a.bank, shield, &m, o);
-    }
     let (rx, rz, twist) = match pose.swing {
         Some((t, Swing::Slash)) => {
             let k = ease_out(t);
@@ -1872,6 +1856,10 @@ fn draw_body(
             (-3.0 + k * 1.9, 0.0, 0.0)
         }
         Some((t, Swing::Fish)) => (-1.5 - t * 1.5, 0.0, 0.0),
+        Some((t, Swing::Pound)) => {
+            let k = ease_out(t);
+            (-3.2 + k * 2.45, 0.0, 0.0)
+        }
         None if held.is_some() => (-0.95 + sw * 0.15, 0.1, 0.0),
         None => (
             sw * 0.6 * (1.0 - pose.reach * 0.7) - pose.reach * 1.45,
@@ -1879,6 +1867,27 @@ fn draw_body(
             0.0,
         ),
     };
+    let guard = fit.shield.is_some() && matches!(pose.swing, None | Some((_, Swing::Slash)));
+    let off = -HAND;
+    let pound = matches!(pose.swing, Some((_, Swing::Pound)));
+    let left = root
+        * Mat4::from_translation(Vec3::new(off * h.shoulder_x, h.shoulder + bob, 0.0))
+        * Mat4::from_rotation_x(if pound {
+            rx
+        } else if guard {
+            -0.5 - sw * 0.2
+        } else {
+            -sw * 0.6 * (1.0 - pose.reach * 0.7) - pose.reach * 1.45
+        })
+        * Mat4::from_rotation_z(off * 0.12 * (1.0 - pose.reach));
+    r.mesh(&a.bank, &h.parts[ARM_L], &left, o);
+    if let Some(shield) = fit.shield {
+        // Worn on the forearm, facing outwards and a little forwards.
+        let m = left
+            * Mat4::from_translation(Vec3::new(off * 0.07, -0.16, 0.02))
+            * Mat4::from_rotation_y(off * 1.2);
+        r.mesh(&a.bank, shield, &m, o);
+    }
     // The turns above are for an arm on the +x side: mirrored to the hand's side.
     let right = root
         * Mat4::from_translation(Vec3::new(HAND * h.shoulder_x, h.shoulder + bob, 0.0))

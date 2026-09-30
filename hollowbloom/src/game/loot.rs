@@ -394,6 +394,19 @@ fn foe_bits(foe: Foe, biome: usize, rng: &mut Rng) -> Vec<Stack> {
             roll(o, rng, Item::CobraSkin, 0.65, 1, 2);
             roll(o, rng, Item::GoldOre, 0.1, 1, 1);
         }
+        Foe::Gazer => {
+            roll(o, rng, Item::GazerLens, 0.65, 1, 2);
+            roll(o, rng, Item::Crystal, 0.2, 1, 1);
+        }
+        Foe::Slug => {
+            roll(o, rng, Item::SlugSpine, 0.65, 1, 3);
+            roll(o, rng, Item::SlimeGel, 0.3, 1, 2);
+        }
+        Foe::Ogre => {
+            roll(o, rng, Item::OgreTusk, 0.7, 1, 2);
+            roll(o, rng, Item::IronOre, 0.3, 1, 3);
+            roll(o, rng, Item::Amethyst, 0.12, 1, 1);
+        }
     }
     out
 }
@@ -445,6 +458,9 @@ pub fn monster_pack(foe: Foe) -> Item {
         Foe::Griffin => Item::GriffinPack,
         Foe::Cactus => Item::CactlingPack,
         Foe::Cobra => Item::CobraPack,
+        Foe::Gazer => Item::GazerPack,
+        Foe::Slug => Item::SlugPack,
+        Foe::Ogre => Item::OgrePack,
     }
 }
 

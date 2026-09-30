@@ -26,6 +26,7 @@ pub mod sewer_art;
 pub mod sprites;
 pub mod tiles;
 pub mod town_art;
+pub mod void_art;
 
 use std::collections::HashMap;
 
@@ -685,6 +686,8 @@ pub struct Assets {
     pub desert: desert_art::DesertArt,
     /// The starless rift: obsidian, amethyst, bridges, the void's stars.
     pub rift: rift_art::RiftArt,
+    /// The rift's creatures: gazers and spineback slugs.
+    pub void: void_art::VoidArt,
     /// Drakelings and leaflings.
     pub beasts: beast_art::Beasts,
     /// Backpacks, worn and as icons, in every style and colourway.
@@ -702,6 +705,7 @@ impl Assets {
         deep_art::icons(&mut bank, &mut icons);
         beast_art::icons(&mut bank, &mut icons);
         desert_art::icons(&mut bank, &mut icons);
+        void_art::icons(&mut bank, &mut icons);
         let packs = pack_art::build(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
         fish_art::build(&mut bank, &mut icons);
@@ -856,6 +860,7 @@ impl Assets {
         let canyon = canyon_art::build(&mut bank, labyrinth.stone, &labyrinth.columns);
         let desert = desert_art::build(&mut bank, canyon.skin);
         let rift = rift_art::build(&mut bank, labyrinth.stone, &labyrinth.columns);
+        let void = void_art::build(&mut bank);
         let beasts = beast_art::build(&mut bank);
         Assets {
             foes,
@@ -914,6 +919,7 @@ impl Assets {
             canyon,
             desert,
             rift,
+            void,
             beasts,
             packs,
         }

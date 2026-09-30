@@ -64,6 +64,11 @@ pub struct Monsters {
     pub minotaur: Humanoid,
     pub bull_tail: Mesh,
     pub labrys: Mesh,
+    /// The starless rift's ogre, and its imps in violet with their spade-tipped tails
+    /// (hanging from the hips; their wings are the gazer's, see `void_art`).
+    pub ogre: Humanoid,
+    pub void_imp: Humanoid,
+    pub imp_tail: Mesh,
 }
 
 fn v(x: f32, y: f32, z: f32) -> Vec3 {
@@ -2100,6 +2105,215 @@ fn minotaur(bank: &mut TexBank, k: &mut Kit) -> (Humanoid, Mesh) {
     (bull, tail)
 }
 
+/// A rift ogre: a hulking brute in violet hide, a small head under a heavy brow with red
+/// eyes glaring out, tusks jutting up from its underbite, pointed ears and a topknot; a
+/// loincloth, iron bands at its wrists, and fists like boulders.
+fn ogre(bank: &mut TexBank, k: &mut Kit) -> Humanoid {
+    let (hide, dark, light) = (PURPLE, GRAPE, LAVENDER);
+    let legend = [
+        ('h', hide),
+        ('d', dark),
+        ('l', light),
+        ('r', RED),
+        ('k', INK),
+        ('w', WHITE),
+        ('c', SHADOW),
+        ('b', ROSEWOOD),
+    ];
+    let head = head_tex(
+        &[
+            "dddddddd", "hkrhhrkh", "hhhddhhh", "hhhhhhhh", "hwhhhhwh", "hkkkkkkh", "hhhhhhhh",
+        ],
+        &legend,
+        hide,
+        dark,
+        dark,
+        light,
+    );
+    let body = body_tex(
+        &["hllllh", "hlhhlh", "hhllhh", "bbbbbb", "cccccc"],
+        &legend,
+        hide,
+        ROSEWOOD,
+        dark,
+    );
+    let arm = limb(hide, dark, dark);
+    let leg = limb(hide, dark, INK);
+    let b = Build {
+        head: v(0.19, 0.25, 0.18),
+        body: v(0.34, 0.4, 0.24),
+        arm: Vec2::new(0.11, 0.44),
+        leg: Vec2::new(0.12, 0.26),
+    };
+    assemble(bank, [head, body, arm, leg], &b, &mut |bank, parts| {
+        let h = &mut parts[HEAD];
+        // A heavy brow jutting out over its eyes (not down over them).
+        k.bx(bank, h, v(-0.2, 0.214, 0.15), v(0.2, 0.255, 0.215), dark);
+        // Tusks up from its underbite.
+        let tusk = k.c(bank, CREAM);
+        let ear = k.c(bank, dark);
+        for sx in [-1.0f32, 1.0] {
+            taper(
+                h,
+                v(sx * 0.12, 0.04, 0.18),
+                v(sx * 0.15, 1.0, 0.25),
+                0.13,
+                0.032,
+                0.0,
+                tusk,
+            );
+            // Pointed ears.
+            taper(
+                h,
+                v(sx * 0.19, 0.16, 0.0),
+                v(sx, 0.35, -0.2),
+                0.11,
+                0.045,
+                0.0,
+                ear,
+            );
+        }
+        // A topknot.
+        k.bx(bank, h, v(-0.045, 0.25, -0.06), v(0.045, 0.34, 0.03), INK);
+        // A loincloth, front and back.
+        k.bx(
+            bank,
+            &mut parts[BODY],
+            v(-0.15, -0.16, 0.24),
+            v(0.15, 0.1, 0.255),
+            SHADOW,
+        );
+        k.bx(
+            bank,
+            &mut parts[BODY],
+            v(-0.17, -0.14, -0.255),
+            v(0.17, 0.1, -0.24),
+            SHADOW,
+        );
+        // Iron bands at its wrists, and great fists.
+        for i in [ARM_L, ARM_R] {
+            k.bx(
+                bank,
+                &mut parts[i],
+                v(-0.12, -0.33, -0.12),
+                v(0.12, -0.28, 0.12),
+                SLATE,
+            );
+            k.bx(
+                bank,
+                &mut parts[i],
+                v(-0.14, -0.52, -0.14),
+                v(0.14, -0.4, 0.14),
+                hide,
+            );
+        }
+    })
+}
+
+/// A void imp: a little devil in violet, a big head with horns curling up, pointed ears,
+/// orange eyes glaring under cross brows, and a fanged grin. Its tail hangs from its hips,
+/// a spade at the end.
+fn void_imp(bank: &mut TexBank, k: &mut Kit) -> (Humanoid, Mesh) {
+    let (skin, dark, light) = (PURPLE, GRAPE, LAVENDER);
+    let legend = [
+        ('s', skin),
+        ('d', dark),
+        ('l', light),
+        ('e', ORANGE),
+        ('k', INK),
+        ('w', WHITE),
+    ];
+    let head = head_tex(
+        &[
+            "ssllllss", "dksssskd", "skeddeks", "ssssssss", "sssddsss", "skwkkwks", "sskkkkss",
+        ],
+        &legend,
+        skin,
+        dark,
+        dark,
+        light,
+    );
+    let body = body_tex(
+        &["ssllss", "slssls", "ssssss", "dddddd", "ssssss"],
+        &legend,
+        skin,
+        dark,
+        dark,
+    );
+    let arm = limb(skin, dark, dark);
+    let leg = limb(skin, dark, INK);
+    let b = Build {
+        head: v(0.21, 0.32, 0.19),
+        body: v(0.13, 0.2, 0.1),
+        arm: Vec2::new(0.045, 0.2),
+        leg: Vec2::new(0.05, 0.16),
+    };
+    let imp = assemble(bank, [head, body, arm, leg], &b, &mut |bank, parts| {
+        let h = &mut parts[HEAD];
+        let horn = k.c(bank, SHADOW);
+        let tip = k.c(bank, KHAKI);
+        let ear = k.c(bank, dark);
+        for sx in [-1.0f32, 1.0] {
+            taper(
+                h,
+                v(sx * 0.14, 0.3, 0.02),
+                v(sx * 0.6, 1.0, 0.1),
+                0.14,
+                0.05,
+                0.03,
+                horn,
+            );
+            taper(
+                h,
+                v(sx * 0.21, 0.42, 0.04),
+                v(sx * 0.1, 1.0, -0.3),
+                0.08,
+                0.03,
+                0.0,
+                tip,
+            );
+            taper(
+                h,
+                v(sx * 0.2, 0.16, 0.0),
+                v(sx, 0.3, -0.1),
+                0.12,
+                0.05,
+                0.0,
+                ear,
+            );
+        }
+    });
+    let mut tail = Mesh::new();
+    let t = k.c(bank, dark);
+    taper(
+        &mut tail,
+        v(0.0, 0.0, 0.0),
+        v(0.0, -0.4, -1.0),
+        0.28,
+        0.022,
+        0.016,
+        t,
+    );
+    let spade = v(0.0, -0.1, -0.26);
+    k.bx(
+        bank,
+        &mut tail,
+        spade - v(0.05, 0.05, 0.02),
+        spade + v(0.05, 0.05, 0.02),
+        INK,
+    );
+    taper(
+        &mut tail,
+        spade + v(0.0, 0.0, -0.01),
+        v(0.0, -0.3, -1.0),
+        0.1,
+        0.05,
+        0.0,
+        t,
+    );
+    (imp, tail)
+}
+
 // ------------------------------------------------------------------------------------------
 // Weapons
 // ------------------------------------------------------------------------------------------
@@ -2233,6 +2447,8 @@ pub fn build(bank: &mut TexBank) -> Monsters {
     let (werewolf, wolf_tail) = werewolf(bank, &mut k);
     let (minotaur, bull_tail) = minotaur(bank, &mut k);
     let labrys = labrys(bank, &mut k);
+    let ogre = ogre(bank, &mut k);
+    let (void_imp, imp_tail) = void_imp(bank, &mut k);
     let ghost_pals = [
         [MINT, LIME, GREEN],
         [WHITE, SKY, AQUA],
@@ -2259,6 +2475,9 @@ pub fn build(bank: &mut TexBank) -> Monsters {
         minotaur,
         bull_tail,
         labrys,
+        ogre,
+        void_imp,
+        imp_tail,
     }
 }
 

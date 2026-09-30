@@ -74,14 +74,16 @@ pub fn is_rift(seed: u64, depth: u32, biome: usize) -> bool {
         && Rng::new(seed ^ (depth as u64).wrapping_mul(0x1656_67B1) ^ 0x51F7).chance(chance)
 }
 
-/// Who lives in the rift, with weights: its own strange folk, ghosts and wisps, and the
-/// deep folk.
+/// Who lives in the rift, with weights: gazers, spineback slugs, violet imps and ogres,
+/// ghosts and wisps, and the deep folk.
 pub fn rift_folk(depth: u32) -> Vec<(Foe, f32)> {
     let mut v = vec![
-        (Foe::Imp, 1.6),
-        (Foe::Ghost, 0.9),
-        (Foe::Wisp, 0.9),
-        (Foe::Golem, 0.5),
+        (Foe::Gazer, 1.6),
+        (Foe::Slug, 1.2),
+        (Foe::Imp, 1.4),
+        (Foe::Ogre, 0.7),
+        (Foe::Ghost, 0.5),
+        (Foe::Wisp, 0.5),
     ];
     if depth >= DEEP_FOLK {
         v.extend_from_slice(deep_folk(GROTTO));

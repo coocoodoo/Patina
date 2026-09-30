@@ -519,6 +519,20 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   black obsidian carved with **glowing runes** and set with **eyes that follow you** (and
   blink), columns standing and fallen, a chest tucked away, and the stairs down in its
   **sanctum**. The void can only be crossed by the bridges, and obsidian can't be mined.
+* **Gazers** hover over the rift on bat's wings, each a great eye in a violet ball with
+  little horns, its tentacles curling below. One circles just out of reach, glaring about
+  under its scowling lid (and blinking now and then), until it **fixes you with its
+  stare**: a flickering line of light runs out from its eye, and when it's done staring a
+  bolt flies straight down it (so step out of the line). They drop **gazer lenses**, and
+  crystal now and then.
+* **Spineback slugs** creep after you on a violet skirt, leaving a trail of glowing slime,
+  their three eyes waving on stalks. Every so often one hunches up, its bony spines
+  bristling, and **flings a fan of spines** at you. They drop **rift spines**, and slime
+  gel.
+* **Void imps** (the rift's own imps, in violet, with bat's wings and a tail) throw purple
+  bolts, and **rift ogres**, big and slow, with tusks, a topknot and eyes burning red under
+  a heavy brow, stamp after you and **pound the ground with both fists**, cracking it out
+  in a fan towards you. Ogres drop **ogre tusks**, iron ore, and now and then amethyst.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -614,7 +628,8 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   block, a ghost, a bog frog, a drift jelly, a spiny puffer, a stitched zombie, both goblins,
   a moss spider, a stained-glass snail shell, a book with its book-worm, a drakeling, a
   leafling, a werewolf, a minotaur with its nose ring, a griffin with its wings spread, a
-  cactling in its pot, and a coiled cobra with its hood up).
+  cactling in its pot, a coiled cobra with its hood up, a gazer with its wings out, a
+  spineback slug with its eyes up on stalks, and a big ogre's head with its tusks).
   Found backpacks roll their size (roomier deeper down): in
   treasure chests (often, in gleaming ones), from guardians, from goblins now and then, and
   every creature once in a while drops the one in its own shape. Rowan's guild sells plain
@@ -699,7 +714,7 @@ hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge sl
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
 hollowbloom --labyrinth-shots DIR # the marble labyrinth: maze, arches, courtyard, minotaur, griffin
 hollowbloom --canyon-shots DIR    # the sunscorch canyon: its places and props, cactlings, cobras
-hollowbloom --rift-shots DIR      # the starless rift: islands, bridges, runes, eyes, voidfalls
+hollowbloom --rift-shots DIR      # the starless rift: islands, bridges, runes, eyes, voidfalls, its folk
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV

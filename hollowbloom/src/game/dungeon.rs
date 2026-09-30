@@ -61,6 +61,15 @@ pub enum Foe {
     /// A sand cobra, slithering over the canyon's sand. Close by it rears up with its hood
     /// spread and strikes; from further off it rears and spits venom.
     Cobra,
+    /// A gazer, drifting over the starless rift on bat's wings: a great eye trailing
+    /// tentacles. It fixes you with its stare, a line of light running out along it, then
+    /// fires a bolt down the line.
+    Gazer,
+    /// A spineback slug, creeping over the rift's islands with its eyes on stalks, leaving a
+    /// trail of violet slime. It hunches up and flings a fan of spines at you.
+    Slug,
+    /// A rift ogre: huge, violet and tusked. It pounds the ground with its fists.
+    Ogre,
 }
 
 /// The first floor the lantern snails and book-worms live on.

@@ -52,6 +52,8 @@ pub enum Call {
     Pop,
     /// A cobra rearing up with a hiss.
     Hiss,
+    /// A gazer fixing you with its stare.
+    Gaze,
 }
 
 /// How long a werewolf howls, and how far the howl carries.
@@ -99,6 +101,16 @@ pub const STRIKE_SECS: f32 = 0.2;
 /// What a cobra's rearing up for (`Enemy::hops`): to strike, or to spit.
 pub const STRIKING: u32 = 0;
 pub const SPITTING: u32 = 1;
+/// A gazer: how high it hovers, how long it stares you down along its line before it
+/// fires, how far its stare reaches, and how fast its bolt flies.
+pub const GAZER_Y: f32 = 0.95;
+pub const GAZE_SECS: f32 = 0.9;
+pub const GAZE_RANGE: f32 = 7.5;
+pub const GAZE_BOLT: f32 = 9.0;
+/// How long a spineback slug hunches up before its spines fly.
+pub const SPINE_WINDUP: f32 = 0.6;
+/// How much bigger than its model an ogre is drawn.
+pub const OGRE_SIZE: f32 = 1.2;
 
 pub struct Enemy {
     pub foe: Foe,
@@ -149,6 +161,8 @@ pub struct Enemy {
     pub sewer: bool,
     /// Living in the glowcap caves, where the shroomlings glow like the caps.
     pub glowcave: bool,
+    /// Living in the starless rift, where the imps are violet.
+    pub rift: bool,
     /// What it has just done that the floor has to answer (taken each frame).
     pub call: Option<Call>,
 }
@@ -221,6 +235,9 @@ pub fn base(f: Foe) -> Base {
         Foe::Griffin => b(46, 13, 2.6, 0.36, 20, "Griffin"),
         Foe::Cactus => b(40, 10, 1.2, 0.32, 14, "Cactling"),
         Foe::Cobra => b(30, 12, 2.5, 0.28, 13, "Sand Cobra"),
+        Foe::Gazer => b(30, 13, 2.2, 0.3, 16, "Gazer"),
+        Foe::Slug => b(52, 12, 0.9, 0.36, 16, "Spineback Slug"),
+        Foe::Ogre => b(95, 18, 1.3, 0.46, 26, "Rift Ogre"),
     }
 }
 
@@ -231,7 +248,14 @@ pub const MOTHS: usize = 2;
 pub fn flies(foe: Foe, biome: usize) -> bool {
     matches!(
         foe,
-        Foe::Bat | Foe::Wisp | Foe::Ghost | Foe::Jelly | Foe::Puffer | Foe::Leafling | Foe::Griffin
+        Foe::Bat
+            | Foe::Wisp
+            | Foe::Ghost
+            | Foe::Jelly
+            | Foe::Puffer
+            | Foe::Leafling
+            | Foe::Griffin
+            | Foe::Gazer
     ) || (foe == Foe::Bug && biome % 6 == MOTHS)
 }
 
@@ -322,6 +346,9 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
         Foe::Griffin => "Griffin",
         Foe::Cactus => "Cactling",
         Foe::Cobra => "Sand Cobra",
+        Foe::Gazer => "Gazer",
+        Foe::Slug => "Spineback Slug",
+        Foe::Ogre => "Rift Ogre",
     }
 }
 
@@ -412,6 +439,8 @@ impl Enemy {
             // (A griffin starts out sat up on its nest.)
             y: if foe == Foe::Griffin {
                 PERCH_Y
+            } else if foe == Foe::Gazer {
+                GAZER_Y
             } else if flies(foe, biome) {
                 0.55
             } else {
@@ -447,6 +476,7 @@ impl Enemy {
             trail: Vec::new(),
             sewer: false,
             glowcave: false,
+            rift: false,
             call: None,
         }
     }
@@ -467,6 +497,12 @@ impl Enemy {
         self
     }
 
+    /// Living in the starless rift (see `rift`).
+    pub fn in_the_rift(mut self) -> Enemy {
+        self.rift = true;
+        self
+    }
+
     /// A glowing shroomling's colour, as the glowcaps' (see `glowcave_art::GLOW`).
     pub fn glow_colour(&self) -> usize {
         self.seed as usize % 4
@@ -475,6 +511,7 @@ impl Enemy {
     /// One of its own kind, called up or split off: dressed as it is.
     fn kin(&self, e: Enemy) -> Enemy {
         let e = if self.sewer { e.in_the_sewers() } else { e };
+        let e = if self.rift { e.in_the_rift() } else { e };
         if self.glowcave {
             e.in_the_glowcaves()
         } else {
@@ -497,6 +534,8 @@ impl Enemy {
             guardian_name(self.foe, self.biome)
         } else if self.sewer {
             sewer_name(self.foe, self.biome)
+        } else if self.rift && self.foe == Foe::Imp {
+            "Void Imp"
         } else {
             kind_name(self.foe, self.biome)
         }
@@ -556,7 +595,11 @@ impl Enemy {
 
     /// Too heavy to be knocked about much.
     pub fn heavy(&self) -> bool {
-        self.boss || matches!(self.foe, Foe::Golem | Foe::Brute | Foe::Minotaur)
+        self.boss
+            || matches!(
+                self.foe,
+                Foe::Golem | Foe::Brute | Foe::Minotaur | Foe::Ogre
+            )
     }
 
     /// A minotaur that ran headlong into a wall, seeing stars: it can't hurt you, and your
@@ -608,7 +651,7 @@ impl Enemy {
         self.anim += dt;
         self.named = (self.named - dt).max(0.0);
         self.hide = (self.hide - dt).max(0.0);
-        if self.foe == Foe::Snail {
+        if matches!(self.foe, Foe::Snail | Foe::Slug) {
             self.lay_trail(dt);
         }
         self.flash = (self.flash - dt).max(0.0);
@@ -810,11 +853,15 @@ impl Enemy {
             Foe::Griffin => self.griffin(dt, world, dirp, dist, rng),
             Foe::Cactus => self.cactus(dt, world, dirp, dist, shots, rng),
             Foe::Cobra => self.cobra(dt, world, dirp, dist, shots, rng),
+            Foe::Gazer => self.gazer(dt, world, dirp, dist, shots, rng),
+            Foe::Slug => self.slug(dt, world, dirp, dist, shots, rng),
+            Foe::Ogre => self.brute(dt, world, dirp, dist, shots, fx),
         }
         // A griffin wheeling round you, or climbing away, faces the way it flies; a dazed
         // minotaur doesn't turn to follow you.
         let flying_by = self.foe == Foe::Griffin && matches!(self.st, St::Chase | St::Rest);
-        if flying_by && self.dir.length_squared() > 0.0 {
+        let staring = self.foe == Foe::Gazer && self.st == St::Windup;
+        if (flying_by || staring) && self.dir.length_squared() > 0.0 {
             self.yaw = self.dir.x.atan2(self.dir.y);
         } else if self.dazed() {
         } else if dist > 0.01 && self.st != St::Dash {
@@ -1408,6 +1455,121 @@ impl Enemy {
         }
     }
 
+    /// A gazer hovers out of reach on its bat's wings, drifting round you, and every so
+    /// often fixes you with its eye: a line of light runs out along its stare, and when it has
+    /// done staring a bolt flies down the line (step out of it).
+    fn gazer(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        let s = self.scale();
+        let bob = (self.anim * 2.4).sin() * 0.08;
+        self.y = approach(self.y, GAZER_Y * s + bob, dt * 2.0);
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    shots.push(Shot {
+                        pos: self.pos + self.dir * (0.3 * s),
+                        vel: self.dir * GAZE_BOLT,
+                        dmg: self.dmg,
+                        life: 1.1,
+                        color: LIME,
+                        radius: 0.15,
+                        kind: ShotKind::Spark,
+                    });
+                    self.st = St::Rest;
+                    self.t = 0.5;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(1.6, 2.6);
+                }
+            }
+            _ => {
+                let turn = if self.seed % 2 == 0 { 1.0 } else { -1.0 };
+                let circle = Vec2::new(-dirp.y, dirp.x) * turn;
+                let want = if dist > 6.0 {
+                    dirp
+                } else if dist < 3.5 {
+                    (circle * 0.5 - dirp).normalize_or_zero()
+                } else {
+                    circle * 0.7
+                };
+                self.step(world, want * self.speed * dt);
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < GAZE_RANGE && sees {
+                    // Its stare locks on where you stand now.
+                    self.st = St::Windup;
+                    self.t = GAZE_SECS;
+                    self.dir = dirp;
+                    self.call = Some(Call::Gaze);
+                }
+            }
+        }
+    }
+
+    /// A spineback slug creeps after you, leaving a trail of violet slime, and every so
+    /// often hunches up, its spines bristling, and flings a fan of them at you.
+    fn slug(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        match self.st {
+            St::Windup => {
+                self.dir = dirp;
+                if self.t <= 0.0 {
+                    let n = if self.boss { 7 } else { 3 };
+                    for k in 0..n {
+                        let a = (k as f32 - (n - 1) as f32 * 0.5) * 0.32;
+                        let d = Vec2::from_angle(a).rotate(dirp);
+                        shots.push(Shot {
+                            pos: self.pos + d * (0.35 * self.scale()),
+                            vel: d * 4.6,
+                            dmg: (self.dmg * 3 / 4).max(1),
+                            life: 1.5,
+                            color: WHITE,
+                            radius: 0.12,
+                            kind: ShotKind::Needle,
+                        });
+                    }
+                    self.st = St::Rest;
+                    self.t = 0.6;
+                    self.squash = 0.8;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(1.8, 2.8);
+                }
+            }
+            _ => {
+                self.dir = dirp;
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < 5.5 && sees {
+                    self.st = St::Windup;
+                    self.t = SPINE_WINDUP;
+                } else if dist > 0.9 * self.reach() {
+                    // Creeping: a ripple running down it as it goes.
+                    let creep = 0.6 + 0.4 * (self.anim * 4.0).sin();
+                    self.step(world, dirp * self.speed * creep * dt);
+                }
+            }
+        }
+    }
+
     fn idle_wander(&mut self, dt: f32, world: &World, rng: &mut Rng) {
         self.t -= dt;
         if self.t <= 0.0 {
@@ -1419,7 +1581,9 @@ impl Enemy {
                 Vec2::ZERO
             };
         }
-        if self.flying() && self.foe != Foe::Ghost {
+        if self.foe == Foe::Gazer {
+            self.y = GAZER_Y + (self.anim * 2.4).sin() * 0.08;
+        } else if self.flying() && self.foe != Foe::Ghost {
             self.y = 0.55 + (self.anim * 4.0).sin() * 0.1;
         }
         if !matches!(self.foe, Foe::Slime | Foe::Frog) {
@@ -1569,7 +1733,11 @@ impl Enemy {
         match self.st {
             St::Windup => {
                 if self.t <= 0.0 {
-                    let color = if self.foe == Foe::Imp { ORANGE } else { AQUA };
+                    let color = match self.foe {
+                        Foe::Imp if self.rift => PURPLE,
+                        Foe::Imp => ORANGE,
+                        _ => AQUA,
+                    };
                     let spread: &[f32] = if self.boss {
                         &[-0.5, -0.25, 0.0, 0.25, 0.5]
                     } else {
@@ -1760,7 +1928,11 @@ impl Enemy {
             St::Windup => {
                 if self.t <= 0.0 {
                     let hit = self.pos + self.dir * 0.7 * self.scale();
-                    let skin = GOBLIN_DUST[self.look()];
+                    let skin = if self.foe == Foe::Ogre {
+                        [LAVENDER, PURPLE, GRAPE]
+                    } else {
+                        GOBLIN_DUST[self.look()]
+                    };
                     fx.burst(Vec3::new(hit.x, 0.05, hit.y), 16, &skin, 3.5, 2.0);
                     let fan: Vec<f32> = if self.boss {
                         (0..14)
@@ -2004,6 +2176,8 @@ impl Enemy {
             (Foe::Griffin, _) => SAND,
             (Foe::Cactus, _) => GREEN,
             (Foe::Cobra, _) => LIME,
+            (Foe::Gazer | Foe::Ogre, _) => PURPLE,
+            (Foe::Slug, _) => GRAPE,
         }
     }
 
@@ -2458,6 +2632,10 @@ impl Enemy {
             Foe::Griffin => self.draw_griffin(r, a, &o),
             Foe::Cactus => self.draw_cactus(r, a, &o),
             Foe::Cobra => self.draw_cobra(r, a, &o),
+            Foe::Gazer => self.draw_gazer(r, a, &o),
+            Foe::Slug => self.draw_slug(r, a, &o),
+            Foe::Ogre => self.draw_ogre(r, a, &o),
+            Foe::Imp if self.rift => self.draw_void_imp(r, a, &o),
             Foe::Imp | Foe::Skeleton | Foe::Zombie | Foe::Brute | Foe::Sneak => {
                 let looks = &a.monsters;
                 let h = match self.foe {
@@ -2829,6 +3007,281 @@ impl Enemy {
                 }
             }
         }
+    }
+
+    /// A gazer: its body bobbing on beating bat's wings, its tentacles trailing, curling and
+    /// swaying, its eye glowing and glaring about under its scowling lid, blinking now and
+    /// then; staring, its lid narrowing and the line of its stare running out ahead of it.
+    fn draw_gazer(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::models::tube;
+        use crate::assets::void_art::{GAZER_EYE, GAZER_EYE_C, GAZER_WING};
+        use std::f32::consts::{FRAC_PI_4, PI, TAU};
+        let art = &a.void.gazer;
+        let s = self.scale();
+        let staring = self.st == St::Windup;
+        let body = Mat4::from_translation(self.world_pos())
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s));
+        r.mesh(&a.bank, &art.body, &body, o);
+        // Its iris and lid turn about the middle of its eyeball: the iris wanders, but fixes
+        // dead ahead as it stares; the lid narrows as it stares, and now and then it blinks.
+        let about = |turn: Mat4| {
+            body * Mat4::from_translation(GAZER_EYE_C) * turn * Mat4::from_translation(-GAZER_EYE_C)
+        };
+        let (wx, wy) = if staring {
+            (0.0, 0.0)
+        } else {
+            (
+                (self.anim * 1.3).sin() * 0.22,
+                (self.anim * 0.9).cos() * 0.12,
+            )
+        };
+        let iris = about(Mat4::from_rotation_y(wx) * Mat4::from_rotation_x(-wy));
+        r.mesh(&a.bank, &art.iris, &iris, &o.with_glow(1.0));
+        let blink = {
+            let t = (self.anim * 0.8 + self.seed as f32 * 0.37) % 5.0;
+            if staring || t > 0.16 {
+                0.0
+            } else {
+                (t / 0.16 * PI).sin()
+            }
+        };
+        let squint = if staring { 0.14 } else { 0.0 };
+        r.mesh(
+            &a.bank,
+            &art.lid,
+            &about(Mat4::from_rotation_x(squint + blink * 1.05)),
+            o,
+        );
+        // Its wings beat, spreading on the downstroke and folding in a little on the way up,
+        // their skin tilting into the air.
+        let phase = self.anim * 12.0 + self.seed as f32;
+        let flap = phase.sin() * 0.55;
+        let fold = 1.0 - 0.14 * (0.5 + 0.5 * (phase + 1.3).sin());
+        let wo = o.two_sided();
+        for side in [1.0f32, -1.0] {
+            let m =
+                body * Mat4::from_translation(Vec3::new(
+                    GAZER_WING.x * side,
+                    GAZER_WING.y,
+                    GAZER_WING.z,
+                )) * Mat4::from_scale(Vec3::new(side, 1.0, 1.0))
+                    * Mat4::from_rotation_z(flap + 0.15)
+                    * Mat4::from_rotation_x(-flap * 0.35)
+                    * Mat4::from_scale(Vec3::new(fold, 1.0, 1.0));
+            r.mesh(&a.bank, &art.wing, &m, &wo);
+        }
+        // Tentacles hanging below, splaying out and curling up at their tips, swaying out of
+        // step.
+        for k in 0..4 {
+            let at = k as f32 / 4.0 * TAU + FRAC_PI_4;
+            let out = Vec3::new(at.cos(), 0.0, at.sin());
+            let across = Vec3::new(-at.sin(), 0.0, at.cos());
+            let root = out * 0.12 + Vec3::new(0.0, -0.15, -0.02);
+            let pts: Vec<Vec3> = (0..8)
+                .map(|j| {
+                    let f = j as f32 / 7.0;
+                    let sway = (self.anim * 3.0 + k as f32 * 1.7 + f * 3.0).sin() * 0.07 * f;
+                    let curl = ((f - 0.65).max(0.0) / 0.35).powi(2);
+                    body.transform_point3(
+                        root + out * (0.09 * f + 0.07 * curl)
+                            + across * sway
+                            + Vec3::Y * (0.1 * curl - 0.44 * f),
+                    )
+                })
+                .collect();
+            let radii: Vec<f32> = (0..8).map(|j| (0.042 - j as f32 * 0.0045) * s).collect();
+            let mut m = Mesh::new();
+            tube(&mut m, &pts, &radii, 5, art.skin, Vec3::Z);
+            r.mesh(&a.bank, &m, &Mat4::IDENTITY, o);
+        }
+        let eye = body.transform_point3(GAZER_EYE);
+        r.halo(eye, 0.2 * s, LIME, if staring { 0.5 } else { 0.18 });
+        if staring {
+            // The line of its stare, flickering, running down to where its bolt will fly.
+            let d = Vec3::new(self.dir.x, 0.0, self.dir.y);
+            let steps = 60;
+            let flick = (self.anim * 24.0) as i32;
+            for k in 1..steps {
+                if (k + flick) % 5 == 0 {
+                    continue;
+                }
+                let f = k as f32 / steps as f32;
+                let p = eye + d * (f * GAZE_RANGE) - Vec3::Y * ((eye.y - 0.45) * f.min(0.3) / 0.3);
+                // Glowing, so the light and shade laid over the floor afterwards leave it be.
+                let (core, edge) = if k % 2 == 0 {
+                    (LIME, GREEN)
+                } else {
+                    (WHITE, LIME)
+                };
+                r.sparkle(p, i32::from(k < 8), core, edge);
+            }
+        }
+    }
+
+    /// A spineback slug: creeping, a ripple running down it; hunching up with its spines
+    /// bristling before they fly; its eyes waving on their stalks; its slime glowing behind.
+    fn draw_slug(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::void_art::{
+            SLUG_SPINES, SLUG_STALK, SLUG_STALK_MID, STALK_H, slug_back,
+        };
+        let art = &a.void.slug;
+        let s = self.scale();
+        for (k, &(p, age)) in self.trail.iter().enumerate() {
+            let fade = 1.0 - age / TRAIL_SECS;
+            let c = [GRAPE, PURPLE, LAVENDER][k % 3];
+            let at = Vec3::new(p.x, 0.02, p.y);
+            if fade > 0.35 || (k % 2 == 0 && fade > 0.1) {
+                r.point(at, 1, c);
+            }
+            if k % 3 == 0 && fade > 0.3 {
+                r.halo(at, 0.16 * s, PURPLE, 0.18 * fade);
+            }
+        }
+        let bristle = self.st == St::Windup;
+        let moving = if self.alert {
+            self.st == St::Chase
+        } else {
+            self.dir.length_squared() > 0.0
+        };
+        let creep = if moving {
+            (self.anim * 4.0).sin() * 0.06
+        } else {
+            0.0
+        };
+        let hunch = if bristle {
+            1.0 - (self.t / SPINE_WINDUP).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let body = Mat4::from_translation(Vec3::new(self.pos.x, 0.0, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s))
+            * Mat4::from_scale(Vec3::new(
+                1.0 + hunch * 0.08 + self.squash * 0.1,
+                1.0 + hunch * 0.3 - self.squash * 0.15,
+                1.0 + creep - hunch * 0.12,
+            ));
+        r.mesh(&a.bank, &art.body, &body, o);
+        // Three eyes on stalks, the middle one the biggest: they wave about, and duck back as
+        // it bristles.
+        let perk = if bristle { -0.3 } else { 0.1 };
+        let stalks = [
+            (SLUG_STALK * Vec3::new(-1.0, 1.0, 1.0), -1.0f32, 1.0f32),
+            (SLUG_STALK, 1.0, 1.0),
+            (SLUG_STALK_MID, 0.0, 1.15),
+        ];
+        for (k, &(root, side, big)) in stalks.iter().enumerate() {
+            let wag = (self.anim * 2.1 + k as f32 * 1.4).sin() * 0.25;
+            let m = body
+                * Mat4::from_translation(root)
+                * Mat4::from_rotation_z(
+                    -side * (0.25 + wag * 0.4) + (1.0 - side.abs()) * wag * 0.3,
+                )
+                * Mat4::from_rotation_x(perk + wag * 0.3 - (1.0 - side.abs()) * 0.2)
+                * Mat4::from_scale(Vec3::splat(big));
+            r.mesh(&a.bank, &art.stalk, &m, o);
+            let eye = m.transform_point3(Vec3::Y * (STALK_H + 0.03));
+            r.halo(eye, 0.045 * s * big, GOLD, 0.22);
+        }
+        if bristle {
+            for (k, &(z, len)) in SLUG_SPINES.iter().enumerate() {
+                let tip = Vec3::new(0.0, slug_back(z) + len * 0.95, z - len * 0.24);
+                if (self.anim * 22.0 + k as f32 * 1.3).sin() > 0.2 {
+                    r.sparkle(body.transform_point3(tip), 1, WHITE, CREAM);
+                }
+            }
+        }
+    }
+
+    /// A rift ogre: a great stamping walk, its eyes burning red under its brow, and both
+    /// fists raised and brought down on the ground.
+    fn draw_ogre(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        let s = self.scale() * OGRE_SIZE;
+        let h = &a.monsters.ogre;
+        let moving = if self.alert {
+            matches!(self.st, St::Chase | St::Idle)
+        } else {
+            self.dir.length_squared() > 0.0
+        };
+        let swing = match self.st {
+            St::Windup => Some((0.0, Swing::Pound)),
+            St::Rest if self.t > 0.3 => {
+                Some((((0.9 - self.t) / 0.15).clamp(0.0, 1.0), Swing::Pound))
+            }
+            _ => None,
+        };
+        let pace = 6.5;
+        let stride = if moving { 0.8 } else { 0.0 };
+        let pose = Pose {
+            walk: self.anim * pace,
+            stride,
+            swing,
+            bob: (self.anim * pace).sin().abs() * 0.04 * stride,
+            squash: self.flash * 2.0,
+            reach: 0.0,
+            grow: s - 1.0,
+            look_up: 0.0,
+        };
+        let root = Vec3::new(self.pos.x, 0.0, self.pos.y);
+        draw_humanoid(r, a, h, root, self.yaw, &pose, o, &Outfit::default());
+        // Its eyes, where the head sits (near enough: its sway and bob are left out).
+        let head = Mat4::from_translation(root)
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s))
+            * Mat4::from_translation(Vec3::new(0.0, h.neck + pose.bob, 0.0))
+            * Mat4::from_rotation_x(-0.22);
+        for sx in [-1.0f32, 1.0] {
+            let eye = head.transform_point3(Vec3::new(sx * 0.071, 0.196, 0.19));
+            r.halo(eye, 0.065 * s, RED, 0.4);
+        }
+    }
+
+    /// A void imp: a little violet devil, its bat's wings beating behind it and its tail
+    /// swishing.
+    fn draw_void_imp(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        let s = self.scale();
+        let h = &a.monsters.void_imp;
+        let moving = if self.alert {
+            self.st != St::Windup
+        } else {
+            self.dir.length_squared() > 0.0
+        };
+        let swing = match self.st {
+            St::Windup => Some((1.0 - self.t.clamp(0.0, 0.45) / 0.45, Swing::Slash)),
+            _ => None,
+        };
+        let stride = if moving { 0.8 } else { 0.0 };
+        let pose = Pose {
+            walk: self.anim * 10.0,
+            stride,
+            swing,
+            bob: 0.0,
+            squash: self.flash * 2.0,
+            reach: 0.0,
+            grow: s - 1.0,
+            look_up: 0.0,
+        };
+        let root = Vec3::new(self.pos.x, 0.0, self.pos.y);
+        draw_humanoid(r, a, h, root, self.yaw, &pose, o, &Outfit::default());
+        let back = Mat4::from_translation(root)
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s));
+        let flap = (self.anim * 14.0).sin() * 0.5;
+        let wo = o.two_sided();
+        for side in [1.0f32, -1.0] {
+            let m = back
+                * Mat4::from_translation(Vec3::new(side * 0.06, h.shoulder + 0.06, -0.1))
+                * Mat4::from_rotation_y(side * 0.3)
+                * Mat4::from_scale(Vec3::new(side * 0.95, 0.95, 0.95))
+                * Mat4::from_rotation_z(0.65 + flap);
+            r.mesh(&a.bank, &a.void.gazer.wing, &m, &wo);
+        }
+        let swish = (self.anim * 3.0).sin() * 0.4;
+        let tail = back
+            * Mat4::from_translation(Vec3::new(0.0, h.hip + 0.02, -0.09))
+            * Mat4::from_rotation_y(swish);
+        r.mesh(&a.bank, &a.monsters.imp_tail, &tail, o);
     }
 
     /// A cactling: stood a little down in the sand among the cacti with its face hidden,

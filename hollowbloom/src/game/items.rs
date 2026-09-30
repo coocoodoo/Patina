@@ -230,6 +230,9 @@ items! {
     GriffinFeather = "griffin_feather", "Griffin Feather", "griffin_feather", 99, 130, Material, "A flight feather as long as your arm, warm from the sun that falls on the labyrinth's courtyard.";
     CactlingNeedle = "cactling_needle", "Cactling Needle", "cactling_needle", 99, 70, Material, "A needle as long as your finger, still bristling. Cactlings grow them back faster than they lose them.";
     CobraSkin = "cobra_skin", "Cobra Skin", "cobra_skin", 99, 75, Material, "A sand cobra's shed skin, papery and patterned, hood and all.";
+    GazerLens = "gazer_lens", "Gazer Lens", "gazer_lens", 99, 110, Material, "The glassy green heart of a gazer's eye. Look through it and the dark seems less dark.";
+    SlugSpine = "slug_spine", "Rift Spine", "slug_spine", 99, 95, Material, "A spineback slug's spine, bone-white and wickedly sharp.";
+    OgreTusk = "ogre_tusk", "Ogre Tusk", "ogre_tusk", 99, 140, Material, "Yellowed, chipped, and heavier than it looks. Its ogre won't be needing it now.";
     InkMap = "ink_map", "Ink Map", "ink_map", 20, 90, Kind::InkMap, "Read it in the Hollow and runes of glowing ink light the way to the stairs down, and hint at secrets.";
 
     // Backpacks: worn in their own slot, each adds room to the bag.
@@ -266,6 +269,9 @@ items! {
     GriffinPack = "griffin_pack", "Griffin Pack", "pack_griffin", 1, 0, Kind::Pack { style: 29, slots: 6 }, "A fluffy griffin, wings spread, beak held high.";
     CactlingPack = "cactling_pack", "Cactling Pack", "pack_cactling", 1, 0, Kind::Pack { style: 30, slots: 6 }, "A plush cactling, arms up and a flower on its head. The spines are soft, honest.";
     CobraPack = "cobra_pack", "Cobra Pack", "pack_cobra", 1, 0, Kind::Pack { style: 31, slots: 6 }, "A coiled sand cobra, hood spread, keeping watch behind you.";
+    GazerPack = "gazer_pack", "Gazer Pack", "pack_gazer", 1, 0, Kind::Pack { style: 32, slots: 6 }, "A plush gazer, wings out and tentacles dangling. Its eye follows whoever's behind you.";
+    SlugPack = "slug_pack", "Slug Pack", "pack_slug", 1, 0, Kind::Pack { style: 33, slots: 6 }, "A squishy spineback slug, its eyes up on stalks. The spines are only felt.";
+    OgrePack = "ogre_pack", "Ogre Pack", "pack_ogre", 1, 0, Kind::Pack { style: 34, slots: 6 }, "A big violet ogre's head, tusks and topknot and all. It holds a lot.";
 
     // Gems: scroll ink, and worth a pretty coin.
     Ruby = "ruby", "Ruby", "ruby", 99, 60, GemK, "Red as a winterberry. Scribes weapon scrolls.";

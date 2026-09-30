@@ -729,6 +729,9 @@ impl Play {
             if level.world.glowcave {
                 f = f.in_the_glowcaves();
             }
+            if level.world.rift {
+                f = f.in_the_rift();
+            }
             f.feel_the_moon(moon);
             self.foes.push(f);
         }
@@ -3347,6 +3350,10 @@ impl Play {
             Call::Hiss => {
                 let pitch = 0.9 + self.rng.f32() * 0.2;
                 io.audio.play_at(Sfx::Hiss, 0.7, pitch);
+            }
+            Call::Gaze => {
+                // A low, rising thrum as its stare locks on.
+                io.audio.play_at(Sfx::Magic, 0.5, 0.55);
             }
         }
     }

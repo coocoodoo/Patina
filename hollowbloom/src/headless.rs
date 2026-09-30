@@ -1686,6 +1686,51 @@ pub fn bench() {
             draw_time * 1000.0 / frames as f64
         );
     }
+    // The starless rift, stood on the Landing over the void with its folk all about: a pair
+    // of gazers beating their wings, a spineback slug, a void imp and an ogre.
+    let rift = {
+        let p = play(&mut game);
+        (12..300).find(|&d| crate::game::rift::is_rift(p.seed, d, p.biome_at(d)))
+    };
+    if let Some(depth) = rift {
+        use crate::game::dungeon::Foe;
+        use crate::game::foes::Enemy;
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            let biome = p.hollow_biome(depth);
+            let (sx, sz) = p.player.tile();
+            let w = &p.level.as_ref().unwrap().world;
+            let folk: Vec<Enemy> = [Foe::Gazer, Foe::Gazer, Foe::Slug, Foe::Imp, Foe::Ogre]
+                .into_iter()
+                .enumerate()
+                .map(|(k, foe)| {
+                    let a = k as f32 * 1.26;
+                    let (x, z) =
+                        w.nearest_open(sx + (a.cos() * 3.0) as i32, sz + (a.sin() * 3.0) as i32);
+                    let (x, z) = (x as f32 + 0.5, z as f32 + 0.5);
+                    Enemy::new(foe, x, z, depth, biome, false, k as u32).in_the_rift()
+                })
+                .collect();
+            p.foes = folk;
+        }
+        let t0 = Instant::now();
+        let mut draw_time = 0.0;
+        for _ in 0..frames {
+            tick(&mut game, &input, &audio, 1);
+            let p = play(&mut game);
+            p.player.hp = p.player.max_hp();
+            let t = Instant::now();
+            game.draw(&mut r, &input);
+            draw_time += t.elapsed().as_secs_f64();
+        }
+        let total = t0.elapsed().as_secs_f64();
+        println!(
+            "starless rift (floor {depth}): {:.2} ms/frame total, {:.2} ms/frame drawing",
+            total * 1000.0 / frames as f64,
+            draw_time * 1000.0 / frames as f64
+        );
+    }
     // The busiest place: the plaza at noon, everyone out and about.
     {
         let p = play(&mut game);
@@ -6055,6 +6100,139 @@ pub fn rift_shots(dir: &str) {
             6.0,
         );
     }
+
+    // Its folk: a gazer staring you down, a spineback slug bristling, a void imp, and an
+    // ogre pounding the ground.
+    use crate::game::dungeon::Foe;
+    use crate::game::foes::{Enemy, GAZER_Y, SPINE_WINDUP, St};
+    let spot = {
+        let p = play(&mut game);
+        let level = p.level.as_ref().unwrap();
+        let w = &level.world;
+        let (sx, sz) = level.start;
+        (0..w.h)
+            .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+            .filter(|&(x, z)| {
+                (-2..=2).all(|dz| (-2..=2).all(|dx| !w.blocked(x + dx, z + dz)))
+                    && w.floor(x, z) != Floor::Span
+            })
+            .min_by_key(|&(x, z)| (x - sx).abs() + (z - sz).abs())
+    };
+    let Some((x, z)) = spot else {
+        return;
+    };
+    {
+        let p = play(&mut game);
+        let w = &mut p.level.as_mut().unwrap().world;
+        for dz in -2..=2 {
+            for dx in -2..=2 {
+                w.set_obj(x + dx, z + dz, None);
+            }
+        }
+    }
+    let at = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+    let focus = Vec3::new(at.x, 0.5, at.y);
+    let critter = |game: &mut Game, foe: Foe, st: St, t: f32| {
+        let p = play(game);
+        let biome = p.hollow_biome(depth);
+        p.foes.clear();
+        p.shots.clear();
+        p.fx.pops.clear();
+        let mut f = Enemy::new(foe, at.x, at.y, depth, biome, false, 9).in_the_rift();
+        f.alert = true;
+        f.st = st;
+        f.t = t;
+        f.yaw = 0.2;
+        f.dir = Vec2::new(0.2, 1.0).normalize();
+        f.anim = 0.4;
+        if foe == Foe::Gazer {
+            f.y = GAZER_Y;
+        }
+        p.foes.push(f);
+        p.player.pos = Vec2::new(at.x + 0.6, at.y + 2.4);
+        p.player.facing = Vec2::new(0.0, -1.0);
+    };
+    critter(&mut game, Foe::Gazer, St::Chase, 2.0);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r11_gazer",
+        focus + Vec3::Y * 0.3,
+        4.0,
+    );
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r11b_gazer_close",
+        focus + Vec3::Y * 0.45,
+        2.4,
+    );
+    // Staring off to one side, so the line of its stare runs across the picture.
+    critter(&mut game, Foe::Gazer, St::Windup, 0.3);
+    {
+        let p = play(&mut game);
+        let d = Vec2::new(1.0, 0.35).normalize();
+        p.foes[0].dir = d;
+        p.foes[0].yaw = d.x.atan2(d.y);
+    }
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r12_gazer_stares",
+        focus + Vec3::X * 1.5,
+        6.0,
+    );
+    // The slug side on, to show off its spines.
+    critter(&mut game, Foe::Slug, St::Chase, 2.0);
+    play(&mut game).foes[0].yaw = 1.25;
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r13_slug",
+        focus - Vec3::Y * 0.2,
+        3.5,
+    );
+    critter(&mut game, Foe::Slug, St::Windup, SPINE_WINDUP * 0.1);
+    play(&mut game).foes[0].yaw = 0.9;
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r14_slug_bristles",
+        focus - Vec3::Y * 0.2,
+        3.5,
+    );
+    critter(&mut game, Foe::Imp, St::Chase, 2.0);
+    close(&mut game, &mut r, &input, dir, "r15_void_imp", focus, 3.5);
+    critter(&mut game, Foe::Ogre, St::Chase, 2.0);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r16_ogre",
+        focus + Vec3::Y * 0.4,
+        5.0,
+    );
+    critter(&mut game, Foe::Ogre, St::Windup, 0.2);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r17_ogre_pounds",
+        focus + Vec3::Y * 0.4,
+        5.0,
+    );
 }
 
 /// `--canyon-shots DIR`: a floor of the sunscorch canyon: in by the gateway, the whole
