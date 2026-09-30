@@ -599,6 +599,7 @@ impl Play {
                 let glowing = self.level.as_ref().is_some_and(|l| l.world.glowcave);
                 let marble = self.level.as_ref().is_some_and(|l| l.world.labyrinth);
                 let canyon = self.level.as_ref().is_some_and(|l| l.world.canyon);
+                let rift = self.level.as_ref().is_some_and(|l| l.world.rift);
                 let (ambient, warmth, clear) = if glowing {
                     (0.42, 2.0, INK)
                 } else if marble {
@@ -606,6 +607,9 @@ impl Play {
                 } else if canyon {
                     // Sun falling into it from far above: hot, and lit orange.
                     (0.68, 5.4, INK)
+                } else if rift {
+                    // Starlight, cold, and whatever glows.
+                    (0.6, 2.4, INK)
                 } else {
                     (st.ambient, st.warmth, st.clear)
                 };
@@ -746,11 +750,12 @@ impl Play {
         self.player.pos = Vec2::new(level.start.0 as f32 + 0.5, level.start.1 as f32 + 0.5);
         self.player.act = None;
         self.revealed = vec![false; (level.world.w * level.world.h) as usize];
-        let (sewer, glowcave, labyrinth, canyon) = (
+        let (sewer, glowcave, labyrinth, canyon, rift) = (
             level.world.sewer,
             level.world.glowcave,
             level.world.labyrinth,
             level.world.canyon,
+            level.world.rift,
         );
         self.level = Some(level);
         self.area = Area::Hollow { depth };
@@ -777,6 +782,8 @@ impl Play {
                 format!("{} - the marble labyrinth", BIOME_STYLES[biome].name)
             } else if canyon {
                 format!("{} - the sunscorch canyon", BIOME_STYLES[biome].name)
+            } else if rift {
+                format!("{} - the starless rift", BIOME_STYLES[biome].name)
             } else {
                 BIOME_STYLES[biome].name.to_string()
             },

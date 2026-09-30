@@ -509,6 +509,16 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
 * **Sand cobras** slither over the sand in long curves. Get close and one **rears up on its
   coils with its hood spread**, hissing, sways, and **strikes**; from further off it rears
   up and **spits venom** at you. They drop **cobra skins**, and now and then gold ore.
+* **The Starless Rift.** Now and then (from floor 12, never on a guardian's floor, and
+  often in the Crystal Grotto) a floor is no cave at all but **islands of black rock
+  hanging over a void of stars** (drifting past below as you go), their ragged undersides
+  falling away into the dark, strung together by **old stone bridges** with red railings
+  and slung about with **great chains**. You come in through a **portal** on the Landing.
+  **Amethyst** glows on the islands, **voidfalls** of blue light pour off their edges into
+  the void, and on the biggest island stands the ruined **Citadel**: walls and towers of
+  black obsidian carved with **glowing runes** and set with **eyes that follow you** (and
+  blink), columns standing and fallen, a chest tucked away, and the stairs down in its
+  **sanctum**. The void can only be crossed by the bridges, and obsidian can't be mined.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -689,6 +699,7 @@ hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge sl
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
 hollowbloom --labyrinth-shots DIR # the marble labyrinth: maze, arches, courtyard, minotaur, griffin
 hollowbloom --canyon-shots DIR    # the sunscorch canyon: its places and props, cactlings, cobras
+hollowbloom --rift-shots DIR      # the starless rift: islands, bridges, runes, eyes, voidfalls
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV

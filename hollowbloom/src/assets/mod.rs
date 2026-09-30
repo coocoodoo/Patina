@@ -20,6 +20,7 @@ pub mod pack_art;
 pub mod pet_art;
 pub mod plush_art;
 pub mod quest_art;
+pub mod rift_art;
 pub mod season_art;
 pub mod sewer_art;
 pub mod sprites;
@@ -682,6 +683,8 @@ pub struct Assets {
     pub canyon: canyon_art::CanyonArt,
     /// The canyon's creatures: cactlings and sand cobras.
     pub desert: desert_art::DesertArt,
+    /// The starless rift: obsidian, amethyst, bridges, the void's stars.
+    pub rift: rift_art::RiftArt,
     /// Drakelings and leaflings.
     pub beasts: beast_art::Beasts,
     /// Backpacks, worn and as icons, in every style and colourway.
@@ -852,6 +855,7 @@ impl Assets {
         let labyrinth = labyrinth_art::build(&mut bank);
         let canyon = canyon_art::build(&mut bank, labyrinth.stone, &labyrinth.columns);
         let desert = desert_art::build(&mut bank, canyon.skin);
+        let rift = rift_art::build(&mut bank, labyrinth.stone, &labyrinth.columns);
         let beasts = beast_art::build(&mut bank);
         Assets {
             foes,
@@ -909,6 +913,7 @@ impl Assets {
             labyrinth,
             canyon,
             desert,
+            rift,
             beasts,
             packs,
         }

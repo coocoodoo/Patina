@@ -107,6 +107,10 @@ fn main() {
         headless::beast_shots(args.get(i + 1).map(String::as_str).unwrap_or("beasts"));
         return;
     }
+    if let Some(i) = args.iter().position(|a| a == "--rift-shots") {
+        headless::rift_shots(args.get(i + 1).map(String::as_str).unwrap_or("rift"));
+        return;
+    }
     if let Some(i) = args.iter().position(|a| a == "--canyon-shots") {
         headless::canyon_shots(args.get(i + 1).map(String::as_str).unwrap_or("canyon"));
         return;

@@ -5860,6 +5860,203 @@ pub fn labyrinth_shots(dir: &str) {
     }
 }
 
+/// `--rift-shots DIR`: a floor of the starless rift: in through the portal, the whole of it
+/// from far off, its bridges, the citadel's runes and eyes, the sanctum, a voidfall, a
+/// chain, amethyst, and its folk.
+pub fn rift_shots(dir: &str) {
+    use crate::game::rift::is_rift;
+    use crate::game::world::{Floor, Obj, World};
+    use glam::Vec3;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261201);
+    tick(&mut game, &input, &audio, 30);
+    {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.banner = None;
+        p.clock.day = 2;
+        p.player.level = 40;
+        p.player.refresh();
+    }
+    let depth = {
+        let p = play(&mut game);
+        (12..300)
+            .find(|&d| is_rift(p.seed, d, p.biome_at(d)))
+            .expect("a rift floor")
+    };
+    descend(&mut game, &input, &audio, depth, false);
+    {
+        let p = play(&mut game);
+        p.foes.clear();
+        p.toasts.clear();
+        let biome = p.hollow_biome(depth);
+        p.banner = Some(crate::game::play::Banner {
+            title: format!("Floor {depth}"),
+            sub: format!(
+                "{} - the starless rift",
+                crate::assets::BIOME_STYLES[biome].name
+            ),
+            t: 0.0,
+        });
+    }
+    tick(&mut game, &input, &audio, 30);
+    snap(&mut game, &mut r, &input, dir, "r01_arrival");
+    let find = |game: &mut Game, want: &dyn Fn(&World, i32, i32) -> bool| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (sx, sz) = p.player.tile();
+        let mut best = None;
+        for z in 0..w.h {
+            for x in 0..w.w {
+                if want(w, x, z) {
+                    let d = (x - sx).abs() + (z - sz).abs();
+                    if best.is_none_or(|(bd, _)| d < bd) {
+                        best = Some((d, (x, z)));
+                    }
+                }
+            }
+        }
+        best.map(|(_, t)| t)
+    };
+    let tile = |(x, z): (i32, i32)| Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 0.5);
+    let stand = |game: &mut Game, at: (i32, i32)| {
+        let p = play(game);
+        let w = &p.level.as_ref().unwrap().world;
+        let (x, z) = w.nearest_open(at.0, at.1);
+        p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+        p.player.facing = Vec2::new(0.0, 1.0);
+    };
+    let mid = {
+        let p = play(&mut game);
+        p.banner = None;
+        let w = &p.level.as_ref().unwrap().world;
+        Vec3::new(w.w as f32 * 0.5, 0.0, w.h as f32 * 0.5)
+    };
+    play(&mut game).cam.dist = 52.0;
+    snap_on(&mut game, &mut r, &input, dir, "r02_overview", Some(mid));
+    play(&mut game).cam.dist = 15.5;
+    // A bridge over the void.
+    if let Some(b) = find(&mut game, &|w, x, z| {
+        w.floor(x, z) == Floor::Span && w.floor(x, z + 1) == Floor::Void
+    }) {
+        stand(&mut game, b);
+        tick(&mut game, &input, &audio, 2);
+        close(&mut game, &mut r, &input, dir, "r03_bridge", tile(b), 10.0);
+    }
+    // The citadel: runes and eyes on its walls, and the sanctum with the stairs.
+    if let Some(e) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::WallEye))
+    }) {
+        stand(&mut game, (e.0, e.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "r04_citadel",
+            tile(e) + Vec3::new(0.0, 0.8, 1.0),
+            9.0,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "r05_eye",
+            tile(e) + Vec3::new(0.0, 0.8, 0.0),
+            3.5,
+        );
+    }
+    let stairs = {
+        let p = play(&mut game);
+        p.level.as_ref().unwrap().stairs
+    };
+    stand(&mut game, (stairs.0, stairs.1 + 4));
+    tick(&mut game, &input, &audio, 2);
+    close(
+        &mut game,
+        &mut r,
+        &input,
+        dir,
+        "r06_sanctum",
+        tile(stairs) + Vec3::new(0.0, 0.6, 1.0),
+        8.0,
+    );
+    if let Some(f) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Voidfall { dir: 0 }))
+    }) {
+        stand(&mut game, (f.0, f.1 - 2));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "r07_voidfall",
+            tile(f) + Vec3::new(0.0, -0.6, 1.2),
+            7.0,
+        );
+    }
+    if let Some(c) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Chain { .. }))
+    }) {
+        stand(&mut game, (c.0, c.1 + 1));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "r08_chain",
+            tile(c) + Vec3::new(2.0, 0.0, 1.5),
+            11.0,
+        );
+    }
+    if let Some(g) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::Amethyst { var: 2 }))
+    }) {
+        stand(&mut game, (g.0, g.1 + 3));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "r09_amethyst",
+            tile(g) + Vec3::new(0.0, 0.4, 0.6),
+            7.0,
+        );
+    }
+    if let Some(g) = find(&mut game, &|w, x, z| {
+        matches!(w.obj(x, z), Some(Obj::RiftGate))
+    }) {
+        stand(&mut game, (g.0, g.1 + 2));
+        tick(&mut game, &input, &audio, 2);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "r10_portal",
+            tile(g) + Vec3::new(0.0, 0.8, 0.5),
+            6.0,
+        );
+    }
+}
+
 /// `--canyon-shots DIR`: a floor of the sunscorch canyon: in by the gateway, the whole
 /// canyon from high above, the torch-lit halls, the pit's sandfalls and quicksand, the
 /// bone warrens, the wyvern's bones on their hoard, the tombs, and what stands about.

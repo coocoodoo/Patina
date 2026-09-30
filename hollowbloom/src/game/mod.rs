@@ -28,6 +28,7 @@ pub mod pets;
 pub mod play;
 pub mod player;
 pub mod quests;
+pub mod rift;
 pub mod save;
 pub mod scene;
 pub mod sewer;

@@ -56,6 +56,8 @@ pub enum Floor {
     CopperBridge,
     /// Quicksand in the sunscorch canyon: it drags at your feet (see `canyon`).
     Quicksand,
+    /// An old stone bridge across the starless rift's void (see `rift`).
+    Span,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
@@ -80,6 +82,8 @@ pub enum Wall {
     /// The sunscorch canyon's layered sandstone, or its tombs' carved blocks, rising in
     /// terraces away from the canyon floor (see `canyon::sandstone`).
     Sandstone(u8),
+    /// The starless rift's black obsidian, by look (see `rift::BLOCKS` and so on).
+    Obsidian(u8),
 }
 
 impl Wall {
@@ -90,6 +94,7 @@ impl Wall {
             Wall::Hedge => 0.8,
             Wall::Marble(super::labyrinth::PIER) => super::labyrinth::PIER_H,
             Wall::Sandstone(v) => super::canyon::terrace_height(v),
+            Wall::Obsidian(look) => super::rift::obsidian_height(look),
             _ => WALL_H,
         }
     }
@@ -339,6 +344,32 @@ pub enum Obj {
     /// The ancient gateway you come into the canyon by: two posts and a lintel, the posts
     /// on the tiles either side (`Part`s).
     Gateway,
+    /// Amethyst growing in the starless rift: a little cluster, a bigger one, or a great
+    /// crystal you can't walk through (see `rift::GREAT`).
+    Amethyst {
+        var: u8,
+    },
+    /// Blue light pouring off an island's edge into the void, towards `rift::SOUTH` and so
+    /// on.
+    Voidfall {
+        dir: u8,
+    },
+    /// A post with a great chain slung from it over the void, `len` tiles to its other post
+    /// (a `ChainPost`) towards `dir`.
+    Chain {
+        dir: u8,
+        len: u8,
+    },
+    /// The far post of a chain.
+    ChainPost,
+    /// An eye in the wall behind the tile, watching you, blinking now and then.
+    WallEye,
+    /// Runes glowing on the wall behind the tile, by which.
+    Runes {
+        var: u8,
+    },
+    /// The portal you come into the rift through.
+    RiftGate,
 }
 
 impl Obj {
@@ -351,6 +382,9 @@ impl Obj {
         }
         if let Obj::Skull { var } = self {
             return *var != super::canyon::SKULL_PILE;
+        }
+        if let Obj::Amethyst { var } = self {
+            return *var == super::rift::GREAT;
         }
         !matches!(
             self,
@@ -371,6 +405,9 @@ impl Obj {
                 | Obj::Sunbeam
                 | Obj::GoldPile
                 | Obj::Gateway
+                | Obj::Voidfall { .. }
+                | Obj::WallEye
+                | Obj::Runes { .. }
         )
     }
 
@@ -421,6 +458,15 @@ impl Obj {
             // Daylight from far above.
             Obj::Sunbeam => Some((1.4, 3.8, 0.45, 3.8)),
             Obj::GoldPile => Some((0.3, 1.8, 0.14, 6.5)),
+            // The rift's glows: violet crystals, runes and the portal, red-gold eyes, and
+            // the voidfalls' cold blue.
+            Obj::Amethyst { var } => {
+                Some((0.4, 2.2 + *var as f32 * 0.8, 0.28 + *var as f32 * 0.08, 1.6))
+            }
+            Obj::Runes { .. } => Some((0.8, 2.6, 0.3, 1.8)),
+            Obj::WallEye => Some((0.9, 2.0, 0.26, 7.0)),
+            Obj::Voidfall { .. } => Some((0.2, 3.0, 0.35, 0.8)),
+            Obj::RiftGate => Some((1.0, 4.5, 0.5, 1.4)),
             _ => None,
         }
     }
@@ -463,6 +509,8 @@ pub struct World {
     pub labyrinth: bool,
     /// The sunscorch canyon: sand, strata and tombs (see `canyon`).
     pub canyon: bool,
+    /// The starless rift: islands of black rock over a void of stars (see `rift`).
+    pub rift: bool,
     chunks: Vec<Mesh>,
     /// What glows in each chunk (sewer water, glowing pools), drawn with a light floor of
     /// `SEWER_GLOW` or `POOL_GLOW`.
@@ -502,6 +550,7 @@ impl World {
             glowcave: false,
             labyrinth: false,
             canyon: false,
+            rift: false,
             chunks: vec![Mesh::new(); (cw * ch) as usize],
             glowing: vec![Mesh::new(); (cw * ch) as usize],
             grass: vec![Mesh::new(); (gw * gh) as usize],
@@ -1042,6 +1091,18 @@ impl World {
             }
             Floor::Walkway if self.canyon => a.canyon.flags[(h % 3 == 0) as usize],
             Floor::Quicksand => a.canyon.quicksand[0],
+            // The rift's black rock, its pale stone and the citadel's flagstones, and the
+            // bridges across the void.
+            Floor::Cave if self.rift => {
+                a.rift.ground[match h % 7 {
+                    0 => 1,
+                    1 => 2,
+                    _ => 0,
+                }]
+            }
+            Floor::Path if self.rift => a.rift.pale[(h % 3 == 0) as usize],
+            Floor::Cobble if self.rift => a.rift.flags[(h % 4 == 0) as usize],
+            Floor::Span => a.rift.deck,
             Floor::Path
             | Floor::Sand
             | Floor::Cobble
@@ -1144,6 +1205,10 @@ impl World {
             }
         }
         match w {
+            Wall::Obsidian(look) => {
+                let look = look as usize % super::rift::LOOKS;
+                (a.rift.side[look], a.rift.top[look])
+            }
             Wall::Sandstone(v) => {
                 let look = super::canyon::sandstone_look(v);
                 (a.canyon.side[look], a.canyon.top[look])
@@ -1230,13 +1295,16 @@ impl World {
                 let i = self.idx(x, z);
                 let (fx, fz) = (x as f32, z as f32);
                 let wall = self.wall[i];
+                if self.rift {
+                    self.cliffs(a, &mut m, x, z);
+                }
                 if wall != Wall::None {
                     let (side, top) = self.wall_tex(a, wall);
                     let hgt = wall.height();
                     let top_ao = match wall {
                         Wall::Cliff | Wall::Brick | Wall::Timber | Wall::Hedge => [1.0; 4],
                         Wall::Marble(_) => [0.86; 4],
-                        Wall::Sandstone(_) => [0.8; 4],
+                        Wall::Sandstone(_) | Wall::Obsidian(_) => [0.8; 4],
                         Wall::Paper(_) => [0.5; 4],
                         _ => [0.62; 4],
                     };
@@ -1326,6 +1394,9 @@ impl World {
                 );
                 if matches!(f, Floor::Bridge | Floor::CopperBridge) {
                     self.bridge(a, &mut m, &mut glow, x, z, f);
+                }
+                if f == Floor::Span {
+                    self.span(a, &mut m, x, z);
                 }
                 // Banks where recessed floors (water, lava) meet higher ground.
                 if y < 0.0 {
@@ -1460,6 +1531,164 @@ impl World {
         if wet(x + 1, z) {
             side(Vec3::new(x1 - t, -0.1, z0), Vec3::new(x1, 0.02, z1));
             side(Vec3::new(x1 - t, rail_lo, z0), Vec3::new(x1, rail_hi, z1));
+        }
+    }
+
+    /// In the rift, the ragged rock faces of an island hanging down into the void on the
+    /// sides you can see (a bridge's own thin edge is drawn with it: see `span`).
+    fn cliffs(&self, a: &Assets, m: &mut Mesh, x: i32, z: i32) {
+        let ground = |tx: i32, tz: i32| {
+            self.inside(tx, tz)
+                && (self.floor(tx, tz) != Floor::Void || self.wall(tx, tz) != Wall::None)
+        };
+        if !ground(x, z) || self.floor(x, z) == Floor::Span {
+            return;
+        }
+        let (fx, fz) = (x as f32, z as f32);
+        let h = hash2(x, z, 0xC1F);
+        let depth = super::rift::CLIFF;
+        let tex = a.rift.cliff[(h % 3) as usize];
+        let uv = UvRect::new(0.0, 0.0, 16.0, 16.0 * depth);
+        let d = -depth;
+        if !ground(x, z + 1) {
+            m.quad(
+                [
+                    Vec3::new(fx, d, fz + 1.0),
+                    Vec3::new(fx + 1.0, d, fz + 1.0),
+                    Vec3::new(fx + 1.0, 0.0, fz + 1.0),
+                    Vec3::new(fx, 0.0, fz + 1.0),
+                ],
+                uv,
+                tex,
+            );
+        }
+        if !ground(x + 1, z) {
+            m.quad(
+                [
+                    Vec3::new(fx + 1.0, d, fz + 1.0),
+                    Vec3::new(fx + 1.0, d, fz),
+                    Vec3::new(fx + 1.0, 0.0, fz),
+                    Vec3::new(fx + 1.0, 0.0, fz + 1.0),
+                ],
+                uv,
+                tex,
+            );
+        }
+        if !ground(x - 1, z) {
+            m.quad(
+                [
+                    Vec3::new(fx, d, fz),
+                    Vec3::new(fx, d, fz + 1.0),
+                    Vec3::new(fx, 0.0, fz + 1.0),
+                    Vec3::new(fx, 0.0, fz),
+                ],
+                uv,
+                tex,
+            );
+        }
+    }
+
+    /// A stone bridge over the void: the slab's edge where it meets the void, and a railing
+    /// on posts along it.
+    fn span(&self, a: &Assets, m: &mut Mesh, x: i32, z: i32) {
+        let (fx, fz) = (x as f32, z as f32);
+        let open = |tx: i32, tz: i32| {
+            self.inside(tx, tz)
+                && self.floor(tx, tz) == Floor::Void
+                && self.wall(tx, tz) == Wall::None
+        };
+        let (rail, beam) = (a.rift.rail, a.rift.beam);
+        let (x0, x1, z0, z1) = (fx, fx + 1.0, fz, fz + 1.0);
+        let slab = super::rift::SLAB;
+        // The slab's edge.
+        let edge = UvRect::new(0.0, 0.0, 16.0, 16.0 * slab);
+        if open(x, z + 1) {
+            m.quad(
+                [
+                    Vec3::new(x0, -slab, z1),
+                    Vec3::new(x1, -slab, z1),
+                    Vec3::new(x1, 0.0, z1),
+                    Vec3::new(x0, 0.0, z1),
+                ],
+                edge,
+                beam,
+            );
+        }
+        if open(x + 1, z) {
+            m.quad(
+                [
+                    Vec3::new(x1, -slab, z1),
+                    Vec3::new(x1, -slab, z0),
+                    Vec3::new(x1, 0.0, z0),
+                    Vec3::new(x1, 0.0, z1),
+                ],
+                edge,
+                beam,
+            );
+        }
+        if open(x - 1, z) {
+            m.quad(
+                [
+                    Vec3::new(x0, -slab, z0),
+                    Vec3::new(x0, -slab, z1),
+                    Vec3::new(x0, 0.0, z1),
+                    Vec3::new(x0, 0.0, z0),
+                ],
+                edge,
+                beam,
+            );
+        }
+        // Posts at the corners along each open side, and a rail between them.
+        let (t, top, rail_lo) = (0.08, 0.5, 0.36);
+        let post_uv = BoxUv::all(UvRect::new(0.0, 0.0, 4.0, 16.0 * top));
+        let rail_uv = BoxUv::all(UvRect::new(0.0, 0.0, 16.0, 2.0));
+        let mut post = |px: f32, pz: f32| {
+            m.cube(
+                Vec3::new(px - t * 0.5, 0.0, pz - t * 0.5),
+                Vec3::new(px + t * 0.5, top, pz + t * 0.5),
+                &post_uv,
+                rail,
+                0,
+            );
+        };
+        let i = t * 0.5;
+        if open(x, z - 1) {
+            post(x0 + i, z0 + i);
+        }
+        if open(x, z + 1) {
+            post(x0 + i, z1 - i);
+        }
+        if open(x - 1, z) {
+            post(x0 + i, z0 + i);
+        }
+        if open(x + 1, z) {
+            post(x1 - i, z0 + i);
+        }
+        let mut bar = |lo: Vec3, hi: Vec3| m.cube(lo, hi, &rail_uv, rail, 0);
+        let w = 0.05;
+        if open(x, z - 1) {
+            bar(
+                Vec3::new(x0, rail_lo, z0),
+                Vec3::new(x1, rail_lo + w, z0 + w),
+            );
+        }
+        if open(x, z + 1) {
+            bar(
+                Vec3::new(x0, rail_lo, z1 - w),
+                Vec3::new(x1, rail_lo + w, z1),
+            );
+        }
+        if open(x - 1, z) {
+            bar(
+                Vec3::new(x0, rail_lo, z0),
+                Vec3::new(x0 + w, rail_lo + w, z1),
+            );
+        }
+        if open(x + 1, z) {
+            bar(
+                Vec3::new(x1 - w, rail_lo, z0),
+                Vec3::new(x1, rail_lo + w, z1),
+            );
         }
     }
 

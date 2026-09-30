@@ -220,6 +220,9 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     r.grid
         .build(rect, env.ambient, env.warmth, &all, &|x, z| w.opaque(x, z));
     r.fb.clear(env.clear);
+    if w.rift {
+        starfield(r, &a.rift.stars, env.time);
+    }
     let frame = ((env.time * 3.0) as usize) % 4;
     r.remap.clear();
     r.remap.push((a.water[0], a.water[frame]));
@@ -231,6 +234,14 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     if w.canyon {
         let q = &a.canyon.quicksand;
         r.remap.push((q[0], q[((env.time * 1.5) as usize) % 4]));
+    }
+    if w.rift {
+        use crate::assets::rift_art::FALL_FRAMES;
+        let f = &a.rift.fall;
+        r.remap
+            .push((f[0], f[((env.time * 10.0) as usize) % FALL_FRAMES]));
+        let s = &a.rift.swirl;
+        r.remap.push((s[0], s[((env.time * 5.0) as usize) % 4]));
     }
     if w.glowcave {
         let water = &a.glowcave.water;
@@ -261,6 +272,45 @@ pub fn draw_world(r: &mut Renderer, a: &Assets, w: &mut World, env: &Env, lights
     }
     if w.glowcave {
         pool_shimmer(r, w, rect, env.time);
+    }
+}
+
+/// The rift's void: stars far below the islands, sliding past slower than the ground as you
+/// go, a few of them twinkling.
+fn starfield(r: &mut Renderer, stars: &crate::render::Texture, time: f32) {
+    let t = r.cam.target;
+    let (ox, oy) = ((t.x * 6.0) as i32, (t.z * 4.5) as i32);
+    let w = r.fb.w;
+    for (y, row) in r.fb.color.chunks_mut(w).enumerate() {
+        let sy = y as i32 + oy;
+        for (x, px) in row.iter_mut().enumerate() {
+            *px = stars.get(x as i32 + ox, sy);
+        }
+    }
+    // Some stars flare now and then.
+    let (fw, fh) = (r.fb.w as i32, r.fb.h as i32);
+    for k in 0..24 {
+        let h = hash2(k, 0, 0x57A);
+        let (sx, sy) = ((h % 256) as i32, ((h >> 8) % 256) as i32);
+        let twinkle = (time * (0.7 + (h % 7) as f32 * 0.2) + k as f32).sin();
+        if twinkle < 0.6 {
+            continue;
+        }
+        let (x, y) = ((sx - ox).rem_euclid(256), (sy - oy).rem_euclid(256));
+        for (px, py) in [(x, y), (x + 256, y), (x, y + 256), (x + 256, y + 256)] {
+            if px < fw && py < fh {
+                let i = py as usize * w + px as usize;
+                r.fb.color[i] = WHITE;
+                if twinkle > 0.85 {
+                    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                        let (qx, qy) = (px + dx, py + dy);
+                        if qx >= 0 && qy >= 0 && qx < fw && qy < fh {
+                            r.fb.color[qy as usize * w + qx as usize] = SKY;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -655,9 +705,12 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             }
         }
         Obj::Column { var } => {
-            // Marble in the labyrinth, sandstone in the canyon's tombs.
+            // Marble in the labyrinth, sandstone in the canyon's tombs, obsidian in the
+            // rift's citadel.
             let columns = if w.canyon {
                 &a.canyon.columns
+            } else if w.rift {
+                &a.rift.columns
             } else {
                 &a.labyrinth.columns
             };
@@ -753,6 +806,129 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             }
         }
         Obj::Gateway => r.mesh(&a.bank, &a.canyon.gateway, &at, &lit),
+        Obj::Amethyst { var } => {
+            // Glowing from within, a sparkle running over it now and then.
+            let size = *var as usize % 3;
+            let pulse = (env.time * 1.3 + (x * 7 + z * 3) as f32).sin() * 0.5 + 0.5;
+            r.shadow(a.tex(a.disk), base, [0.18, 0.28, 0.42][size]);
+            r.mesh(
+                &a.bank,
+                &a.rift.amethyst[size],
+                &(at * small_rot(x, z)),
+                &lit.with_glow(0.75 + pulse * 0.15),
+            );
+            let heart = base + Vec3::Y * [0.15, 0.25, 0.55][size];
+            r.halo(heart, [0.35, 0.55, 0.9][size], PURPLE, 0.25 + pulse * 0.12);
+            let k = (env.time * 0.6 + (hash2(x, z, 5) % 100) as f32 / 100.0).fract();
+            if k < 0.15 {
+                let tip = heart + Vec3::Y * [0.1, 0.2, 0.5][size];
+                r.sparkle(tip, 2, WHITE, LAVENDER);
+            }
+        }
+        Obj::Voidfall { dir } => {
+            // A sheet of blue light pouring off the edge and down into the dark, bright
+            // drops tumbling in it and a glow where it spills over.
+            use super::rift::{EAST, WEST};
+            let (edge, turn) = match *dir {
+                EAST => (Vec3::new(x as f32 + 1.0, 0.0, z as f32 + 0.5), FRAC_PI_2),
+                WEST => (Vec3::new(x as f32, 0.0, z as f32 + 0.5), -FRAC_PI_2),
+                _ => (Vec3::new(x as f32 + 0.5, 0.0, z as f32 + 1.0), 0.0),
+            };
+            let m = Mat4::from_translation(edge + Vec3::Y * 0.02) * Mat4::from_rotation_y(turn);
+            let o = DrawOpts::at(edge).with_glow(0.85).two_sided();
+            r.mesh(&a.bank, &a.rift.fall_sheet, &m, &o);
+            r.halo(edge + Vec3::Y * 0.05, 0.55, SKY, 0.45);
+            let out = m.transform_vector3(Vec3::Z);
+            let across = m.transform_vector3(Vec3::X);
+            for k in 0..14 {
+                let seed = (x * 13 + z * 7 + k * 31) as u32;
+                let t = (env.time * (0.6 + (seed % 5) as f32 * 0.08) + (seed % 17) as f32 / 17.0)
+                    .fract();
+                let side = ((seed % 11) as f32 / 10.0 - 0.5) * (0.8 + t * 0.4);
+                let q = edge + across * side + out * (0.05 + t * 0.2) - Vec3::Y * (t * t * 3.0);
+                r.point(
+                    q,
+                    if t < 0.3 { 2 } else { 1 },
+                    if k % 3 == 0 { WHITE } else { SKY },
+                );
+            }
+            // A pool of light welling up on the rock before it spills over.
+            r.halo(base + Vec3::Y * 0.02, 0.4, BLUE, 0.25);
+        }
+        Obj::Chain { dir, len } => {
+            use super::rift::step;
+            r.shadow(a.tex(a.disk), base, 0.24);
+            r.mesh(&a.bank, &a.rift.post, &at, &lit);
+            let (dx, dz) = step(*dir);
+            let from = base + Vec3::Y * 0.84;
+            let to = from + Vec3::new(dx as f32, 0.0, dz as f32) * *len as f32;
+            let sag = 0.3 * *len as f32;
+            let n = (*len as usize * 6).max(6);
+            let at_t = |t: f32| from.lerp(to, t) - Vec3::Y * (sag * 4.0 * t * (1.0 - t));
+            let o = DrawOpts::at(from.lerp(to, 0.5));
+            for k in 0..n {
+                let t = (k as f32 + 0.5) / n as f32;
+                let (p, q) = (at_t(t - 0.5 / n as f32), at_t(t + 0.5 / n as f32));
+                let along = (q - p).normalize_or(Vec3::X);
+                let m = Mat4::from_translation(at_t(t))
+                    * Mat4::from_quat(glam::Quat::from_rotation_arc(Vec3::X, along))
+                    * Mat4::from_rotation_x(if k % 2 == 0 { 0.0 } else { FRAC_PI_2 });
+                r.mesh(&a.bank, &a.rift.link, &m, &o);
+            }
+        }
+        Obj::ChainPost => {
+            r.shadow(a.tex(a.disk), base, 0.24);
+            r.mesh(&a.bank, &a.rift.post, &at, &lit);
+        }
+        Obj::WallEye => {
+            // An eye in the wall behind, following you, blinking now and then.
+            let eye = Vec3::new(x as f32 + 0.5, 0.8, z as f32 + 0.02);
+            let seed = hash2(x, z, 0xE7E);
+            let blink = (env.time * 0.31 + (seed % 100) as f32 / 100.0).fract() < 0.05;
+            let o = DrawOpts::at(eye).with_glow(0.45);
+            let m = Mat4::from_translation(eye);
+            if blink {
+                r.mesh(&a.bank, &a.rift.lid, &m, &lit);
+            } else {
+                r.mesh(&a.bank, &a.rift.eye_white, &m, &o);
+                // It watches you.
+                let look = Vec2::new(env.push.x - eye.x, env.push.y - eye.z);
+                let d = look.normalize_or_zero();
+                let iris = eye + Vec3::new(d.x * 0.05, -0.01, 0.062);
+                r.mesh(
+                    &a.bank,
+                    &a.rift.iris,
+                    &Mat4::from_translation(iris),
+                    &o.with_glow(1.0),
+                );
+                r.halo(iris, 0.14, ORANGE, 0.25);
+            }
+        }
+        Obj::Runes { var } => {
+            let panel = Vec3::new(x as f32 + 0.5, 0.78, z as f32 + 0.015);
+            let pulse = (env.time * 1.1 + (x * 5 + z * 3) as f32).sin() * 0.5 + 0.5;
+            let o = DrawOpts::at(panel).with_glow(0.95 + pulse * 0.1);
+            r.mesh(
+                &a.bank,
+                &a.rift.runes[*var as usize % 4],
+                &Mat4::from_translation(panel),
+                &o,
+            );
+            r.halo(panel + Vec3::Z * 0.05, 0.45, PURPLE, 0.18 + pulse * 0.12);
+        }
+        Obj::RiftGate => {
+            r.shadow(a.tex(a.disk), base, 0.5);
+            r.mesh(&a.bank, &a.rift.gate, &at, &lit);
+            let heart = base + Vec3::Y * 0.78;
+            let pulse = (env.time * 2.0).sin() * 0.5 + 0.5;
+            r.halo(heart, 0.7, PURPLE, 0.35 + pulse * 0.15);
+            for k in 0..6 {
+                let t = (env.time * 0.5 + k as f32 / 6.0).fract();
+                let a_ = k as f32 * 1.05 + env.time;
+                let q = heart + Vec3::new(a_.cos() * (0.3 - t * 0.25), (t - 0.5) * 0.7, 0.1);
+                r.point(q, 1, if k % 2 == 0 { LAVENDER } else { WHITE });
+            }
+        }
         Obj::Nest => {
             r.shadow(a.tex(a.disk), base, 0.4);
             r.mesh(&a.bank, &a.labyrinth.nest, &at, &lit);
