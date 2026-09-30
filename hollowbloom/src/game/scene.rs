@@ -107,6 +107,7 @@ pub fn dress<'a>(a: &'a Assets, equip: &[Option<Stack>; 5], held: Option<&Stack>
                 super::items::Item::CatHood
                     | super::items::Item::FrogHood
                     | super::items::Item::BunnyHood
+                    | super::items::Item::PharaohNemes
             )
         }),
         boot: icon(Slot::Feet).and_then(|i| a.boot_mesh(i)),

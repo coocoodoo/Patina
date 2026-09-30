@@ -4648,3 +4648,173 @@ fn a_rift_ogre_pounds_the_ground_with_both_fists() {
     }
     assert!(pounded, "it never brought its fists down");
 }
+
+/// Into the Petalplate Armory in the morning, stood beside Hilde's anvil.
+fn at_the_anvil(s: &mut Sim) {
+    use super::town::Place;
+    s.play.clock.min = 600.0;
+    s.play.enter_place(Place::Armory);
+    let w = &s.play.room.as_ref().unwrap().world;
+    let (x, z) = (0..w.h)
+        .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+        .find(|&(x, z)| matches!(w.obj(x, z), Some(Obj::Anvil)))
+        .expect("Hilde's anvil");
+    s.stand(x, z + 1, Vec2::new(0.0, -1.0));
+    s.frames(1);
+}
+
+fn anvil(target: Pick, fodder: usize) -> Menu {
+    Menu::Anvil {
+        target: Some(target),
+        fodder: Some(fodder),
+        cursor: 45,
+        msg: None,
+        glow: 0.0,
+        armed: false,
+    }
+}
+
+#[test]
+fn hilde_forges_armour_on_her_anvil() {
+    use super::gear::{Gear, fodder_xp, forge_cost, forge_total};
+    let mut s = Sim::new();
+    at_the_anvil(&mut s);
+    s.tap(KeyCode::KeyE, 2);
+    assert!(matches!(s.play.menu, Menu::Anvil { .. }), "the anvil opens");
+    // Melt an old helm into an iron one.
+    let helm = Stack::with_gear(Item::IronHelm, Gear::plain(17));
+    let old = Stack::with_gear(Item::CopperHelm, Gear::plain(9));
+    s.play.player.inv.slots[10] = Some(helm);
+    s.play.player.inv.slots[11] = Some(old);
+    s.play.money = 10_000;
+    s.play.menu = anvil(Pick::Bag(10), 11);
+    s.tap(KeyCode::Enter, 2);
+    assert!(s.play.player.inv.slots[11].is_none(), "melted down");
+    let forged = s.play.player.inv.slots[10].unwrap();
+    let xp = fodder_xp(&old.gear.unwrap(), true);
+    assert_eq!(forged.gear.unwrap().xp, xp);
+    assert_eq!(s.play.money, 10_000 - forge_cost(17, 0));
+    // Enough and it goes up a level: a little stronger, and named for it.
+    let before = forged.main_value().unwrap();
+    let mut ready = forged;
+    ready.gear.as_mut().unwrap().xp = forge_total(17, 1) - 1;
+    s.play.player.inv.slots[10] = Some(ready);
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::LeatherBoots, Gear::plain(6)));
+    s.play.menu = anvil(Pick::Bag(10), 11);
+    s.tap(KeyCode::Enter, 2);
+    let up = s.play.player.inv.slots[10].unwrap();
+    assert_eq!(up.gear.unwrap().forge(), 1);
+    assert_eq!(up.name(), "Iron Helm +1");
+    assert!(up.main_value().unwrap() >= before);
+    // Worn armour can be forged too, and the hero's defense follows.
+    let mut coat = Stack::with_gear(Item::IronPlate, Gear::plain(18));
+    coat.gear.as_mut().unwrap().xp = forge_total(18, 3) - 1;
+    s.play.player.equip[Slot::Chest as usize] = Some(coat);
+    s.play.player.refresh();
+    let defense = s.play.player.defense();
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::CopperMail, Gear::plain(10)));
+    s.play.menu = anvil(Pick::Worn(Slot::Chest), 11);
+    s.tap(KeyCode::Enter, 2);
+    let worn = s.play.player.worn(Slot::Chest).unwrap();
+    assert_eq!(worn.gear.unwrap().forge(), 3);
+    assert!(s.play.player.defense() > defense);
+}
+
+#[test]
+fn the_anvil_minds_what_goes_on_it() {
+    use super::gear::{Gear, Rarity};
+    let mut s = Sim::new();
+    at_the_anvil(&mut s);
+    let helm = Stack::with_gear(Item::IronHelm, Gear::plain(17));
+    s.play.player.inv.slots[10] = Some(helm);
+    // Something precious asks for a second strike before it's melted.
+    let mut fine = Gear::plain(20);
+    fine.rarity = Rarity::Epic;
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::CopperMail, fine));
+    s.play.money = 10_000;
+    s.play.menu = anvil(Pick::Bag(10), 11);
+    s.tap(KeyCode::Enter, 2);
+    assert!(s.play.player.inv.slots[11].is_some(), "not without asking");
+    assert!(matches!(s.play.menu, Menu::Anvil { armed: true, .. }));
+    s.tap(KeyCode::Enter, 2);
+    assert!(
+        s.play.player.inv.slots[11].is_none(),
+        "melted on the second strike"
+    );
+    // No coins, no fire.
+    s.play.player.inv.slots[11] = Some(Stack::with_gear(Item::LeatherBoots, Gear::plain(6)));
+    s.play.money = 0;
+    s.play.menu = anvil(Pick::Bag(10), 11);
+    s.tap(KeyCode::Enter, 2);
+    assert!(s.play.player.inv.slots[11].is_some());
+    // Only armour goes on the anvil.
+    s.play.money = 10_000;
+    s.play.menu = Menu::anvil();
+    s.frames(1);
+    s.tap(KeyCode::Enter, 2);
+    assert!(
+        matches!(s.play.menu, Menu::Anvil { target: None, .. }),
+        "a sword is no use to it"
+    );
+    // After hours the forge is cold.
+    s.play.menu = Menu::None;
+    s.play.clock.min = 1030.0;
+    s.tap(KeyCode::KeyE, 2);
+    assert!(matches!(s.play.menu, Menu::None));
+}
+
+#[test]
+fn forged_armour_keeps_its_forging_and_shows_it() {
+    use super::gear::{Gear, forge_total};
+    let mut g = Gear::plain(20);
+    g.xp = forge_total(20, 4) + 12;
+    let helm = Stack::with_gear(Item::IronHelm, g);
+    let json = serde_json::to_string(&helm).unwrap();
+    let back: Stack = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.gear.unwrap().xp, g.xp);
+    assert_eq!(back.gear.unwrap().forge(), 4);
+    // Unforged gear saves just as before.
+    let plain = serde_json::to_string(&Stack::with_gear(Item::IronHelm, Gear::plain(20))).unwrap();
+    assert!(!plain.contains("\"x\""), "{plain}");
+    // Its tooltip says so, and it's worth more.
+    let s = Sim::new();
+    let lines: Vec<String> = s
+        .play
+        .stack_lines(&back)
+        .into_iter()
+        .map(|l| l.text)
+        .collect();
+    assert!(
+        lines.iter().any(|l| l.starts_with("Forged +4")),
+        "{lines:?}"
+    );
+    let unforged = Stack::with_gear(Item::IronHelm, Gear::plain(20));
+    assert!(back.unit_price() > unforged.unit_price());
+    // Only armour takes forge experience.
+    let mut sword = Gear::plain(20);
+    sword.xp = 500;
+    let mut s2 = Stack::with_gear(Item::Sword2, sword);
+    s2.normalize();
+    assert_eq!(s2.gear.unwrap().xp, 0);
+}
+
+#[test]
+fn the_new_biomes_have_loot_of_their_own() {
+    use super::loot::Theme;
+    let mut s = Sim::new();
+    assert_eq!(s.play.theme(), None, "none on the farm");
+    into_the_labyrinth(&mut s);
+    assert_eq!(s.play.theme(), Some(Theme::Labyrinth));
+    into_the_canyon(&mut s);
+    assert_eq!(s.play.theme(), Some(Theme::Canyon));
+    into_the_rift(&mut s);
+    assert_eq!(s.play.theme(), Some(Theme::Rift));
+    // An ordinary floor has none.
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth: 1,
+        via_waystone: false,
+    });
+    s.frames(60);
+    assert_eq!(s.play.theme(), None);
+}

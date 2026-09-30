@@ -177,7 +177,7 @@ pub static PLACE_DEFS: [PlaceDef; 12] = [
             "#.............#",
             "#m.m.......m.m#",
             "#.............#",
-            "#m....___....b#",
+            "#m....___..A.b#",
             "#............x#",
             "#.............#",
             "       D       ",
@@ -1094,9 +1094,10 @@ pub struct Room {
 /// Legend: `#` wall, `W` window, `P` painting, `L` wall lamp, `.` floor, `C` counter,
 /// `K` the keeper, `s` shelves, `r` weapon rack, `m` mannequin, `t` table, `c` stool,
 /// `b` barrel, `x` crate, `h` hearth, `p` potted plant, `E` enchanting table, `B` bookcase,
-/// `o` oven, `a` anvil, `u` cauldron, `g` gem case, `n` tinker's bench, `i` seed bins,
-/// `d` desk, `R` bounty board, `T` taps, `l` lamp, `f` flower pot, `q` chest, `j` bench,
-/// `_` rug, `D` the door out, and spaces are nothing at all.
+/// `o` oven, `a` anvil, `A` Hilde's anvil (for forging), `u` cauldron, `g` gem case,
+/// `n` tinker's bench, `i` seed bins, `d` desk, `R` bounty board, `T` taps, `l` lamp,
+/// `f` flower pot, `q` chest, `j` bench, `_` rug, `D` the door out, and spaces are nothing
+/// at all.
 /// Furniture Wren shows off in her shop, by layout digit, and the fish in any tank.
 fn display_piece(ch: char) -> Option<(super::home::Furn, &'static [Item])> {
     use super::home::Furn;
@@ -1175,6 +1176,7 @@ pub fn room(place: Place) -> Room {
                 'B' => Some(Obj::Fixture { var: 6 }),
                 'o' => Some(Obj::Fixture { var: 0 }),
                 'a' => Some(Obj::Fixture { var: 1 }),
+                'A' => Some(Obj::Anvil),
                 'u' => Some(Obj::Fixture { var: 2 }),
                 'g' => Some(Obj::Fixture { var: 3 }),
                 'n' => Some(Obj::Fixture { var: 4 }),

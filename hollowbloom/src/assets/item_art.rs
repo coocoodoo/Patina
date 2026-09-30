@@ -1140,6 +1140,109 @@ const GHOST_SCROLL: &[&str] = &[
     "..RRRRRRRRRRRR..",
 ];
 
+// The new biomes' treasures.
+const LAUREL: &[&str] = &[
+    "................",
+    "................",
+    "....KK....KK....",
+    "...K01K..K10K...",
+    "..K01KK..KK10K..",
+    "..K1K......K1K..",
+    ".K01K......K10K.",
+    ".K1K........K1K.",
+    ".K01K......K10K.",
+    "..K1K......K1K..",
+    "..K01KK..KK10K..",
+    "...K121KK121K...",
+    "....KKK33KKK....",
+    "......K33K......",
+    ".......KK.......",
+];
+
+const SPOOL: &[&str] = &[
+    "................",
+    "................",
+    "....KKKKKKKK....",
+    "....K333333K....",
+    "....KKKKKKKK....",
+    ".....K0101K.....",
+    ".....K1010K.....",
+    ".....K0101K.....",
+    ".....K1012K.....",
+    ".....K0122K.....",
+    "....KKKKKKKK..K.",
+    "....K333333K.K1K",
+    "....KKKKKKKKK1K.",
+    ".........KK11K..",
+    "..........KKK...",
+];
+
+const AMULET: &[&str] = &[
+    "......K..K......",
+    ".....K3KK3K.....",
+    "....K3K..K3K....",
+    "...K3K....K3K...",
+    "...K3K....K3K...",
+    "....K3K..K3K....",
+    ".....KKKKKK.....",
+    "....K3KKKK3K....",
+    "...K00K1K112K...",
+    "..K001K1K1122K..",
+    "..K011K1K1122K..",
+    "...K11K1K122K...",
+    "....KK1K12KK....",
+    "......KKKK......",
+];
+
+const SUN_DISC: &[&str] = &[
+    "................",
+    ".......KK.......",
+    "..K...K33K...K..",
+    ".K3K.KKKKKK.K3K.",
+    "..KKK000011KKK..",
+    "...K00001112K...",
+    "..K0000011112K..",
+    "KK30000111112KKK",
+    "K3K0011111122K3K",
+    "..K0111111122K..",
+    "...K11111222K...",
+    "..KKK222222KKK..",
+    ".K3K.KKKKKK.K3K.",
+    "..K...K33K...K..",
+    ".......KK.......",
+];
+
+const VOID_PEARL: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    ".....KKKKKK.....",
+    "....K0w1111K....",
+    "...K0w111111K...",
+    "...K01113112K...",
+    "...K01133312K...",
+    "...K11113112K...",
+    "...K11111122K...",
+    "....K112222K....",
+    ".....KKKKKK.....",
+];
+
+const RIFT_STAR: &[&str] = &[
+    "................",
+    "..........K.....",
+    ".........K3K....",
+    "..........K.KK..",
+    ".......KKKKK0K..",
+    "......K00112K...",
+    ".....K00112K....",
+    "....K00112K.....",
+    "...K0012KK......",
+    "..K0112K........",
+    "..K012K....K....",
+    "..K12K....K3K...",
+    "...KK......K....",
+];
+
 /// Adds every icon in this file to the sprite table.
 pub fn build(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
     let mut add = |name: &'static str, t: Texture| {
@@ -1173,6 +1276,18 @@ pub fn build(bank: &mut TexBank, m: &mut HashMap<&'static str, TexId>) {
     add("tiny_crown", art(CROWN, [GOLD, CREAM, CLAY, CLEAR]));
     add("moon_pearl", art(ROUND_GEM, [WHITE, CREAM, BLUSH, CLEAR]));
     add("dragon_scale", art(SCALE, [SALMON, RED, MAROON, CLEAR]));
+    add("golden_laurel", art(LAUREL, [CREAM, GOLD, CLAY, RUST]));
+    add("ariadnes_thread", art(SPOOL, [CREAM, GOLD, CLAY, RUST]));
+    add("scarab_amulet", art(AMULET, [SKY, BLUE, INDIGO, GOLD]));
+    add("sun_disc", art(SUN_DISC, [CREAM, GOLD, CLAY, ORANGE]));
+    add(
+        "void_pearl",
+        art(VOID_PEARL, [SLATE, SHADOW, INK, LAVENDER]),
+    );
+    add(
+        "rift_star",
+        art(RIFT_STAR, [BLUSH, LAVENDER, PURPLE, WHITE]),
+    );
 
     // Monster bits.
     add("crab_shell", art(SHELL, NO));

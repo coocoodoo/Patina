@@ -400,10 +400,12 @@ impl Play {
             } else {
                 None
             };
+            // Shown as they'll count, with the gear's forging.
+            let forged = |v: i16| gd.map_or(v as i32, |g| g.forged_stat(v as i32));
             match (preview, current) {
                 (Some(e), _) => {
                     c.sprite(a.tex(a.icon(stat_icon(e.stat))), x + 2, y + 2);
-                    let t = format!("{} new!", e.stat.line(e.val as i32));
+                    let t = format!("{} new!", e.stat.line(forged(e.val)));
                     c.text(
                         x + 12,
                         y + 3,
@@ -417,7 +419,7 @@ impl Play {
                 }
                 (None, Some(e)) => {
                     c.sprite(a.tex(a.icon(stat_icon(e.stat))), x + 2, y + 2);
-                    c.text(x + 12, y + 3, &e.stat.line(e.val as i32), PLUM);
+                    c.text(x + 12, y + 3, &e.stat.line(forged(e.val)), PLUM);
                 }
                 (None, None) => {
                     c.sprite(a.tex(a.icon("socket")), x + 2, y + 2);

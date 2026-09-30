@@ -117,6 +117,10 @@ pub struct TownArt {
     pub sconce: Mesh,
     pub rugs: Vec<TexId>,
     pub bunting: TexId,
+    /// Hilde's anvil: on its stump with a hammer resting on it and a quenching bucket by it.
+    pub anvil: Mesh,
+    /// The iron glowing hot on the anvil (drawn glowing).
+    pub anvil_iron: Mesh,
 }
 
 pub fn build(bank: &mut TexBank, icons: &HashMap<&'static str, TexId>, water: TexId) -> TownArt {
@@ -145,6 +149,7 @@ pub fn build(bank: &mut TexBank, icons: &HashMap<&'static str, TexId>, water: Te
         bank.add(rug_tex([BLUE, SKY, INDIGO])),
     ];
     let bunting = bank.add(bunting_tex());
+    let (anvil, anvil_iron) = forge_anvil(bank, &mut k);
     TownArt {
         buildings,
         bus,
@@ -176,7 +181,151 @@ pub fn build(bank: &mut TexBank, icons: &HashMap<&'static str, TexId>, water: Te
         sconce: fit.sconce,
         rugs,
         bunting,
+        anvil,
+        anvil_iron,
     }
+}
+
+/// Hilde's anvil for forging armour: a dark steel anvil with its horn out to +x, a lighter
+/// polished face, standing on a stout stump; a hammer rests across the face, and a bucket of
+/// quenching water stands by. The hot iron on the face comes separately, to glow.
+fn forge_anvil(bank: &mut TexBank, k: &mut Kit) -> (Mesh, Mesh) {
+    let mut m = Mesh::new();
+    let steel = bank.add({
+        let mut t = Texture::new(4, 4, SLATE);
+        t.set(0, 0, INDIGO);
+        t.set(1, 0, INDIGO);
+        t.set(3, 2, INK);
+        t.set(2, 3, INK);
+        t
+    });
+    let face = bank.add({
+        let mut t = Texture::new(4, 4, INDIGO);
+        t.set(0, 0, SKY);
+        t.set(2, 1, SKY);
+        t.set(1, 3, SLATE);
+        t
+    });
+    lathe(
+        &mut m,
+        Vec3::ZERO,
+        &[(0.27, 0.0), (0.25, 0.36)],
+        8,
+        0.2,
+        bank.add(tiles::bark()),
+        true,
+    );
+    let w4 = k.w4.clone();
+    let bx = |m: &mut Mesh, min: Vec3, max: Vec3, t: TexId| skin_box(m, min, max, t, &w4);
+    // Foot, waist, body and polished face, and the heel behind.
+    bx(
+        &mut m,
+        Vec3::new(-0.17, 0.36, -0.13),
+        Vec3::new(0.17, 0.42, 0.13),
+        steel,
+    );
+    bx(
+        &mut m,
+        Vec3::new(-0.09, 0.42, -0.07),
+        Vec3::new(0.09, 0.56, 0.07),
+        steel,
+    );
+    bx(
+        &mut m,
+        Vec3::new(-0.24, 0.56, -0.12),
+        Vec3::new(0.2, 0.69, 0.12),
+        steel,
+    );
+    bx(
+        &mut m,
+        Vec3::new(-0.24, 0.69, -0.12),
+        Vec3::new(0.2, 0.71, 0.12),
+        face,
+    );
+    bx(
+        &mut m,
+        Vec3::new(-0.31, 0.6, -0.07),
+        Vec3::new(-0.24, 0.7, 0.07),
+        steel,
+    );
+    // The horn, tapering out to a point.
+    let mut horn = Mesh::new();
+    lathe(
+        &mut horn,
+        Vec3::ZERO,
+        &[(0.07, 0.0), (0.045, 0.12), (0.0, 0.25)],
+        6,
+        0.0,
+        steel,
+        false,
+    );
+    m.append(
+        &horn,
+        Mat4::from_translation(Vec3::new(0.2, 0.64, 0.0)) * Mat4::from_rotation_z(-FRAC_PI_2),
+    );
+    // A hammer resting across the face, its handle out over the edge.
+    let wood = k.solid(bank, CLAY);
+    let mut hammer = Mesh::new();
+    bx(
+        &mut hammer,
+        Vec3::new(-0.055, 0.0, -0.035),
+        Vec3::new(0.055, 0.07, 0.035),
+        steel,
+    );
+    bx(
+        &mut hammer,
+        Vec3::new(0.02, 0.02, -0.014),
+        Vec3::new(0.3, 0.048, 0.014),
+        wood,
+    );
+    m.append(
+        &hammer,
+        Mat4::from_translation(Vec3::new(-0.13, 0.71, 0.04)) * Mat4::from_rotation_y(-0.55),
+    );
+    // A bucket of quenching water.
+    let plank = bank.add(tiles::planks(CLAY, GOLD, RUST, 118));
+    lathe(
+        &mut m,
+        Vec3::new(0.33, 0.0, 0.26),
+        &[(0.09, 0.0), (0.11, 0.2)],
+        7,
+        0.0,
+        plank,
+        false,
+    );
+    let band = k.solid(bank, SLATE);
+    lathe(
+        &mut m,
+        Vec3::new(0.33, 0.13, 0.26),
+        &[(0.108, 0.0), (0.108, 0.025)],
+        7,
+        0.0,
+        band,
+        false,
+    );
+    let water = k.solid(bank, BLUE);
+    disk(&mut m, Vec3::new(0.33, 0.17, 0.26), 0.1, 7, 0.0, water);
+    // The iron, hot from the fire.
+    let mut iron = Mesh::new();
+    let hot = bank.add({
+        let mut t = Texture::new(4, 4, ORANGE);
+        t.set(1, 1, GOLD);
+        t.set(2, 1, CREAM);
+        t.set(0, 3, RED);
+        t
+    });
+    let mut bar = Mesh::new();
+    bx(
+        &mut bar,
+        Vec3::new(-0.06, 0.0, -0.022),
+        Vec3::new(0.06, 0.03, 0.022),
+        hot,
+    );
+    iron.append(
+        &bar,
+        Mat4::from_translation(Vec3::new(0.06, 0.71, -0.05)) * Mat4::from_rotation_y(0.3),
+    );
+    (m, iron)
 }
 
 // ------------------------------------------------------------------------------------------

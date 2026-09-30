@@ -316,6 +316,16 @@ impl Play {
                     &mut self.rng,
                 ));
             }
+            // On a biome's own floor, its set and its treasures.
+            if let Some(t) = self.theme() {
+                loot.extend(loot::biome_foe_loot(
+                    t,
+                    f.foe,
+                    depth,
+                    fortune,
+                    &mut self.rng,
+                ));
+            }
             // The sewers' bony folk leave a bone or two behind.
             if f.sewer && f.foe != super::dungeon::Foe::Slime && self.rng.chance(0.45) {
                 let n = 1 + self.rng.below(2) as u16;

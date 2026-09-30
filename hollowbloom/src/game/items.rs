@@ -295,6 +295,13 @@ items! {
     TinyCrown = "tiny_crown", "Tiny Crown", "tiny_crown", 99, 320, Relic, "Fit for a very small king.";
     MoonPearl = "moon_pearl", "Moon Pearl", "moon_pearl", 99, 450, Relic, "Glows softly when you hold it close.";
     DragonScale = "dragon_scale", "Dragon Scale", "dragon_scale", 99, 600, Relic, "From a very small dragon, probably.";
+    // The new biomes' treasures, found only on their own floors.
+    GoldenLaurel = "golden_laurel", "Golden Laurel", "golden_laurel", 99, 380, Relic, "A victor's wreath, beaten from real gold.";
+    AriadnesThread = "ariadnes_thread", "Ariadne's Thread", "ariadnes_thread", 99, 240, Relic, "A spool of golden thread. Whoever held it found the way out.";
+    ScarabAmulet = "scarab_amulet", "Scarab Amulet", "scarab_amulet", 99, 300, Relic, "A lapis beetle on a golden chain, pushing its little sun.";
+    SunDisc = "sun_disc", "Sun Disc", "sun_disc", 99, 420, Relic, "A golden disc that warms in any light. Even torchlight.";
+    VoidPearl = "void_pearl", "Void Pearl", "void_pearl", 99, 520, Relic, "Black as the rift, with one small star turning inside.";
+    RiftStar = "rift_star", "Rift Star", "rift_star", 99, 360, Relic, "A star that fell into the rift, no bigger than a thimble. Still twinkling.";
 
     // Coins go straight into your purse: 10 copper make a silver, 10 silver a gold.
     CopperCoin = "copper_coin", "Copper Coin", "coin_copper", 999, 1, Kind::Coin(1), "Worth 1 copper.";
@@ -687,6 +694,32 @@ items! {
     FrostRod = "frost_rod", "Frost Rod", "frost_rod", 1, 1700, g(Rod, 44, 116, Some(S::Lure)), "Cold enough to keep your catch fresh.";
     StarRod = "star_rod", "Starlight Rod", "star_rod", 1, 2600, g(Rod, 52, 120, Some(S::Angler)), "Casts a line of starlight. Heat-proof, too.";
     LeviathanRod = "leviathan_rod", "Leviathan Rod", "leviathan_rod", 1, 4000, g(Rod, 60, 125, Some(S::Line)), "Made from one scale of something very, very big. Heat-proof.";
+
+    // Biome sets: found only on their own floors (see `loot::biome_set`).
+    // The Marble Labyrinth: a hero's bronze and marble, built to stand firm.
+    PlumedHelm = "plumed_helm", "Plumed Helm", "plumed_helm", 1, 240, g(Head, 8, 110, Some(S::Defense)), "Bronze, with a red crest. Minotaurs can't stand it.";
+    MarbleCuirass = "marble_cuirass", "Marble Cuirass", "marble_cuirass", 1, 300, g(Chest, 8, 110, Some(S::Vitality)), "Carved like a hero's chest. Surprisingly comfy.";
+    HopliteGreaves = "hoplite_greaves", "Hoplite Greaves", "hoplite_greaves", 1, 260, g(Legs, 8, 108, Some(S::Stamina)), "Bronze shins, for the long walk through the maze.";
+    WingedSandals = "winged_sandals", "Winged Sandals", "winged_sandals", 1, 260, g(Feet, 8, 108, Some(S::Swift)), "Little white wings at the heels. They flutter when you run.";
+    LabyrinthAspis = "labyrinth_aspis", "Labyrinth Aspis", "labyrinth_aspis", 1, 300, g(Shield, 8, 112, Some(S::Block)), "A round bronze shield with the maze beaten into it.";
+    Labrys = "labrys", "Minotaur's Labrys", "labrys", 1, 320, g(Sword, 8, 112, Some(S::CritDmg)), "A double axe, lightened for a hero's hand.";
+    GriffinQuill = "griffin_quill", "Griffin Quill Wand", "griffin_quill", 1, 300, g(Wand, 8, 110, Some(S::Haste)), "A golden griffin feather, still warm from the sun.";
+    // The Sunscorch Canyon: linen, gold and lapis, light and quick.
+    PharaohNemes = "pharaoh_nemes", "Pharaoh's Nemes", "pharaoh_nemes", 1, 220, g(Head, 6, 108, Some(S::Greed)), "Gold and lapis stripes, and a cobra on the brow.";
+    SunscorchWraps = "sunscorch_wraps", "Sunscorch Wraps", "sunscorch_wraps", 1, 240, g(Chest, 6, 108, Some(S::Regen)), "Linen wraps under a jewelled collar. Cool in the midday sun.";
+    ScarabKilt = "scarab_kilt", "Scarab Kilt", "scarab_kilt", 1, 220, g(Legs, 6, 108, Some(S::Dodge)), "Pleated linen on a golden belt, a scarab for a buckle.";
+    DuneSandals = "dune_sandals", "Dune Sandals", "dune_sandals", 1, 200, g(Feet, 6, 106, Some(S::Swift)), "They never fill up with sand. Never.";
+    ScarabShield = "scarab_shield", "Scarab Shield", "scarab_shield", 1, 260, g(Shield, 6, 110, Some(S::Thorns)), "A great lapis beetle, its wings folded tight.";
+    Khopesh = "khopesh", "Sunscorch Khopesh", "khopesh", 1, 280, g(Sword, 6, 110, Some(S::Burn)), "A hooked bronze blade, still hot from the canyon sun.";
+    CobraStaff = "cobra_staff", "Cobra Staff", "cobra_staff", 1, 280, g(Staff, 6, 110, Some(S::Lifesteal)), "Its golden cobra sways towards whatever you're fighting.";
+    // The Starless Rift: obsidian and amethyst, watching, crackling.
+    GazerCirclet = "gazer_circlet", "Gazer's Circlet", "gazer_circlet", 1, 380, g(Head, 12, 110, Some(S::Crit)), "Obsidian, set with an eye that never blinks.";
+    ObsidianPlate = "obsidian_plate", "Obsidian Plate", "obsidian_plate", 1, 460, g(Chest, 12, 112, Some(S::Thorns)), "Black glass armour, its runes glowing faintly violet.";
+    VoidweaveLeggings = "voidweave_leggings", "Voidweave Leggings", "voidweave_leggings", 1, 400, g(Legs, 12, 108, Some(S::Dodge)), "Woven from the dark between the stars. It twinkles.";
+    Voidwalkers = "voidwalkers", "Voidwalkers", "voidwalkers", 1, 400, g(Feet, 12, 110, Some(S::Swift)), "Walk the rift's bridges without a single wobble.";
+    ObsidianBulwark = "obsidian_bulwark", "Obsidian Bulwark", "obsidian_bulwark", 1, 460, g(Shield, 12, 112, Some(S::Block)), "A slab of obsidian with a glaring eye rune.";
+    Riftblade = "riftblade", "Riftblade", "riftblade", 1, 480, g(Sword, 12, 112, Some(S::Shock)), "An obsidian blade with a crackling amethyst edge.";
+    GazerWand = "gazer_wand", "Gazer Wand", "gazer_wand", 1, 440, g(Wand, 12, 110, Some(S::Crit)), "It keeps an eye on things. Literally.";
 
     // Scrolls, one enchantment each.
     WeaponScroll = "weapon_scroll", "Weapon Scroll", "weapon_scroll", 1, 40, Kind::Scroll(Group::Weapon), "Bind it to a sword, wand or staff at an enchanting table.";
@@ -1391,30 +1424,42 @@ impl Stack {
         self.pack.map_or(0, |p| p.slots as usize)
     }
 
-    /// The name shown for this stack ("Scroll of Embers" for a scroll).
+    /// The name shown for this stack ("Scroll of Embers" for a scroll, "Iron Helm +3" for
+    /// forged armour).
     pub fn name(&self) -> String {
         match (self.item.def().kind, self.gear) {
             (Kind::Scroll(_), Some(g)) => match g.scroll_enchant() {
                 Some(a) => format!("Scroll of {}", a.stat.def().title),
                 None => self.item.def().name.to_string(),
             },
+            (Kind::Gear(_), Some(g)) if g.forge() > 0 => {
+                format!("{} +{}", self.item.def().name, g.forge())
+            }
             _ => self.item.def().name.to_string(),
         }
     }
 
-    /// The main number of a piece of gear (damage, defense, power, water).
+    /// The main number of a piece of gear (damage, defense, power, water), forging and all.
     pub fn main_value(&self) -> Option<i32> {
         let b = self.item.base()?;
         let g = self.gear?;
-        Some(gear::base_value(b.class, g.level, g.quality, b.mult))
+        Some(g.forged_main(gear::base_value(b.class, g.level, g.quality, b.mult)))
+    }
+
+    /// Its innate bonus (a Frog Hood's luck), forging and all.
+    pub fn innate(&self) -> Option<(Stat, i32)> {
+        let b = self.item.base()?;
+        let g = self.gear?;
+        let s = b.innate?;
+        Some((s, g.forged_stat(g.innate(s) as i32)))
     }
 
     /// Adds this piece's stats (innate bonus, affixes, enchantments) to a sheet.
     pub fn add_stats(&self, sheet: &mut gear::Sheet) {
         let Some(g) = &self.gear else { return };
-        if let Some(b) = self.item.base() {
-            if let Some(s) = b.innate {
-                sheet.add(s, g.innate(s) as i32);
+        if self.item.base().is_some() {
+            if let Some((s, v)) = self.innate() {
+                sheet.add(s, v);
             }
             g.add_to(sheet);
         }
@@ -1426,7 +1471,10 @@ impl Stack {
         match (d.kind, self.gear) {
             (Kind::Gear(b), Some(g)) => {
                 let lv = g.level.max(b.lvl) as f64;
-                ((d.price as f64 * 0.5 + 6.0 + lv * lv * 0.5 + lv * 4.0) * g.rarity.value() as f64)
+                let forged = 1.0 + g.forge() as f64 * 0.12;
+                ((d.price as f64 * 0.5 + 6.0 + lv * lv * 0.5 + lv * 4.0)
+                    * g.rarity.value() as f64
+                    * forged)
                     .round() as u64
             }
             (Kind::Scroll(_), Some(g)) => {
@@ -1453,6 +1501,12 @@ impl Stack {
             Kind::Gear(b) => {
                 let g = self.gear.get_or_insert_with(|| Gear::plain(b.lvl));
                 g.level = g.level.max(1);
+                // Only armour takes to the anvil, and never past the top.
+                g.xp = if b.class.is_armor() {
+                    g.xp.min(gear::forge_total(g.level, gear::MAX_FORGE))
+                } else {
+                    0
+                };
                 g.update_rarity();
                 self.n = 1;
             }
@@ -1461,6 +1515,7 @@ impl Stack {
                     self.gear = Stack::new(self.item, 1).gear;
                 }
                 if let Some(g) = &mut self.gear {
+                    g.xp = 0;
                     g.update_scroll_rarity();
                 }
                 self.n = 1;
@@ -1491,6 +1546,13 @@ struct GearRepr {
     a: Vec<AffixRepr>,
     #[serde(default)]
     e: Vec<Option<AffixRepr>>,
+    /// Forge experience (armour from the anvil).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    x: u32,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1528,6 +1590,7 @@ impl Serialize for Stack {
                     .iter()
                     .map(|e| e.as_ref().map(affix_repr))
                     .collect(),
+                x: g.xp,
             }),
             pack: self.pack.map(|p| (p.slots, p.hue)),
         }
@@ -1549,6 +1612,7 @@ impl<'de> Deserialize<'de> for Stack {
             for (slot, e) in g.enchants.iter_mut().zip(gr.e.iter()) {
                 *slot = e.as_ref().and_then(affix_from);
             }
+            g.xp = gr.x;
             g
         });
         let pack = r.pack.map(|(slots, hue)| Pack { slots, hue });

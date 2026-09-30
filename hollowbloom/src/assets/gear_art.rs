@@ -947,6 +947,354 @@ const ROD: &[&str] = &[
     "KKK.............",
 ];
 
+// The biome sets: the Marble Labyrinth's bronze and marble, the Sunscorch Canyon's linen,
+// gold and lapis, and the Starless Rift's obsidian and amethyst.
+const PLUMED_HELM: &[&str] = &[
+    "................",
+    "....KKKKKKK.....",
+    "...K3333333K....",
+    "..K33c3333c3K...",
+    "..KKKKKKKKK3K...",
+    "...KK00111KKK...",
+    "..K001111112K...",
+    "..K011111112K...",
+    "..K1KKKK1112K...",
+    "..K1K..K1122K...",
+    "..K11KK11122K...",
+    "..K11K.K1122K...",
+    "...K1K.K122K....",
+    "....KK..KKK.....",
+];
+
+const CUIRASS: &[&str] = &[
+    "................",
+    "...KKKK..KKKK...",
+    "..K3333KK3333K..",
+    ".K300010010013K.",
+    "K33K0110011K33K.",
+    "K33K0000001K33K.",
+    "KKKK1000101KKKK.",
+    "...K0101011K....",
+    "...K1000011K....",
+    "...K3333333K....",
+    "...K3K3K3K3K....",
+    "...K3K3K3K3K....",
+    "...KKKKKKKKK....",
+];
+
+const GREAVES_BRONZE: &[&str] = &[
+    "................",
+    "...KKKK..KKKK...",
+    "..K0012KK0012K..",
+    "..K3333KK3333K..",
+    "..K0112KK0112K..",
+    "..K0112KK0112K..",
+    "..Kw112KKw112K..",
+    "..K0112KK0112K..",
+    "..K3333KK3333K..",
+    "..K0112KK0112K..",
+    "..K0122KK0122K..",
+    "...K12K..K12K...",
+    "....KK....KK....",
+];
+
+const WINGED_SANDAL: &[&str] = &[
+    "................",
+    ".KK.............",
+    "K33K............",
+    "K333KK..........",
+    ".K3333K.........",
+    "..KK333KKK......",
+    "....KK3K1K......",
+    "....K1K1KK......",
+    "....K101KKK.....",
+    "....K1K1K1KKK...",
+    "....K01K1K011KK.",
+    "....K111111K011K",
+    "....KhhhhhhhhhhK",
+    "....KKKKKKKKKKK.",
+];
+
+const ASPIS: &[&str] = &[
+    "................",
+    ".....KKKKKK.....",
+    "...KK222222KK...",
+    "..K2233333322K..",
+    "..K2311111132K..",
+    ".K231KKKKK1322K.",
+    ".K231K111K1322K.",
+    ".K231K1K1K1322K.",
+    ".K231K1KKK1322K.",
+    ".K231K11111322K.",
+    "..K2311111132K..",
+    "..K2233333322K..",
+    "...KK222222KK...",
+    ".....KKKKKK.....",
+];
+
+const LABRYS: &[&str] = &[
+    "................",
+    ".KK..........KK.",
+    "K01K...KK...K10K",
+    "K011K.K33K.K110K",
+    "K0111KK33KK1110K",
+    "K0111111111110K.",
+    "K0112KK33KK2110K",
+    "K012K.K33K.K210K",
+    "K01K..K33K..K10K",
+    ".KK...K33K...KK.",
+    "......K33K......",
+    "......K33K......",
+    "......K33K......",
+    "......KKKK......",
+];
+
+const QUILL: &[&str] = &[
+    "................",
+    "...........KK...",
+    "..........K01K..",
+    ".........K0112K.",
+    "........K01212K.",
+    ".......K011212K.",
+    "......K01212K...",
+    ".....K0112KK....",
+    "....K0112K......",
+    "....KuK2K.......",
+    "...KuKKK........",
+    "..KuK...........",
+    ".KuK............",
+    ".KK.............",
+];
+
+const NEMES: &[&str] = &[
+    "................",
+    ".......KK.......",
+    "......K33K......",
+    "....KKK33KKK....",
+    "...K0000000K....",
+    "..K011111110K...",
+    "..K000000000K...",
+    ".K01KKKKKKK10K..",
+    ".K00KeeeeeK00K..",
+    ".K01KeKeKeK10K..",
+    "K000KeeeeeK000K.",
+    "K011KKeeeKK110K.",
+    "K000K.KKK.K000K.",
+    "KKKKK.....KKKKK.",
+];
+
+const WRAPS: &[&str] = &[
+    "................",
+    "...KKKK..KKKK...",
+    "..K0000KK0000K..",
+    ".KYtYtYttYtYtYK.",
+    "K0KBYBYBBYBYBK0K",
+    "K00KKYYYYYYKK01K",
+    "KKKK10000012KKKK",
+    "...K12222222K...",
+    "...K00000001K...",
+    "...K12222222K...",
+    "...K00000012K...",
+    "...KKKKKKKKKK...",
+];
+
+const KILT: &[&str] = &[
+    "................",
+    "................",
+    "...KKKKKKKKKK...",
+    "...K333BB333K...",
+    "...K01010102K...",
+    "..K0101010102K..",
+    "..K0101010102K..",
+    ".K010101010102K.",
+    ".K010101010122K.",
+    ".KKKKKKKKKKKKKK.",
+    "...KeeK..KeeK...",
+    "...KKK....KKK...",
+];
+
+const SANDAL: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "....KKK.........",
+    "....K0K.........",
+    "....K1KKK.......",
+    "....K010KK......",
+    "....K1K3K1KK....",
+    "....K0K1K01KK...",
+    "....K11K1K011K..",
+    "....K111110111K.",
+    "....K2222222222K",
+    "....KKKKKKKKKKK.",
+];
+
+const SCARAB: &[&str] = &[
+    ".....K....K.....",
+    "......K..K......",
+    ".....KKKKKK.....",
+    ".....K3333K.....",
+    "...KKKKKKKKKK...",
+    "..K0011K11112K..",
+    ".K00111K111122K.",
+    "K3K0111K11112K3K",
+    ".K01111K111122K.",
+    "K3K1111K11122K3K",
+    ".K01111K111222K.",
+    "..K111KKK1122K..",
+    "...KK2K.K22KK...",
+    ".....KK.KK......",
+];
+
+const KHOPESH: &[&str] = &[
+    "................",
+    "........KKKK....",
+    ".......K0011K...",
+    "......K01..12K..",
+    "......K1K...K2K.",
+    ".......KK...K2K.",
+    "...........K12K.",
+    "..........K112K.",
+    ".........K112K..",
+    "..KK....K112K...",
+    "..K3K..K112K....",
+    "...K3KK112K.....",
+    "....K33KKK......",
+    "...K3K3K........",
+    "..K3K.KK........",
+    "..KK............",
+];
+
+const COBRA_STAFF: &[&str] = &[
+    ".......KKKK.....",
+    "......K0011K....",
+    ".....K011112K...",
+    ".....K1B11B2K...",
+    ".....K111112K...",
+    "......K1r12K....",
+    "......KK1KK.....",
+    "........K1K.....",
+    ".......K1K......",
+    ".......KuK......",
+    "......KuK.......",
+    ".....KuK........",
+    "....KuK.........",
+    "...KuK..........",
+    "..KuK...........",
+    "..KK............",
+];
+
+const EYE_CIRCLET: &[&str] = &[
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "......KKKK......",
+    ".....KwwwwK.....",
+    "..KKKKw33wKKKK..",
+    ".K0001w3Kw1112K.",
+    ".K0111KwwK1122K.",
+    "..KKKKKKKKKKKK..",
+];
+
+const OBSIDIAN_PLATE: &[&str] = &[
+    "................",
+    "...KKKK..KKKK...",
+    "..K0000KK0000K..",
+    ".K011111111112K.",
+    "K00K1113111K12K.",
+    "K01K1133311K22K.",
+    "KKKK1113111KKKK.",
+    "...K1111111K....",
+    "...K3131313K....",
+    "...K1111112K....",
+    "...K1111122K....",
+    "...KKKKKKKKK....",
+];
+
+const VOIDWEAVE: &[&str] = &[
+    "................",
+    "................",
+    "...KKKKKKKKKK...",
+    "...K33333333K...",
+    "...K01w00012K...",
+    "...K00000w12K...",
+    "...K0w01K012K...",
+    "...K001KK0w2K...",
+    "...K0w1KK012K...",
+    "...K001KKw12K...",
+    "...K012KK112K...",
+    "...KKKKKKKKKK...",
+];
+
+const VOIDWALKERS: &[&str] = &[
+    "................",
+    "................",
+    "....KKKKKK......",
+    "....K0w01K......",
+    "....K0012K......",
+    "....KL012K......",
+    "....K0012K......",
+    "....K00112KKKK..",
+    "....K001111L11K.",
+    "....K0011111112K",
+    "....K3333333333K",
+    "....KKKKKKKKKKKK",
+];
+
+const EYE_KITE: &[&str] = &[
+    "................",
+    "...KKKKKKKKKK...",
+    "...K33333333K...",
+    "...K30011113K...",
+    "...K3KKKKK13K...",
+    "...K3KwllwK3K...",
+    "...K3KlKKlK3K...",
+    "...K3KwllwK3K...",
+    "....K3KKKK3K....",
+    "....K311113K....",
+    ".....K3113K.....",
+    "......K33K......",
+    ".......KK.......",
+];
+
+const RIFTBLADE: &[&str] = &[
+    "................",
+    "............KK..",
+    "...........K01K.",
+    "..........K012K.",
+    ".........K012K..",
+    "........K012K...",
+    ".......K012K....",
+    "..KK..K012K.....",
+    "..K3KK012K......",
+    "...K3312K.......",
+    "....K33K........",
+    "...KkKK3K.......",
+    "..KkK..K3K......",
+    ".KkK....KK......",
+    ".KK.............",
+];
+
+const EYE_WAND: &[&str] = &[
+    "................",
+    "..........KKK...",
+    "...KK....K000K..",
+    "..KVVK..K01110K.",
+    "...KVVKK011K10K.",
+    "....KKK011KK10K.",
+    ".......K0111120K",
+    ".......K001100K.",
+    "......KKK0000K..",
+    ".....K3K.KKKK...",
+    "....K3K.........",
+    "...K3K..........",
+    "..K3K...........",
+    ".K3K............",
+    ".KK.............",
+];
+
 // ------------------------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
@@ -957,6 +1305,10 @@ enum Tip {
     Mushroom,
     Candy,
     Moon,
+    /// A griffin's golden feather.
+    Feather,
+    /// A gazer's eye, with a pair of little bat's wings.
+    Eye,
 }
 
 #[derive(Clone, Copy)]
@@ -965,6 +1317,8 @@ enum Top {
     Sunflower,
     Mushroom,
     Bloom,
+    /// A golden cobra rearing up with its hood spread.
+    Cobra,
 }
 
 #[derive(Clone, Copy)]
@@ -992,6 +1346,12 @@ enum Pattern {
     Stars,
     Buttons,
     Zigzag,
+    /// A hero's muscles carved in marble, and a fringe of gilded strips below.
+    Cuirass,
+    /// A broad jewelled collar of gold and lapis.
+    Collar,
+    /// Runes glowing on black glass.
+    Runes,
 }
 
 #[derive(Clone, Copy)]
@@ -1002,6 +1362,8 @@ enum LegPattern {
     Plated,
     Striped,
     Stars,
+    /// A pleated linen kilt to the knee on a golden belt, bare shins below.
+    Kilt,
 }
 
 #[derive(Clone, Copy)]
@@ -1042,6 +1404,24 @@ enum L {
     MushroomShield,
     /// Pole colours, grip and reel.
     Rod([u8; 3], u8, u8),
+    /// A bronze helm with cheek guards and a crest from brow to nape, in the crest's colour.
+    Crested([u8; 3], u8),
+    /// A striped headcloth falling to the shoulders, a cobra on the brow: gold, then blue.
+    Nemes([u8; 3], u8),
+    /// A circlet set with a staring eye.
+    EyeCirclet([u8; 3]),
+    /// Sandals, strapped up the ankle, with little wings at the heel or without.
+    Sandal([u8; 3], bool),
+    /// A round shield with the maze beaten into it, and a rim.
+    Aspis([u8; 3], u8),
+    /// A beetle of a shield, its wings folded, with a golden rim, head and legs.
+    Scarab([u8; 3], u8),
+    /// A kite shield with an eye glaring out of it.
+    EyeKite([u8; 3], u8),
+    /// A double axe: blades, and the haft.
+    Labrys([u8; 3], u8),
+    /// A hooked sickle-sword: blade, and the grip.
+    Khopesh([u8; 3], u8),
 }
 
 /// (icon name, icon template or `None` when `sprites.rs` already draws it, slots, look)
@@ -1054,6 +1434,11 @@ const GOLDEN: [u8; 3] = [WHITE, CREAM, GOLD];
 const CRYSTAL: [u8; 3] = [WHITE, MINT, AQUA];
 const EMBER: [u8; 3] = [CREAM, GOLD, RED];
 const FROST: [u8; 3] = [WHITE, SKY, BLUE];
+const BRONZE: [u8; 3] = [CREAM, GOLD, CLAY];
+const MARBLE: [u8; 3] = [WHITE, SAND, KHAKI];
+const LINEN: [u8; 3] = [WHITE, SAND, KHAKI];
+const LAPIS: [u8; 3] = [SKY, BLUE, INDIGO];
+const OBSIDIAN: [u8; 3] = [SLATE, SHADOW, INK];
 
 fn s4(c: [u8; 3], d: u8) -> [u8; 4] {
     [c[0], c[1], c[2], d]
@@ -1675,6 +2060,135 @@ fn table() -> Vec<Entry> {
             [AQUA, TEAL, INDIGO, GOLD],
             Rod([AQUA, TEAL, DEEP_TEAL], INDIGO, GOLD),
         ),
+        // The Marble Labyrinth.
+        (
+            "plumed_helm",
+            Some(PLUMED_HELM),
+            [CREAM, GOLD, CLAY, RED],
+            Crested(BRONZE, RED),
+        ),
+        (
+            "marble_cuirass",
+            Some(CUIRASS),
+            [WHITE, SAND, KHAKI, GOLD],
+            Chest(MARBLE, GOLD, Pattern::Cuirass),
+        ),
+        (
+            "hoplite_greaves",
+            Some(GREAVES_BRONZE),
+            [CREAM, GOLD, CLAY, MAROON],
+            Legs([GOLD, CLAY], CREAM, LegPattern::Plated),
+        ),
+        (
+            "winged_sandals",
+            Some(WINGED_SANDAL),
+            [CREAM, GOLD, CLAY, WHITE],
+            Sandal(BRONZE, true),
+        ),
+        (
+            "labyrinth_aspis",
+            Some(ASPIS),
+            [CREAM, GOLD, CLAY, MAROON],
+            Aspis(BRONZE, MAROON),
+        ),
+        (
+            "labrys",
+            Some(LABRYS),
+            [CREAM, GOLD, CLAY, RUST],
+            Labrys(BRONZE, RUST),
+        ),
+        (
+            "griffin_quill",
+            Some(QUILL),
+            [CREAM, GOLD, CLAY, WHITE],
+            Wand(Tip::Feather, BRONZE, RUST),
+        ),
+        // The Sunscorch Canyon.
+        (
+            "pharaoh_nemes",
+            Some(NEMES),
+            [GOLD, BLUE, INDIGO, CREAM],
+            Nemes([CREAM, GOLD, CLAY], BLUE),
+        ),
+        (
+            "sunscorch_wraps",
+            Some(WRAPS),
+            [WHITE, SAND, KHAKI, GOLD],
+            Chest(LINEN, GOLD, Pattern::Collar),
+        ),
+        (
+            "scarab_kilt",
+            Some(KILT),
+            [WHITE, SAND, KHAKI, GOLD],
+            Legs([WHITE, SAND], GOLD, LegPattern::Kilt),
+        ),
+        (
+            "dune_sandals",
+            Some(SANDAL),
+            [SAND, CLAY, RUST, GOLD],
+            Sandal([SAND, CLAY, RUST], false),
+        ),
+        (
+            "scarab_shield",
+            Some(SCARAB),
+            [SKY, BLUE, INDIGO, GOLD],
+            Scarab(LAPIS, GOLD),
+        ),
+        (
+            "khopesh",
+            Some(KHOPESH),
+            [CREAM, GOLD, CLAY, BLUE],
+            Khopesh(BRONZE, BLUE),
+        ),
+        (
+            "cobra_staff",
+            Some(COBRA_STAFF),
+            [CREAM, GOLD, CLAY, BLUE],
+            Staff(Top::Cobra, BRONZE, RUST),
+        ),
+        // The Starless Rift.
+        (
+            "gazer_circlet",
+            Some(EYE_CIRCLET),
+            [LAVENDER, PURPLE, GRAPE, LIME],
+            EyeCirclet(OBSIDIAN),
+        ),
+        (
+            "obsidian_plate",
+            Some(OBSIDIAN_PLATE),
+            [SLATE, SHADOW, INK, LAVENDER],
+            Chest(OBSIDIAN, LAVENDER, Pattern::Runes),
+        ),
+        (
+            "voidweave_leggings",
+            Some(VOIDWEAVE),
+            [PURPLE, GRAPE, INK, LAVENDER],
+            Legs([GRAPE, INK], LAVENDER, LegPattern::Stars),
+        ),
+        (
+            "voidwalkers",
+            Some(VOIDWALKERS),
+            [LAVENDER, PURPLE, GRAPE, INK],
+            Boot([LAVENDER, PURPLE, GRAPE], INK, 0.14),
+        ),
+        (
+            "obsidian_bulwark",
+            Some(EYE_KITE),
+            [SLATE, SHADOW, INK, LAVENDER],
+            EyeKite(OBSIDIAN, LAVENDER),
+        ),
+        (
+            "riftblade",
+            Some(RIFTBLADE),
+            [LAVENDER, PURPLE, INK, GRAPE],
+            Blade([LAVENDER, PURPLE, GRAPE], GRAPE, INK, 0.44, 0.07),
+        ),
+        (
+            "gazer_wand",
+            Some(EYE_WAND),
+            [WHITE, LIME, GREEN, GRAPE],
+            Wand(Tip::Eye, [WHITE, LIME, GREEN], GRAPE),
+        ),
     ]
 }
 
@@ -1896,6 +2410,73 @@ fn held_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                         );
                     }
                 }
+                Tip::Feather => {
+                    // A quill, and the vane either side of it, curving a little.
+                    let quill = solid(bank, c[0]);
+                    bx(
+                        &mut h,
+                        v(-0.008, -0.22, -0.008),
+                        v(0.008, 0.02, 0.008),
+                        quill,
+                    );
+                    bx(&mut h, v(-0.05, -0.2, -0.01), v(-0.008, -0.02, 0.01), t);
+                    bx(&mut h, v(0.008, -0.18, -0.01), v(0.04, -0.03, 0.01), t);
+                    bx(&mut h, v(-0.03, -0.25, -0.008), v(0.012, -0.19, 0.008), t);
+                    m.append(&h, at * Mat4::from_rotation_z(0.15));
+                }
+                Tip::Eye => {
+                    // An eyeball glaring out along the wand, on a pair of bat's wings.
+                    let (white, iris, pupil, wing) = (
+                        solid(bank, c[0]),
+                        solid(bank, c[1]),
+                        solid(bank, INK),
+                        solid(bank, stick),
+                    );
+                    lathe(
+                        &mut h,
+                        Vec3::ZERO,
+                        &[
+                            (0.0, -0.06),
+                            (0.045, -0.042),
+                            (0.06, 0.0),
+                            (0.045, 0.042),
+                            (0.0, 0.06),
+                        ],
+                        6,
+                        0.0,
+                        white,
+                        false,
+                    );
+                    bx(
+                        &mut h,
+                        v(-0.028, -0.028, 0.05),
+                        v(0.028, 0.028, 0.062),
+                        iris,
+                    );
+                    bx(
+                        &mut h,
+                        v(-0.008, -0.022, 0.062),
+                        v(0.008, 0.022, 0.066),
+                        pupil,
+                    );
+                    for sx in [-1.0f32, 1.0] {
+                        let span = |a: f32, b: f32| (sx * a).min(sx * b)..(sx * a).max(sx * b);
+                        let (x0, x1) = (span(0.05, 0.14), span(0.08, 0.13));
+                        bx(
+                            &mut h,
+                            v(x0.start, 0.0, -0.004),
+                            v(x0.end, 0.025, 0.004),
+                            wing,
+                        );
+                        bx(
+                            &mut h,
+                            v(x1.start, -0.03, -0.003),
+                            v(x1.end, 0.0, 0.003),
+                            wing,
+                        );
+                    }
+                    m.append(&h, at * Mat4::from_translation(v(0.0, -0.03, 0.0)));
+                }
             }
         }
         L::Staff(top, c, stick) => {
@@ -1974,6 +2555,24 @@ fn held_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                         );
                     }
                     m.append(&h, at * Mat4::from_rotation_x(PI));
+                }
+                Top::Cobra => {
+                    // The neck rising from the staff's end, the hood spread wide, the head
+                    // at the top with its lapis eyes.
+                    let eye = solid(bank, BLUE);
+                    bx(&mut h, v(-0.025, -0.1, -0.025), v(0.025, 0.02, 0.025), t);
+                    bx(&mut h, v(-0.08, -0.15, -0.012), v(0.08, -0.04, 0.012), t);
+                    bx(&mut h, v(-0.055, -0.18, -0.012), v(0.055, -0.15, 0.012), t);
+                    bx(&mut h, v(-0.035, -0.23, -0.03), v(0.035, -0.17, 0.05), t);
+                    for x in [-0.02f32, 0.02] {
+                        bx(
+                            &mut h,
+                            v(x - 0.008, -0.215, 0.05),
+                            v(x + 0.008, -0.195, 0.054),
+                            eye,
+                        );
+                    }
+                    m.append(&h, at);
                 }
             }
         }
@@ -2091,6 +2690,46 @@ fn held_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                     }
                     bx(&mut m, v(-0.015, -0.03, -0.015), v(0.015, 0.03, 0.015), h);
                 }
+            }
+        }
+        L::Labrys(c, haft) => {
+            let (b, h) = (metal(bank, c), solid(bank, haft));
+            // A long haft, and a crescent blade to either side of its head, widening out to
+            // the edge.
+            bx(&mut m, v(-0.02, -0.58, -0.02), v(0.02, 0.06, 0.02), h);
+            bx(&mut m, v(-0.03, -0.56, -0.03), v(0.03, -0.42, 0.03), b);
+            for sx in [-1.0f32, 1.0] {
+                for (x0, x1, hh) in [
+                    (0.03, 0.08, 0.045),
+                    (0.08, 0.13, 0.07),
+                    (0.13, 0.165, 0.095),
+                ] {
+                    let (a, z) = ((sx * x0).min(sx * x1), (sx * x0).max(sx * x1));
+                    bx(&mut m, v(a, -0.49 - hh, -0.012), v(z, -0.49 + hh, 0.012), b);
+                }
+            }
+        }
+        L::Khopesh(c, grip) => {
+            let (b, g) = (metal(bank, c), solid(bank, grip));
+            bx(&mut m, v(-0.02, -0.08, -0.02), v(0.02, 0.05, 0.02), g);
+            bx(&mut m, v(-0.05, -0.105, -0.025), v(0.05, -0.08, 0.025), b);
+            // A straight neck, then the blade hooking out and round and back.
+            bx(&mut m, v(-0.018, -0.3, -0.012), v(0.018, -0.1, 0.012), b);
+            let mut seg = Mesh::new();
+            bx(
+                &mut seg,
+                v(-0.032, -0.024, -0.012),
+                v(0.032, 0.024, 0.012),
+                b,
+            );
+            for k in 0..9 {
+                let a = FRAC_PI_2 - k as f32 / 8.0 * 2.9;
+                let p = v(a.cos() * 0.12, -0.41 + a.sin() * 0.12, 0.0);
+                let along = a - FRAC_PI_2;
+                m.append(
+                    &seg,
+                    Mat4::from_translation(p) * Mat4::from_rotation_z(along),
+                );
             }
         }
         L::Rod(c, grip, reel) => {
@@ -2457,6 +3096,119 @@ fn hat_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
             }
             bx(&mut m, v(-0.035, -0.1, 0.28), v(0.035, -0.03, 0.31), g);
         }
+        L::Crested(c, crest) => {
+            let (t, cr) = (metal(bank, c), solid(bank, crest));
+            hug(
+                &mut m,
+                v(0.0, -0.24, 0.0),
+                &[(1.04, 0.0), (1.04, 0.24), (0.72, 0.34), (0.0, 0.38)],
+                t,
+                false,
+            );
+            // Cheek guards down either side of the face, and a nose guard between.
+            for (x0, x1) in [(-0.31, -0.17), (0.17, 0.31)] {
+                bx(&mut m, v(x0, -0.4, 0.12), v(x1, -0.2, 0.31), t);
+            }
+            bx(&mut m, v(-0.03, -0.33, 0.28), v(0.03, -0.1, 0.33), t);
+            // The crest, brow to nape, tallest in the middle, then down the back.
+            for k in 0..8 {
+                let f = k as f32 / 7.0;
+                let z = 0.2 - f * 0.46;
+                let top = 0.2 + (f * PI).sin() * 0.13;
+                bx(
+                    &mut m,
+                    v(-0.035, 0.0, z - 0.035),
+                    v(0.035, top, z + 0.035),
+                    cr,
+                );
+            }
+            bx(&mut m, v(-0.035, -0.32, -0.33), v(0.035, 0.1, -0.26), cr);
+        }
+        L::Nemes(c, stripe) => {
+            // Bands of gold and blue.
+            let bands = bank.add({
+                let mut t = Texture::new(4, 4, c[1]);
+                for x in 0..4 {
+                    t.set(x, 2, stripe);
+                    t.set(x, 3, stripe);
+                }
+                t
+            });
+            let tall = bank.add({
+                let mut t = Texture::new(4, 8, c[1]);
+                for y in [1, 2, 5, 6] {
+                    for x in 0..4 {
+                        t.set(x, y, stripe);
+                    }
+                }
+                t
+            });
+            let (gold, brow) = (metal(bank, c), solid(bank, c[0]));
+            // The cloth over the crown, and a band across the brow.
+            hug(
+                &mut m,
+                v(0.0, -0.2, 0.0),
+                &[(1.08, 0.0), (1.06, 0.2), (0.7, 0.3), (0.0, 0.32)],
+                bands,
+                false,
+            );
+            hug(
+                &mut m,
+                v(0.0, -0.21, 0.0),
+                &[(1.1, 0.0), (1.1, 0.05)],
+                brow,
+                false,
+            );
+            // Falling behind the ears and down the back, and a lappet down in front of each
+            // shoulder.
+            for (x0, x1, l0, l1) in [(-0.37, -0.28, -0.37, -0.23), (0.28, 0.37, 0.23, 0.37)] {
+                bx(&mut m, v(x0, -0.62, -0.24), v(x1, -0.18, 0.14), tall);
+                bx(&mut m, v(l0, -0.86, 0.1), v(l1, -0.44, 0.2), tall);
+            }
+            bx(&mut m, v(-0.3, -0.6, -0.31), v(0.3, -0.18, -0.24), tall);
+            // The cobra rearing on the brow.
+            bx(&mut m, v(-0.025, -0.17, 0.31), v(0.025, 0.02, 0.35), gold);
+            bx(&mut m, v(-0.045, -0.02, 0.3), v(0.045, 0.045, 0.34), gold);
+        }
+        L::EyeCirclet(c) => {
+            let t = metal(bank, c);
+            let (white, iris, pupil, gem) = (
+                solid(bank, WHITE),
+                solid(bank, LIME),
+                solid(bank, INK),
+                solid(bank, LAVENDER),
+            );
+            hug(
+                &mut m,
+                v(0.0, -0.2, 0.0),
+                &[(1.02, 0.0), (1.02, 0.05)],
+                t,
+                false,
+            );
+            // A setting on the brow, and the eye in it, staring out with a slit of a pupil.
+            bx(&mut m, v(-0.075, -0.235, 0.28), v(0.075, -0.1, 0.31), t);
+            bx(
+                &mut m,
+                v(-0.058, -0.215, 0.31),
+                v(0.058, -0.12, 0.325),
+                white,
+            );
+            bx(&mut m, v(-0.03, -0.2, 0.325), v(0.03, -0.135, 0.333), iris);
+            bx(
+                &mut m,
+                v(-0.008, -0.195, 0.333),
+                v(0.008, -0.14, 0.337),
+                pupil,
+            );
+            for x in [-0.2f32, 0.2] {
+                bx(
+                    &mut m,
+                    v(x - 0.025, -0.2, 0.21),
+                    v(x + 0.025, -0.15, 0.26),
+                    gem,
+                );
+            }
+        }
         _ => return None,
     }
     Some(m)
@@ -2531,6 +3283,30 @@ fn boot_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
                 &wing,
                 Mat4::from_translation(v(0.075, 0.07, -0.01)) * Mat4::from_rotation_x(0.2),
             );
+        }
+        L::Sandal(c, wings) => {
+            let (strap, sole) = (metal(bank, c), solid(bank, c[2]));
+            bx(&mut m, v(-0.078, 0.0, -0.075), v(0.078, 0.03, 0.11), sole);
+            // Straps over the foot and wound up round the ankle.
+            for z in [0.07f32, 0.01] {
+                bx(
+                    &mut m,
+                    v(-0.08, 0.03, z - 0.018),
+                    v(0.08, 0.07, z + 0.018),
+                    strap,
+                );
+            }
+            bx(&mut m, v(-0.08, 0.1, -0.075), v(0.08, 0.13, 0.05), strap);
+            bx(&mut m, v(-0.08, 0.16, -0.075), v(0.08, 0.19, 0.04), strap);
+            if wings {
+                // A little white wing sweeping back from each side of the heel.
+                let w = solid(bank, WHITE);
+                for (x0, x1) in [(-0.094, -0.082), (0.082, 0.094)] {
+                    bx(&mut m, v(x0, 0.13, -0.15), v(x1, 0.19, -0.04), w);
+                    bx(&mut m, v(x0, 0.17, -0.19), v(x1, 0.23, -0.1), w);
+                    bx(&mut m, v(x0, 0.21, -0.22), v(x1, 0.25, -0.15), w);
+                }
+            }
         }
         _ => return None,
     }
@@ -2633,9 +3409,115 @@ fn shield_mesh(bank: &mut TexBank, look: L) -> Option<Mesh> {
             disc(&mut m, 0.21, 0.02, rim, -0.02);
             dome(&mut m, 0.2, 0.09, cap);
         }
+        L::Aspis(c, rim) => {
+            let (edge, face) = (metal(bank, c), bank.add(aspis_face(c, rim)));
+            disc(&mut m, 0.215, 0.03, edge, -0.015);
+            disc(&mut m, 0.19, 0.02, face, 0.0);
+        }
+        L::Scarab(c, rim) => {
+            let (shell, gold) = (metal(bank, c), metal(bank, [CREAM, rim, CLAY]));
+            // Its two wing cases, meeting down the middle.
+            for sx in [-1.0f32, 1.0] {
+                let mut wing = Mesh::new();
+                dome(&mut wing, 0.1, 0.08, shell);
+                m.append(
+                    &wing,
+                    Mat4::from_translation(v(sx * 0.075, -0.03, 0.0))
+                        * Mat4::from_scale(v(0.85, 1.9, 1.0)),
+                );
+            }
+            // Its head and little horns up top, and three legs a side.
+            bx(&mut m, v(-0.075, 0.16, -0.01), v(0.075, 0.24, 0.05), gold);
+            for (x0, x1) in [(-0.06, -0.035), (0.035, 0.06)] {
+                bx(&mut m, v(x0, 0.24, 0.0), v(x1, 0.3, 0.03), gold);
+            }
+            for (y, a) in [(0.1f32, 0.45f32), (-0.03, 0.0), (-0.16, -0.45)] {
+                for sx in [-1.0f32, 1.0] {
+                    let mut leg = Mesh::new();
+                    bx(
+                        &mut leg,
+                        v(0.0, -0.014, -0.012),
+                        v(0.09, 0.014, 0.012),
+                        gold,
+                    );
+                    m.append(
+                        &leg,
+                        Mat4::from_translation(v(sx * 0.15, y, 0.01))
+                            * Mat4::from_rotation_z(if sx > 0.0 { a } else { PI - a }),
+                    );
+                }
+            }
+        }
+        L::EyeKite(c, rim) => {
+            let (t, r) = (metal(bank, c), solid(bank, rim));
+            for (y, w, h) in [
+                (0.1, 0.34, 0.12),
+                (-0.02, 0.28, 0.12),
+                (-0.12, 0.18, 0.08),
+                (-0.18, 0.08, 0.05),
+            ] {
+                bx(
+                    &mut m,
+                    v(-w * 0.5, y - h * 0.5, -0.02),
+                    v(w * 0.5, y + h * 0.5, 0.02),
+                    t,
+                );
+            }
+            // A rune-bordered eye glaring out of the middle.
+            let (white, iris, pupil) = (solid(bank, WHITE), solid(bank, LIME), solid(bank, INK));
+            bx(&mut m, v(-0.1, -0.005, 0.02), v(0.1, 0.105, 0.03), r);
+            bx(&mut m, v(-0.08, 0.01, 0.03), v(0.08, 0.09, 0.038), white);
+            bx(
+                &mut m,
+                v(-0.035, 0.015, 0.038),
+                v(0.035, 0.085, 0.044),
+                iris,
+            );
+            bx(&mut m, v(-0.01, 0.02, 0.044), v(0.01, 0.08, 0.048), pupil);
+            for (x0, x1) in [(-0.13, -0.11), (0.11, 0.13)] {
+                bx(&mut m, v(x0, -0.06, 0.02), v(x1, 0.14, 0.03), r);
+            }
+        }
         _ => return None,
     }
     Some(m)
+}
+
+/// The face of a bronze aspis: the maze beaten into its middle, and a meander running round
+/// inside the rim, in `ink`.
+fn aspis_face(c: [u8; 3], ink: u8) -> Texture {
+    const MAZE: [&str; 7] = [
+        "#######", "#.....#", "#.###.#", "#.#.#.#", "#.#...#", "#.#####", "#......",
+    ];
+    let mut t = Texture::new(16, 16, c[1]);
+    for y in 0..16 {
+        for x in 0..16 {
+            let (dx, dy) = (x as f32 - 7.5, y as f32 - 7.5);
+            let r = dx.hypot(dy);
+            if (5.6..7.6).contains(&r) {
+                let a = (dy.atan2(dx) + PI) / (2.0 * PI);
+                let step = (a * 20.0) as i32;
+                let outer = r > 6.6;
+                let dark = match step % 4 {
+                    0 => true,
+                    1 => outer,
+                    2 => false,
+                    _ => !outer,
+                };
+                t.set(x, y, if dark { ink } else { c[0] });
+            } else if r > 7.6 {
+                t.set(x, y, c[2]);
+            }
+        }
+    }
+    for (row, line) in MAZE.iter().enumerate() {
+        for (col, ch) in line.chars().enumerate() {
+            if ch == '#' {
+                t.set(4 + col as i32, 4 + row as i32, ink);
+            }
+        }
+    }
+    t
 }
 
 // ------------------------------------------------------------------------------------------
@@ -2694,6 +3576,35 @@ fn chest_skin(bank: &mut TexBank, c: [u8; 3], belt: u8, pat: Pattern) -> (TexId,
                 t.set(x, if x % 2 == 0 { 1 } else { 2 }, belt);
             }
         }
+        Pattern::Cuirass => {
+            // The chest's curve and a line down the middle, gilt at the shoulders...
+            for x in 1..5 {
+                t.set(x, 1, c[2]);
+            }
+            t.set(2, 2, c[2]);
+            t.set(3, 2, c[2]);
+            t.set(0, 0, belt);
+            t.set(5, 0, belt);
+            // ...and a fringe of gilded strips all round below the belt.
+            for x in 0..16 {
+                t.set(x, 4, if x % 2 == 0 { belt } else { c[2] });
+            }
+        }
+        Pattern::Collar => {
+            for x in 0..16 {
+                t.set(x, 0, if x % 2 == 0 { belt } else { TEAL });
+                t.set(x, 1, if x % 2 == 0 { BLUE } else { belt });
+            }
+        }
+        Pattern::Runes => {
+            // A rune glowing on the breast, and more scattered round.
+            for (x, y) in [(2, 1), (3, 1), (2, 2), (3, 0), (1, 3), (4, 3)] {
+                t.set(x, y, belt);
+            }
+            for (x, y) in [(8, 1), (10, 2), (7, 3), (13, 1), (14, 3)] {
+                t.set(x, y, belt);
+            }
+        }
     }
     let arm = limb_tex(c[1], c[2], HERO.skin[1]);
     (bank.add(t), bank.add(arm))
@@ -2722,6 +3633,13 @@ fn leg_skin(bank: &mut TexBank, c: [u8; 2], accent: u8, pat: LegPattern) -> TexI
         LegPattern::Stars => {
             t.set(0, 0, accent);
             t.set(2, 2, accent);
+        }
+        LegPattern::Kilt => {
+            for x in 0..4 {
+                t.set(x, 0, accent);
+                t.set(x, 1, if x % 2 == 0 { c[0] } else { c[1] });
+                t.set(x, 2, HERO.skin[0]);
+            }
         }
     }
     bank.add(t)

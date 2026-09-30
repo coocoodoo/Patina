@@ -1,7 +1,9 @@
 //! Gear: weapons, armour and farming tools. Every piece carries a level, a rolled base
 //! value, random stats (affixes) and up to three enchantments from scrolls, and its rarity is
 //! worked out from how good all of those rolls are. Scrolls carry one enchantment each; their
-//! rarity comes from how strong that enchantment rolled.
+//! rarity comes from how strong that enchantment rolled. Armour can also be forged on the
+//! anvil, other pieces melted into it: it gathers forge experience, and every forge level
+//! makes its stats a little stronger.
 
 use crate::palette::*;
 use crate::util::Rng;
@@ -565,6 +567,8 @@ pub struct Gear {
     pub rarity: Rarity,
     pub affixes: [Option<Affix>; AFFIXES],
     pub enchants: [Option<Affix>; SOCKETS],
+    /// Forge experience from the anvil (armour only); its forge level follows from this.
+    pub xp: u32,
 }
 
 impl Gear {
@@ -576,6 +580,7 @@ impl Gear {
             rarity: Rarity::Common,
             affixes: [None; AFFIXES],
             enchants: [None; SOCKETS],
+            xp: 0,
         }
     }
 
@@ -680,10 +685,10 @@ impl Gear {
         self.enchants.iter().position(|e| e.is_none())
     }
 
-    /// Adds this piece's affixes and enchantments to a stat sheet.
+    /// Adds this piece's affixes and enchantments to a stat sheet (made stronger by forging).
     pub fn add_to(&self, sheet: &mut Sheet) {
         for a in self.all() {
-            sheet.add(a.stat, a.val as i32);
+            sheet.add(a.stat, self.forged_stat(a.val as i32));
         }
     }
 
@@ -691,6 +696,107 @@ impl Gear {
     pub fn innate(&self, stat: Stat) -> i16 {
         let (lo, hi) = stat.range(self.level);
         (((lo + hi) * 0.5) * 0.6).round().max(1.0) as i16
+    }
+}
+
+// ------------------------------------------------------------------------------------------
+// Forging
+// ------------------------------------------------------------------------------------------
+
+/// How far armour can be forged: +10.
+pub const MAX_FORGE: u8 = 10;
+/// How much stronger each forge level makes a piece: its main number (defense), and every
+/// other stat on it (rounded up, so the first level always shows).
+pub const FORGE_MAIN: f32 = 0.08;
+pub const FORGE_STAT: f32 = 0.04;
+
+/// The forge experience a piece needs to go up from forge level `forge`. Every level asks
+/// half again as much as the last, and armour from deeper down (a higher item level) asks
+/// more from the start: the deeper you go, the harder it gets.
+pub fn forge_need(level: u16, forge: u8) -> u32 {
+    let base = 40.0 + level.max(1) as f32 * 3.0;
+    (base * 1.5f32.powi(forge as i32)).round() as u32
+}
+
+/// All the forge experience it takes to reach forge level `forge` from nothing.
+pub fn forge_total(level: u16, forge: u8) -> u32 {
+    (0..forge.min(MAX_FORGE))
+        .map(|f| forge_need(level, f))
+        .sum()
+}
+
+/// What a strike of the anvil costs: more for armour from deeper down, and a good deal more
+/// for every forge level it already has.
+pub fn forge_cost(level: u16, forge: u8) -> u64 {
+    let base = 20.0 + level.max(1) as f64 * 2.0;
+    (base * (1.0 + forge as f64).powf(1.5)).round() as u64
+}
+
+/// The forge experience a piece of armour gives up when it's melted into another: more for a
+/// higher level (things found deeper down) and a rarer roll, and half of all the forge
+/// experience it had gathered itself; a quarter more again melted into its own kind (a helm
+/// into a helm).
+pub fn fodder_xp(fodder: &Gear, same_kind: bool) -> u32 {
+    let rarity = [1.0, 1.5, 2.3, 3.5, 5.5][fodder.rarity as usize];
+    let base = (10.0 + fodder.level.max(1) as f32 * 2.5) * rarity;
+    let kind = if same_kind { 1.25 } else { 1.0 };
+    (base * kind).round() as u32 + fodder.xp / 2
+}
+
+impl Gear {
+    /// How far this piece has been forged, 0 (never) to `MAX_FORGE`.
+    pub fn forge(&self) -> u8 {
+        let mut left = self.xp;
+        let mut f = 0;
+        while f < MAX_FORGE {
+            let need = forge_need(self.level, f);
+            if left < need {
+                break;
+            }
+            left -= need;
+            f += 1;
+        }
+        f
+    }
+
+    /// Forge experience gathered towards the next level, and what that level asks (`None`
+    /// once it's forged as far as it goes).
+    pub fn forge_progress(&self) -> (u32, Option<u32>) {
+        let f = self.forge();
+        let into = self.xp - forge_total(self.level, f);
+        if f >= MAX_FORGE {
+            (0, None)
+        } else {
+            (into, Some(forge_need(self.level, f)))
+        }
+    }
+
+    /// Melts forge experience into this piece (none past the top level); returns how many
+    /// levels it went up.
+    pub fn add_forge_xp(&mut self, xp: u32) -> u8 {
+        let before = self.forge();
+        let top = forge_total(self.level, MAX_FORGE);
+        self.xp = self.xp.saturating_add(xp).min(top);
+        self.forge() - before
+    }
+
+    /// Its main number (defense, damage...) with its forging.
+    pub fn forged_main(&self, v: i32) -> i32 {
+        forged(v, FORGE_MAIN, self.forge())
+    }
+
+    /// One of its other stats with its forging.
+    pub fn forged_stat(&self, v: i32) -> i32 {
+        forged(v, FORGE_STAT, self.forge())
+    }
+}
+
+fn forged(v: i32, per: f32, forge: u8) -> i32 {
+    if forge == 0 || v <= 0 {
+        v
+    } else {
+        // (A hair under, so float dust never tips an exact bonus up a whole point.)
+        v + (v as f32 * per * forge as f32 - 1e-3).ceil() as i32
     }
 }
 
@@ -864,6 +970,61 @@ mod tests {
             assert!(a >= 1);
         }
         assert!(base_value(Class::Sword, 30, 100, 100) > base_value(Class::Sword, 30, 0, 100));
+    }
+
+    #[test]
+    fn forging_grows_harder_and_makes_armour_a_little_stronger() {
+        // Each level asks more than the last, and deeper armour asks more from the start.
+        for lvl in [1u16, 20, 60] {
+            for f in 1..MAX_FORGE {
+                assert!(forge_need(lvl, f) > forge_need(lvl, f - 1));
+            }
+        }
+        assert!(forge_need(50, 0) > forge_need(5, 0));
+        assert!(forge_cost(30, 5) > forge_cost(30, 0));
+        assert!(forge_cost(50, 2) > forge_cost(10, 2));
+        // Experience climbs through the levels and stops at the top.
+        let mut g = Gear::plain(10);
+        assert_eq!(g.forge(), 0);
+        assert_eq!(g.forge_progress(), (0, Some(forge_need(10, 0))));
+        assert_eq!(g.add_forge_xp(forge_need(10, 0)), 1);
+        assert_eq!(g.forge(), 1);
+        assert_eq!(g.add_forge_xp(forge_need(10, 1) - 1), 0);
+        assert_eq!(
+            g.forge_progress(),
+            (forge_need(10, 1) - 1, Some(forge_need(10, 1)))
+        );
+        assert_eq!(g.add_forge_xp(1_000_000), MAX_FORGE - 1);
+        assert_eq!(g.forge(), MAX_FORGE);
+        assert_eq!(g.forge_progress(), (0, None));
+        assert_eq!(g.xp, forge_total(10, MAX_FORGE));
+        // A bit stronger for it: 80% on the main number and 40% on the rest, at +10...
+        assert_eq!(g.forged_main(20), 36);
+        assert_eq!(g.forged_stat(10), 14);
+        assert_eq!(Gear::plain(10).forged_main(20), 20);
+        // ...and something to show for the very first level, however small the number.
+        let mut one = Gear::plain(10);
+        one.add_forge_xp(forge_need(10, 0));
+        assert_eq!(one.forged_main(2), 3);
+        assert_eq!(one.forged_stat(1), 2);
+        // Every level shows on a middling main number.
+        let mut up = Gear::plain(10);
+        let mut last = up.forged_main(13);
+        for f in 0..MAX_FORGE {
+            up.add_forge_xp(forge_need(10, f));
+            assert!(up.forged_main(13) > last, "+{}", f + 1);
+            last = up.forged_main(13);
+        }
+        // What a piece gives up: more for deeper, rarer pieces, and some of its own forging.
+        let mut deep = Gear::plain(40);
+        let shallow = Gear::plain(4);
+        assert!(fodder_xp(&deep, false) > fodder_xp(&shallow, false));
+        assert!(fodder_xp(&deep, true) > fodder_xp(&deep, false));
+        let plain = fodder_xp(&deep, false);
+        deep.rarity = Rarity::Legendary;
+        assert!(fodder_xp(&deep, false) > plain * 5);
+        deep.xp = 1000;
+        assert!(fodder_xp(&deep, false) >= plain * 5 + 500);
     }
 
     #[test]

@@ -1089,6 +1089,29 @@ pub fn draw_object(r: &mut Renderer, a: &Assets, w: &World, x: i32, z: i32, o: &
             );
         }
         Obj::Bench => r.mesh(&a.bank, &p.bench, &at, &lit),
+        Obj::Anvil => {
+            r.shadow(a.tex(a.disk), base, 0.42);
+            r.mesh(&a.bank, &a.town.anvil, &at, &lit);
+            // The iron on it glows hot and flickers, and now and then throws sparks.
+            let flicker = 0.9 + (env.time * 7.0 + x as f32).sin() * 0.1;
+            r.mesh(&a.bank, &a.town.anvil_iron, &at, &lit.with_glow(flicker));
+            let iron = base + Vec3::new(0.06, 0.74, -0.05);
+            r.halo(iron, 0.3, ORANGE, 0.2 + 0.06 * (env.time * 5.0).sin());
+            let t = (env.time * 0.9 + x as f32 * 0.37).fract();
+            if t < 0.3 {
+                let f = t / 0.3;
+                for k in 0..4 {
+                    let ang = k as f32 * 1.7 + (env.time * 0.9).floor() * 2.3;
+                    let q = iron
+                        + Vec3::new(
+                            ang.cos() * f * 0.35,
+                            f * 0.3 - f * f * 0.35,
+                            ang.sin() * f * 0.35,
+                        );
+                    r.sparkle(q, 0, if k % 2 == 0 { GOLD } else { CREAM }, ORANGE);
+                }
+            }
+        }
         Obj::EnchantTable => {
             r.shadow(a.tex(a.disk), base, 0.45);
             r.mesh(&a.bank, &p.enchant_table, &at, &lit);

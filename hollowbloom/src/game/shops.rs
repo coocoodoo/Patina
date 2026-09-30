@@ -462,7 +462,8 @@ fn pick_of_class(depth: u32, class: Class, rng: &mut Rng) -> Option<Item> {
     let mut weights = Vec::new();
     for &i in ALL_ITEMS {
         let Some(b) = i.base() else { continue };
-        if b.class != class || b.lvl as f32 > d + 4.0 {
+        // The biome sets are only ever found on their own floors.
+        if b.class != class || b.lvl as f32 > d + 4.0 || loot::biome_gear(i) {
             continue;
         }
         let gap = (d - b.lvl as f32).max(0.0) / 9.0;

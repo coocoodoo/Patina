@@ -533,6 +533,22 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   bolts, and **rift ogres**, big and slow, with tusks, a topknot and eyes burning red under
   a heavy brow, stamp after you and **pound the ground with both fists**, cracking it out
   in a fan towards you. Ogres drop **ogre tusks**, iron ore, and now and then amethyst.
+* **Loot of their own.** The Marble Labyrinth, the Sunscorch Canyon and the Starless Rift
+  each have a **set of gear found nowhere else** (not in other floors' chests, not in any
+  shop): a helm, chest, legs, feet and a shield, and two weapons, rolled for the floor
+  you find them on. From the labyrinth, a hero's bronze and marble: a **Plumed Helm**
+  with its red crest, a **Marble Cuirass**, **Hoplite Greaves**, **Winged Sandals**, the
+  **Labyrinth Aspis** with the maze beaten into it, the **Minotaur's Labrys** and a **Griffin
+  Quill Wand**. From the canyon, linen, gold and lapis: a **Pharaoh's Nemes** with a cobra
+  on the brow, **Sunscorch Wraps** with a jewelled collar, a **Scarab Kilt**, **Dune
+  Sandals**, a **Scarab Shield**, a hooked **Sunscorch Khopesh** and a **Cobra Staff**. From
+  the rift, obsidian and amethyst: a **Gazer's Circlet** set with a staring eye, **Obsidian
+  Plate** with glowing runes, **Voidweave Leggings**, **Voidwalkers**, an **Obsidian
+  Bulwark** with an eye glaring out of it, the **Riftblade** and a **Gazer Wand**. A
+  gleaming chest there always holds a finely made piece of its set; plain chests, pots and
+  the floor's creatures (its own ones most of all) turn them up now and then, along with
+  its **treasures**: Ariadne's Thread and a Golden Laurel, a Scarab Amulet and a Sun Disc,
+  a Rift Star and a Void Pearl.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -597,7 +613,7 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
 
 ### Loot, gear and enchanting
 
-* **135 weapons, pieces of armour, tools and fishing rods**, every one of them cute: swords (from a Twig
+* **156 weapons, pieces of armour, tools and fishing rods**, every one of them cute: swords (from a Twig
   Sword, a Carrot Blade and the Hero's Baguette to the Starlight Sword), **wands** that shoot
   magic bolts and **staffs** that set off blasts (both use mana), **shields** (a Pot Lid, a
   Turtle Shell, a Mushroom Shield...), **headgear** (Straw Hat, Flower Crown, Cat-Ear, Frog and
@@ -617,6 +633,18 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   rarity comes from how strong its enchantment rolled. Bind them at the **enchanting table**
   by your house (or the one at every waystone) for a few coins; each piece has three sockets,
   and enchanting can raise its rarity.
+* **Hilde's anvil**, in the Petalplate Armory (open 9am to 5pm), **forges armour**: choose a
+  piece to forge, and another piece of armour to **melt down into it**, pay Hilde for the fire,
+  and the first soaks up the second's **forge experience** (more from a piece found deeper
+  down or rarer, a quarter more again melted into its own kind, a helm into a helm, and
+  half of whatever forging it had itself). Every **forge level, up to +10**, makes the
+  piece a little stronger (its defense by 8% a level and its other stats by 4%, always at
+  least a point), and it wears its level in its name and in the corner of its slot: an
+  "Iron Helm +3". Each level asks half again as much experience as the last, and armour
+  from deeper down asks more from the start, so the deeper you go the harder it gets; and
+  the more a piece has been forged (and the deeper it came from), the more a strike costs.
+  Melting down anything Epic or better, or enchanted, asks for a second strike to be sure.
+  Worn armour can be forged too.
 * **Backpacks** go in a slot of their own, beside the bag, and add their own **pouch** of
   4 to 20 slots to it (shown in a little panel beside the bag, at chests, shops and the
   shipping bin too). They never level up: a backpack's **rarity comes from how roomy it
@@ -717,6 +745,7 @@ hollowbloom --canyon-shots DIR    # the sunscorch canyon: its places and props, 
 hollowbloom --rift-shots DIR      # the starless rift: islands, bridges, runes, eyes, voidfalls, its folk
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
+hollowbloom --forge-shots DIR     # Hilde's anvil at work, forged armour, the biome sets worn
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV
 hollowbloom --decode IN.mp3 OUT.wav  # a track decoded as the game does (for tools/find_loop.py)
 hollowbloom --wardrobe FILE       # the hero in a dozen outfits (and FILE_all: every piece)

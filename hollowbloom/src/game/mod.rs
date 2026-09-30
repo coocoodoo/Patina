@@ -1,5 +1,6 @@
 //! The game: title screen, playing state, settings and saving.
 
+pub mod anvil;
 pub mod bombs;
 pub mod candy;
 pub mod canyon;

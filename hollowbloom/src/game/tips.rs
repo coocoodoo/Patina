@@ -111,6 +111,10 @@ impl Play {
             if s.n > 1 {
                 c.tiny(x + 17, y + 12, &s.n.to_string(), WHITE, INK);
             }
+            // Forged armour wears its level in the corner.
+            if let Some(f) = s.gear.map(|g| g.forge()).filter(|f| *f > 0) {
+                c.tiny(x + 17, y + 12, &format!("+{f}"), GOLD, INK);
+            }
         }
         if selected {
             c.frame(x - 1, y - 1, 20, 20, ORANGE);
@@ -138,6 +142,16 @@ impl Play {
                     format!("{} {} - Lv {}", g.rarity.name(), b.class.name(), g.level),
                     KHAKI,
                 ));
+                // How far it's been forged on the anvil.
+                if b.class.is_armor() && g.xp > 0 {
+                    let text = match g.forge_progress() {
+                        (_, None) => format!("Forged +{} - as strong as it gets", g.forge()),
+                        (into, Some(need)) => {
+                            format!("Forged +{} - {into}/{need} forge xp", g.forge())
+                        }
+                    };
+                    lines.push(line(text, GOLD));
+                }
                 let main = s.main_value().unwrap_or(0);
                 let mut ml = match b.class {
                     super::gear::Class::Hoe => {
@@ -179,13 +193,14 @@ impl Play {
                     }
                 }
                 lines.push(ml);
-                if let Some(st) = b.innate {
-                    let mut l = line(format!("{} (innate)", st.line(g.innate(st) as i32)), CREAM);
+                if let Some((st, v)) = s.innate() {
+                    let mut l = line(format!("{} (innate)", st.line(v)), CREAM);
                     l.icon = Some(stat_icon(st));
                     lines.push(l);
                 }
                 for af in g.affixes() {
-                    let mut l = line(af.stat.line(af.val as i32), af.stat.def().color);
+                    let v = g.forged_stat(af.val as i32);
+                    let mut l = line(af.stat.line(v), af.stat.def().color);
                     l.icon = Some(stat_icon(af.stat));
                     lines.push(l);
                 }
@@ -193,7 +208,8 @@ impl Play {
                 for e in g.enchants.iter() {
                     let mut l = match e {
                         Some(e) => {
-                            let mut l = line(format!("{} *", e.stat.line(e.val as i32)), BLUSH);
+                            let v = g.forged_stat(e.val as i32);
+                            let mut l = line(format!("{} *", e.stat.line(v)), BLUSH);
                             l.icon = Some(stat_icon(e.stat));
                             l
                         }

@@ -164,6 +164,18 @@ pub enum Menu {
         /// Sparkle timer after a successful enchantment.
         glow: f32,
     },
+    /// Hilde's anvil: a piece of armour to forge, and one to melt into it.
+    Anvil {
+        target: Option<Pick>,
+        fodder: Option<usize>,
+        /// 0..40 the bag, 40..45 worn gear, 45 the button.
+        cursor: usize,
+        msg: Option<(String, u8)>,
+        /// Sparks flying after a strike.
+        glow: f32,
+        /// Melting down something precious asks for a second press.
+        armed: bool,
+    },
 }
 
 impl Menu {
@@ -201,6 +213,16 @@ impl Menu {
             cursor: 0,
             msg: None,
             glow: 0.0,
+        }
+    }
+    pub fn anvil() -> Menu {
+        Menu::Anvil {
+            target: None,
+            fodder: None,
+            cursor: 0,
+            msg: None,
+            glow: 0.0,
+            armed: false,
         }
     }
     pub fn pause() -> Menu {
@@ -1664,6 +1686,14 @@ impl Play {
                 msg,
                 glow,
             } => self.update_enchant(io, gear, scroll, socket, cursor, msg, glow),
+            Menu::Anvil {
+                target,
+                fodder,
+                cursor,
+                msg,
+                glow,
+                armed,
+            } => self.update_anvil(io, target, fodder, cursor, msg, glow, armed),
         };
     }
 
@@ -2141,6 +2171,14 @@ impl Play {
                 msg,
                 glow,
             } => self.draw_enchant(c, a, *gear, *scroll, *socket, *cursor, msg, *glow, mouse),
+            Menu::Anvil {
+                target,
+                fodder,
+                cursor,
+                msg,
+                glow,
+                ..
+            } => self.draw_anvil(c, a, *target, *fodder, *cursor, msg, *glow, mouse),
         }
         // The stack being carried rides on the cursor (or follows the mouse).
         if let Some(hs) = self.held {

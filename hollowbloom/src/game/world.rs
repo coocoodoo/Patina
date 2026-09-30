@@ -194,6 +194,8 @@ pub enum Obj {
         harvested: bool,
     },
     EnchantTable,
+    /// Hilde's anvil in the Petalplate Armory: melt armour into armour to forge it stronger.
+    Anvil,
     /// The bus shelter (2x1).
     BusStop,
     /// A town building, by index into `town::BUILDINGS`.
@@ -423,6 +425,8 @@ impl Obj {
             Obj::Mushroom { .. } => Some((0.3, 3.0, 0.45, 2.5)),
             Obj::Waystone => Some((1.2, 5.0, 0.8, 2.0)),
             Obj::EnchantTable => Some((0.9, 3.4, 0.5, 1.4)),
+            // The hot iron on it.
+            Obj::Anvil => Some((0.8, 3.0, 0.4, 6.8)),
             Obj::StreetLamp { lit: true, .. } => Some((1.7, 5.0, 0.55, 5.5)),
             Obj::WishTree { blooming: true } => Some((1.6, 6.0, 0.7, 2.0)),
             Obj::Hearth => Some((0.5, 4.2, 0.42, 6.5)),

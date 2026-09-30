@@ -325,6 +325,9 @@ pub static VILLAGER_DEFS: [VillagerDef; FOLK] = [
             "Pink armour scares monsters. It's true. They don't know what to make of it.",
             "Bring me ore from the Hollow and I'll be your friend for life!",
             "Defense softens every blow. Stack it up!",
+            "See my anvil? Melt your old armour into the pieces you love. Every strike, a \
+             little stronger!",
+            "Armour from deep down needs a hotter fire to forge. And costs more. Ha!",
         ],
         close: &[
             "You're my favourite customer. Don't tell Sir Clank.",

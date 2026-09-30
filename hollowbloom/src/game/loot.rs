@@ -90,13 +90,140 @@ fn class_weight(c: Class) -> f32 {
     }
 }
 
-/// A base item suited to a depth: mostly things that first turn up near it.
+/// The new biomes, whose floors have loot of their own: a set of gear found nowhere else,
+/// and treasures.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Theme {
+    Labyrinth,
+    Canyon,
+    Rift,
+}
+
+pub const THEMES: [Theme; 3] = [Theme::Labyrinth, Theme::Canyon, Theme::Rift];
+
+impl Theme {
+    /// Its set of gear: head, chest, legs, feet, shield, and two weapons.
+    pub fn gear(self) -> &'static [Item] {
+        match self {
+            Theme::Labyrinth => &[
+                Item::PlumedHelm,
+                Item::MarbleCuirass,
+                Item::HopliteGreaves,
+                Item::WingedSandals,
+                Item::LabyrinthAspis,
+                Item::Labrys,
+                Item::GriffinQuill,
+            ],
+            Theme::Canyon => &[
+                Item::PharaohNemes,
+                Item::SunscorchWraps,
+                Item::ScarabKilt,
+                Item::DuneSandals,
+                Item::ScarabShield,
+                Item::Khopesh,
+                Item::CobraStaff,
+            ],
+            Theme::Rift => &[
+                Item::GazerCirclet,
+                Item::ObsidianPlate,
+                Item::VoidweaveLeggings,
+                Item::Voidwalkers,
+                Item::ObsidianBulwark,
+                Item::Riftblade,
+                Item::GazerWand,
+            ],
+        }
+    }
+
+    /// Its treasures, commoner first.
+    pub fn treasures(self) -> [Item; 2] {
+        match self {
+            Theme::Labyrinth => [Item::AriadnesThread, Item::GoldenLaurel],
+            Theme::Canyon => [Item::ScarabAmulet, Item::SunDisc],
+            Theme::Rift => [Item::RiftStar, Item::VoidPearl],
+        }
+    }
+
+    /// The creatures that live there and nowhere else, who carry its things more often.
+    pub fn folk(self) -> &'static [Foe] {
+        match self {
+            Theme::Labyrinth => &[Foe::Minotaur, Foe::Griffin],
+            Theme::Canyon => &[Foe::Cactus, Foe::Cobra],
+            Theme::Rift => &[Foe::Gazer, Foe::Slug, Foe::Ogre, Foe::Imp],
+        }
+    }
+}
+
+/// Is this one of the biome sets' pieces (found only on their own floors)?
+pub fn biome_gear(item: Item) -> bool {
+    THEMES.iter().any(|t| t.gear().contains(&item))
+}
+
+/// A piece of a biome's set, rolled for a depth (finely made, for a gleaming chest).
+pub fn biome_piece(theme: Theme, depth: u32, f: Fortune, fine: bool, rng: &mut Rng) -> Stack {
+    let set = theme.gear();
+    let item = set[rng.below(set.len())];
+    let level = (depth as i32 + rng.range(-1, 3)).max(1) as u16;
+    let mut s = roll_gear(item, level, f.luck + 0.3 + depth as f32 * 0.004, rng);
+    if fine {
+        if let (Some(g), Some(b)) = (s.gear.as_mut(), item.base()) {
+            g.polish(b.class, 3, 0.6, rng);
+        }
+    }
+    s
+}
+
+/// One of a biome's treasures (the finer one now and then).
+pub fn biome_treasure(theme: Theme, rng: &mut Rng) -> Item {
+    let [common, fine] = theme.treasures();
+    if rng.chance(0.3) { fine } else { common }
+}
+
+/// What a chest on a biome's floor holds besides the usual: now and then a piece of its set
+/// (always, and finely made, in a gleaming chest) and one of its treasures.
+pub fn biome_chest_loot(
+    theme: Theme,
+    depth: u32,
+    gleam: bool,
+    f: Fortune,
+    rng: &mut Rng,
+) -> Vec<Stack> {
+    let mut out = Vec::new();
+    if gleam {
+        out.push(biome_piece(theme, depth, f, true, rng));
+    }
+    if rng.chance(if gleam { 0.4 } else { 0.35 } + f.luck * 0.1) {
+        out.push(biome_piece(theme, depth, f, false, rng));
+    }
+    if rng.chance(if gleam { 1.0 } else { 0.3 } + f.luck * 0.1) {
+        out.push(Stack::new(biome_treasure(theme, rng), 1));
+    }
+    out
+}
+
+/// What a creature on a biome's floor carries of it besides its own bits: a piece of the set
+/// or a treasure now and then (more often from the creatures that live only there).
+pub fn biome_foe_loot(theme: Theme, foe: Foe, depth: u32, f: Fortune, rng: &mut Rng) -> Vec<Stack> {
+    let own = theme.folk().contains(&foe);
+    let mut out = Vec::new();
+    if rng.chance(if own { 0.07 } else { 0.03 } + f.luck * 0.05) {
+        out.push(biome_piece(theme, depth, f, false, rng));
+    }
+    if rng.chance(if own { 0.05 } else { 0.02 } + f.luck * 0.03) {
+        out.push(Stack::new(biome_treasure(theme, rng), 1));
+    }
+    out
+}
+
+/// A base item suited to a depth: mostly things that first turn up near it (never the biome
+/// sets, which only turn up on their own floors).
 pub fn pick_base(depth: u32, group: Option<Group>, rng: &mut Rng) -> Item {
     let d = depth.max(1) as f32;
     let mut items = Vec::new();
     let mut weights = Vec::new();
     for (item, b) in gear_bases() {
-        if group.is_some_and(|g| b.class.group() != g) || b.class == Class::Rod {
+        if group.is_some_and(|g| b.class.group() != g) || b.class == Class::Rod || biome_gear(item)
+        {
             continue;
         }
         let lvl = b.lvl as f32;
@@ -803,6 +930,56 @@ mod tests {
                 assert!(b.lvl as u32 <= depth + 4);
                 assert!(s.gear.unwrap().level as u32 + 3 >= depth.min(b.lvl as u32));
             }
+        }
+    }
+
+    #[test]
+    fn the_biome_sets_turn_up_only_on_their_own_floors() {
+        let mut rng = Rng::new(5);
+        // Never in the ordinary run of loot.
+        for depth in [8u32, 20, 40, 60] {
+            for _ in 0..400 {
+                let s = random_gear(depth, Fortune::plain(), &mut rng);
+                assert!(!biome_gear(s.item), "{:?} at {depth}", s.item);
+                let s = fine_gear(depth, Fortune::plain(), &mut rng);
+                assert!(!biome_gear(s.item), "{:?} at {depth}", s.item);
+            }
+        }
+        for t in THEMES {
+            // Every set has a piece for each armour slot and a weapon or two.
+            let classes: Vec<Class> = t.gear().iter().filter_map(|i| i.class()).collect();
+            for c in [
+                Class::Head,
+                Class::Chest,
+                Class::Legs,
+                Class::Feet,
+                Class::Shield,
+            ] {
+                assert!(classes.contains(&c), "{t:?} has no {c:?}");
+            }
+            assert!(classes.iter().any(|c| c.group() == Group::Weapon));
+            // A gleaming chest always holds a finely made piece, and a treasure.
+            for _ in 0..50 {
+                let loot = biome_chest_loot(t, 20, true, Fortune::plain(), &mut rng);
+                let piece = loot
+                    .iter()
+                    .find(|s| biome_gear(s.item))
+                    .expect("a set piece");
+                assert!(t.gear().contains(&piece.item));
+                assert!(piece.gear.unwrap().quality >= 85);
+                assert!(loot.iter().any(|s| t.treasures().contains(&s.item)));
+            }
+            // Its own creatures carry its things more often than visitors do.
+            let count = |foe: Foe, rng: &mut Rng| {
+                (0..3000)
+                    .map(|_| biome_foe_loot(t, foe, 20, Fortune::plain(), rng).len())
+                    .sum::<usize>()
+            };
+            let own = count(t.folk()[0], &mut rng);
+            assert!(own > count(Foe::Slime, &mut rng), "{t:?}");
+            // Rolled for the floor they're found on.
+            let s = biome_piece(t, 40, Fortune::plain(), false, &mut rng);
+            assert!(s.gear.unwrap().level >= 39);
         }
     }
 

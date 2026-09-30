@@ -5296,6 +5296,218 @@ pub fn beast_shots(dir: &str) {
     snap(&mut game, &mut r, &input, dir, "b51_loot");
 }
 
+/// `--forge-shots DIR`: Hilde's anvil in the Petalplate Armory, its hot iron glowing; the
+/// anvil's window empty, then with a helm to forge and another to melt into it, then just
+/// after a strike; and a forged helm's tooltip.
+pub fn forge_shots(dir: &str) {
+    use crate::game::town::Place;
+    let dir = Path::new(dir);
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("cannot create {}: {e}", dir.display());
+        return;
+    }
+    // SAFETY: set before any other thread reads the environment.
+    unsafe {
+        std::env::set_var("HOLLOWBLOOM_DATA", dir.join("data"));
+    }
+    let audio = Audio::silent();
+    let input = Input::default();
+    let mut r = Renderer::new(W, H);
+    let mut game = Game::new();
+    game.new_game(20261011);
+    tick(&mut game, &input, &audio, 30);
+    let anvil = {
+        let p = play(&mut game);
+        p.banner = None;
+        p.toasts.clear();
+        p.clock.day = 3;
+        p.clock.min = 660.0;
+        p.money = 4_321;
+        p.menu = Menu::None;
+        p.enter_place(Place::Armory);
+        p.banner = None;
+        let w = &p.room.as_ref().unwrap().world;
+        let at = (0..w.h)
+            .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+            .find(|&(x, z)| matches!(w.obj(x, z), Some(Obj::Anvil)))
+            .expect("the armory's anvil");
+        p.player.pos = Vec2::new(at.0 as f32 - 0.5, at.1 as f32 + 2.0);
+        p.player.facing = Vec2::new(0.4, -1.0).normalize();
+        at
+    };
+    tick(&mut game, &input, &audio, 30);
+    snap(&mut game, &mut r, &input, dir, "a01_armory");
+    let focus = glam::Vec3::new(anvil.0 as f32 + 0.5, 0.5, anvil.1 as f32 + 0.5);
+    close(&mut game, &mut r, &input, dir, "a02_anvil", focus, 3.2);
+    // A bag of armour to work with.
+    {
+        let p = play(&mut game);
+        let mut rng = Rng::new(11);
+        let mut helm = loot::roll_gear(Item::IronHelm, 18, 0.6, &mut rng);
+        helm.gear
+            .as_mut()
+            .unwrap()
+            .add_forge_xp(crate::game::gear::forge_total(18, 2) + 150);
+        let pieces = [
+            helm,
+            loot::roll_gear(Item::CopperHelm, 12, 0.2, &mut rng),
+            loot::roll_gear(Item::LeatherVest, 9, 0.0, &mut rng),
+            loot::roll_gear(Item::IronBoots, 18, 0.4, &mut rng),
+            loot::roll_gear(Item::CrystalMail, 36, 1.4, &mut rng),
+            Stack::new(Item::Ruby, 2),
+        ];
+        for (k, s) in pieces.into_iter().enumerate() {
+            p.player.inv.slots[10 + k] = Some(s);
+        }
+        p.menu = Menu::anvil();
+        if let Menu::Anvil { cursor, .. } = &mut p.menu {
+            *cursor = 45;
+        }
+    }
+    tick(&mut game, &input, &audio, 2);
+    snap(&mut game, &mut r, &input, dir, "a03_anvil_window");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Anvil {
+            target: Some(Pick::Bag(10)),
+            fodder: Some(11),
+            cursor: 45,
+            msg: None,
+            glow: 0.0,
+            armed: false,
+        };
+    }
+    snap(&mut game, &mut r, &input, dir, "a04_ready_to_strike");
+    // Strike: the old helm melts into the iron one.
+    {
+        let p = play(&mut game);
+        let old = p.player.inv.slots[11].take().unwrap();
+        let mut helm = p.player.inv.slots[10].unwrap();
+        let s = crate::game::anvil::strike(&helm, &old).unwrap();
+        p.money -= s.cost;
+        helm.gear.as_mut().unwrap().add_forge_xp(s.xp);
+        p.player.inv.slots[10] = Some(helm);
+        p.menu = Menu::Anvil {
+            target: Some(Pick::Bag(10)),
+            fodder: None,
+            cursor: 45,
+            msg: Some((
+                format!("Forged! It's {} now!", helm.name()),
+                crate::palette::RUST,
+            )),
+            glow: 0.7,
+            armed: false,
+        };
+    }
+    snap(&mut game, &mut r, &input, dir, "a05_forged");
+    {
+        let p = play(&mut game);
+        p.menu = Menu::Inventory {
+            tab: Tab::Bag,
+            cursor: 10,
+            recipe: 0,
+            scroll: 0,
+            cat: 0,
+        };
+    }
+    snap(&mut game, &mut r, &input, dir, "a06_forged_tooltip");
+
+    // The biome sets, worn with a weapon from each in hand, on their own floors.
+    use crate::game::loot::{THEMES, Theme};
+    let floors = {
+        let p = play(&mut game);
+        p.menu = Menu::None;
+        p.leave_place();
+        let find = |test: &dyn Fn(u64, u32, usize) -> bool| {
+            (4..300).find(|&d| test(p.seed, d, p.biome_at(d)))
+        };
+        [
+            find(&|s, d, b| crate::game::labyrinth::is_labyrinth(s, d, b)),
+            find(&|s, d, b| crate::game::canyon::is_canyon(s, d, b)),
+            find(&|s, d, b| crate::game::rift::is_rift(s, d, b)),
+        ]
+    };
+    for (k, theme) in THEMES.into_iter().enumerate() {
+        let Some(depth) = floors[k] else { continue };
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            p.foes.clear();
+            p.banner = None;
+            p.toasts.clear();
+            let set = theme.gear();
+            wear(p, set);
+            let weapon = set
+                .iter()
+                .copied()
+                .find(|i| i.class().is_some_and(|c| c.slot().is_none()))
+                .unwrap();
+            p.player.inv.slots[0] = Some(Stack::new(weapon, 1));
+            p.player.sel = 0;
+            p.player.facing = Vec2::new(0.35, 1.0).normalize();
+            p.player.yaw = p.player.facing.x.atan2(p.player.facing.y);
+        }
+        tick(&mut game, &input, &audio, 2);
+        // A lower look than usual, to see the armour on the body under the big head.
+        play(&mut game).cam.pitch = 24f32.to_radians();
+        let at = play(&mut game).player.world_pos() + glam::Vec3::Y * 0.55;
+        let name = match theme {
+            Theme::Labyrinth => "b01_labyrinth_set",
+            Theme::Canyon => "b02_canyon_set",
+            Theme::Rift => "b03_rift_set",
+        };
+        close(&mut game, &mut r, &input, dir, name, at, 3.2);
+        // And from behind, to see the backs of them.
+        {
+            let p = play(&mut game);
+            p.player.facing = Vec2::new(-0.4, -1.0).normalize();
+            p.player.yaw = p.player.facing.x.atan2(p.player.facing.y);
+        }
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            &format!("{name}_back"),
+            at,
+            3.2,
+        );
+        play(&mut game).cam.pitch = 47f32.to_radians();
+    }
+    // Everything the new biomes hold, in the bag.
+    {
+        let p = play(&mut game);
+        for s in p.player.inv.slots.iter_mut().skip(10).take(30) {
+            *s = None;
+        }
+        let mut rng = Rng::new(7);
+        let mut k = 10;
+        for theme in THEMES {
+            for &item in theme.gear() {
+                p.player.inv.slots[k] = Some(loot::roll_gear(item, 30, 0.8, &mut rng));
+                k += 1;
+            }
+            for item in theme.treasures() {
+                p.player.inv.slots[k] = Some(Stack::new(item, 1));
+                k += 1;
+            }
+        }
+        p.menu = Menu::Inventory {
+            tab: Tab::Bag,
+            cursor: 39,
+            recipe: 0,
+            scroll: 0,
+            cat: 0,
+        };
+    }
+    snap(&mut game, &mut r, &input, dir, "b04_biome_loot");
+    // A treasure of the rift.
+    if let Menu::Inventory { cursor, .. } = &mut play(&mut game).menu {
+        *cursor = 36;
+    }
+    snap(&mut game, &mut r, &input, dir, "b05_void_pearl");
+}
+
 /// `--pack-shots DIR`: backpacks: the bag waiting for one, the bag with one on and its
 /// pouch beside it, every look on the hero's back, the pouch at a chest and in a shop, the
 /// guild's shelf, and one dropped in the Hollow.

@@ -1707,6 +1707,7 @@ impl Play {
             Obj::Waystone => "Touch the waystone",
             Obj::Workbench => "Craft",
             Obj::EnchantTable => "Enchant",
+            Obj::Anvil => "Forge armour",
             Obj::Crop { crop, days, .. } if crop.stage(*days) == 3 => "Harvest",
             Obj::Bench => "Sit",
             _ => return None,
@@ -2189,6 +2190,15 @@ impl Play {
             }
             Obj::Workbench => self.menu = Menu::inventory(true),
             Obj::EnchantTable => self.menu = Menu::enchant(),
+            Obj::Anvil => {
+                if town::trading(self.clock.min) {
+                    self.menu = Menu::anvil();
+                    io.audio.play_at(Sfx::Clang, 0.4, 1.2);
+                } else {
+                    io.audio.play(Sfx::Denied);
+                    self.toast("Hilde's forge has gone cold. Back 9am to 5pm!", None, 0);
+                }
+            }
             Obj::Counter | Obj::Fixture { var: 7 } => {
                 // Whoever minds the counter.
                 if let Some(i) = self.folk.iter().position(|n| n.fixed) {
@@ -2377,17 +2387,43 @@ impl Play {
         );
     }
 
+    /// The biome whose floor you're on, if it has loot of its own.
+    pub fn theme(&self) -> Option<loot::Theme> {
+        if !matches!(self.area, Area::Hollow { .. }) {
+            return None;
+        }
+        let w = &self.level.as_ref()?.world;
+        if w.labyrinth {
+            Some(loot::Theme::Labyrinth)
+        } else if w.canyon {
+            Some(loot::Theme::Canyon)
+        } else if w.rift {
+            Some(loot::Theme::Rift)
+        } else {
+            None
+        }
+    }
+
     fn open_loot(&mut self, x: i32, z: i32, gleam: bool, io: &mut Io) {
         let depth = self.depth().max(1);
         let at = tile_center(x, z);
         let fortune = self.fortune();
-        let loot = loot::chest_loot(
+        let mut loot = loot::chest_loot(
             depth,
             self.hollow_biome(depth),
             gleam,
             fortune,
             &mut self.rng,
         );
+        if let Some(t) = self.theme() {
+            loot.extend(loot::biome_chest_loot(
+                t,
+                depth,
+                gleam,
+                fortune,
+                &mut self.rng,
+            ));
+        }
         self.spill(loot, at, io);
         self.fx
             .motes(at + Vec3::Y * 0.4, 16, &[GOLD, CREAM, WHITE], 0.4);
@@ -2620,7 +2656,14 @@ impl Play {
                 self.fx.burst(at + Vec3::Y * 0.3, 12, &col, 2.5, 2.0);
                 let depth = self.depth().max(1);
                 let fortune = self.fortune();
-                let loot = loot::pot_loot(depth, self.hollow_biome(depth), fortune, &mut self.rng);
+                let mut loot =
+                    loot::pot_loot(depth, self.hollow_biome(depth), fortune, &mut self.rng);
+                // Now and then a biome's treasure, tucked away in its own pots.
+                if let Some(t) = self.theme() {
+                    if self.rng.chance(0.04 + fortune.luck * 0.03) {
+                        loot.push(Stack::new(loot::biome_treasure(t, &mut self.rng), 1));
+                    }
+                }
                 self.spill(loot, at, io);
             }
             _ => {}
