@@ -4255,3 +4255,197 @@ fn a_griffin_takes_wing_wheels_round_and_dives() {
     }
     assert!(dived, "it never stooped to dive");
 }
+
+fn into_the_canyon(s: &mut Sim) -> u32 {
+    use super::canyon::is_canyon;
+    let depth = (6..400)
+        .find(|&d| is_canyon(s.play.seed, d, s.play.biome_at(d)))
+        .expect("a canyon floor");
+    s.play.fade = None;
+    s.play.start_fade(Trans::Descend {
+        depth,
+        via_waystone: false,
+    });
+    s.frames(60);
+    depth
+}
+
+/// Somewhere in the canyon with open sand `r` tiles either side, and a tile above and
+/// below.
+fn open_sand(s: &Sim, r: i32) -> (i32, i32) {
+    let w = s.play.world();
+    (2..w.h - 2)
+        .flat_map(|z| (r + 1..w.w - r - 1).map(move |x| (x, z)))
+        .find(|&(x, z)| {
+            (-1..=1).all(|dz| {
+                (-r..=r)
+                    .all(|dx| !w.blocked(x + dx, z + dz) && w.floor(x + dx, z + dz) == Floor::Sand)
+            })
+        })
+        .expect("open sand")
+}
+
+#[test]
+fn the_canyon_is_hot_bright_and_dressed_for_the_desert() {
+    use super::canyon::DESERT;
+    let mut s = Sim::new();
+    into_the_canyon(&mut s);
+    assert!(s.play.world().canyon);
+    let banner = s.play.banner.as_ref().expect("the floor's banner");
+    assert!(
+        banner.sub.ends_with("the sunscorch canyon"),
+        "{}",
+        banner.sub
+    );
+    assert!(s.play.env().ambient > 0.6);
+    assert!(!s.play.foes.is_empty());
+    assert!(
+        s.play.foes.iter().all(|f| f.biome == DESERT),
+        "everyone's dressed for the desert"
+    );
+    // Sandstone stands up to a pickaxe.
+    s.play.foes.clear();
+    let w = s.play.world();
+    let wall = (1..w.h - 1)
+        .flat_map(|z| (1..w.w - 1).map(move |x| (x, z)))
+        .find(|&(x, z)| matches!(w.wall(x, z), Wall::Sandstone(_)) && !w.blocked(x, z + 1))
+        .expect("sandstone");
+    s.stand(wall.0, wall.1 + 1, Vec2::new(0.0, -1.0));
+    s.select(4);
+    for _ in 0..8 {
+        s.tap(KeyCode::KeyJ, 30);
+    }
+    assert!(matches!(
+        s.play.world().wall(wall.0, wall.1),
+        Wall::Sandstone(_)
+    ));
+}
+
+#[test]
+fn quicksand_drags_at_your_feet() {
+    let mut s = Sim::new();
+    into_the_canyon(&mut s);
+    s.play.foes.clear();
+    let run = |s: &mut Sim, x: i32, z: i32| {
+        s.stand(x, z, Vec2::new(1.0, 0.0));
+        s.play.player.energy = s.play.player.max_energy() as f32;
+        s.input.key_event(KeyCode::KeyD, true, false);
+        s.frames(20);
+        s.input.key_event(KeyCode::KeyD, false, false);
+        s.frames(1);
+        s.play.player.pos.x - (x as f32 + 0.5)
+    };
+    let w = s.play.world();
+    let bog = (1..w.h - 1)
+        .flat_map(|z| (1..w.w - 4).map(move |x| (x, z)))
+        .find(|&(x, z)| {
+            (0..4).all(|k| w.floor(x + k, z) == Floor::Quicksand && !w.blocked(x + k, z))
+        })
+        .expect("a stretch of quicksand");
+    let sand = open_sand(&s, 3);
+    let wading = run(&mut s, bog.0, bog.1);
+    let walking = run(&mut s, sand.0 - 3, sand.1);
+    assert!(wading > 0.1, "you can still wade through");
+    assert!(wading < walking * 0.7, "{wading} wading, {walking} walking");
+}
+
+#[test]
+fn a_cactling_keeps_still_among_the_cacti_until_you_come_close() {
+    use super::canyon::DESERT;
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, NEEDLES};
+    use super::fx::ShotKind;
+    let mut s = Sim::new();
+    let depth = into_the_canyon(&mut s);
+    s.play.foes.clear();
+    s.play.shots.clear();
+    let (x, z) = open_sand(&s, 3);
+    s.stand(x - 3, z, Vec2::new(1.0, 0.0));
+    let spot = Vec2::new(x as f32 + 2.5, z as f32 + 0.5);
+    s.play.foes.push(Enemy::new(
+        Foe::Cactus,
+        spot.x,
+        spot.y,
+        depth,
+        DESERT,
+        false,
+        3,
+    ));
+    s.frames(120);
+    let c = &s.play.foes[0];
+    assert!(!c.alert, "it looks like any other cactus");
+    assert_eq!(c.pos, spot, "and never moves a root");
+    // Come close, and up it pops.
+    s.stand(x + 1, z, Vec2::new(1.0, 0.0));
+    s.frames(2);
+    assert!(s.play.foes[0].alert);
+    // Before long it bristles and sprays needles all round.
+    let mut most = 0;
+    for _ in 0..400 {
+        s.frames(1);
+        s.play.player.hp = s.play.player.max_hp();
+        let n = s
+            .play
+            .shots
+            .iter()
+            .filter(|s| s.kind == ShotKind::Needle)
+            .count();
+        most = most.max(n);
+        if most >= NEEDLES {
+            break;
+        }
+    }
+    assert_eq!(most, NEEDLES, "a whole ring of needles");
+}
+
+#[test]
+fn a_sand_cobra_rears_up_to_strike_and_spits_from_further_off() {
+    use super::canyon::DESERT;
+    use super::dungeon::Foe;
+    use super::foes::{Enemy, REAR_SECS, SPITTING, STRIKING, St};
+    use super::fx::ShotKind;
+    let mut s = Sim::new();
+    let depth = into_the_canyon(&mut s);
+    s.play.foes.clear();
+    s.play.shots.clear();
+    let (x, z) = open_sand(&s, 3);
+    s.stand(x - 2, z, Vec2::new(1.0, 0.0));
+    // Close by, it rears up with its hood spread...
+    let mut c = Enemy::new(
+        Foe::Cobra,
+        x as f32 - 0.1,
+        z as f32 + 0.5,
+        depth,
+        DESERT,
+        false,
+        5,
+    );
+    c.alert = true;
+    c.t = 0.0;
+    s.play.foes.push(c);
+    s.frames(2);
+    assert_eq!(s.play.foes[0].st, St::Windup);
+    assert_eq!(s.play.foes[0].hops, STRIKING);
+    // ...and strikes.
+    s.frames((REAR_SECS * 60.0) as usize + 2);
+    assert_eq!(s.play.foes[0].st, St::Dash);
+    // Further off, it spits venom at you.
+    s.play.foes.clear();
+    let away = Vec2::new(x as f32 + 2.5, z as f32 + 0.5);
+    let mut c = Enemy::new(Foe::Cobra, away.x, away.y, depth, DESERT, false, 6);
+    c.alert = true;
+    s.play.foes.push(c);
+    let mut spat = false;
+    for _ in 0..600 {
+        s.frames(1);
+        s.play.player.hp = s.play.player.max_hp();
+        if s.play.foes[0].hops == SPITTING && s.play.shots.iter().any(|s| s.kind == ShotKind::Venom)
+        {
+            spat = true;
+            break;
+        }
+        // (Keep it at a distance.)
+        s.play.foes[0].pos = away;
+    }
+    assert!(spat, "it never spat");
+}

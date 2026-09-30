@@ -4,6 +4,7 @@ pub mod beast_art;
 pub mod canyon_art;
 pub mod deep_art;
 pub mod delve_art;
+pub mod desert_art;
 pub mod fish_art;
 pub mod font;
 pub mod gear_art;
@@ -679,6 +680,8 @@ pub struct Assets {
     pub labyrinth: labyrinth_art::LabyrinthArt,
     /// The sunscorch canyon: strata, sand, quicksand, tombs, skulls, cacti and bones.
     pub canyon: canyon_art::CanyonArt,
+    /// The canyon's creatures: cactlings and sand cobras.
+    pub desert: desert_art::DesertArt,
     /// Drakelings and leaflings.
     pub beasts: beast_art::Beasts,
     /// Backpacks, worn and as icons, in every style and colourway.
@@ -695,6 +698,7 @@ impl Assets {
         season_art::build(&mut bank, &mut icons);
         deep_art::icons(&mut bank, &mut icons);
         beast_art::icons(&mut bank, &mut icons);
+        desert_art::icons(&mut bank, &mut icons);
         let packs = pack_art::build(&mut bank, &mut icons);
         magic_art::build(&mut bank, &mut icons);
         fish_art::build(&mut bank, &mut icons);
@@ -847,6 +851,7 @@ impl Assets {
         let glowcave = glowcave_art::build(&mut bank);
         let labyrinth = labyrinth_art::build(&mut bank);
         let canyon = canyon_art::build(&mut bank, labyrinth.stone, &labyrinth.columns);
+        let desert = desert_art::build(&mut bank, canyon.skin);
         let beasts = beast_art::build(&mut bank);
         Assets {
             foes,
@@ -903,6 +908,7 @@ impl Assets {
             glowcave,
             labyrinth,
             canyon,
+            desert,
             beasts,
             packs,
         }

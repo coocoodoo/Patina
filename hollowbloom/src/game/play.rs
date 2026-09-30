@@ -703,13 +703,19 @@ impl Play {
                 }
             }
         }
+        // In the canyon everyone's dressed for the desert, whatever the biome.
+        let folk_biome = if level.world.canyon {
+            super::canyon::DESERT
+        } else {
+            biome
+        };
         for (i, s) in level.spawns.iter().enumerate() {
             let mut f = Enemy::new(
                 s.foe,
                 s.x,
                 s.z,
                 depth,
-                biome,
+                folk_biome,
                 s.boss,
                 hash2(depth as i32, i as i32, self.seed as u32),
             );
@@ -728,7 +734,8 @@ impl Play {
             let mut rng = Rng::new(self.seed ^ (depth as u64 * 0x57A8) ^ self.clock.day as u64);
             for (k, (x, z)) in dungeon::prowls(&level, n, &mut rng).into_iter().enumerate() {
                 let seed = hash2(depth as i32, 900 + k as i32, self.seed as u32);
-                let mut f = Enemy::new(dungeon::Foe::Werewolf, x, z, depth, biome, false, seed);
+                let mut f =
+                    Enemy::new(dungeon::Foe::Werewolf, x, z, depth, folk_biome, false, seed);
                 if level.world.sewer {
                     f = f.in_the_sewers();
                 }
@@ -3325,6 +3332,14 @@ impl Play {
             Call::Screech => {
                 let pitch = 0.95 + self.rng.f32() * 0.1;
                 io.audio.play_at(Sfx::Screech, 0.7, pitch);
+            }
+            Call::Pop => {
+                let pitch = 0.95 + self.rng.f32() * 0.15;
+                io.audio.play_at(Sfx::Pop, 0.8, pitch);
+            }
+            Call::Hiss => {
+                let pitch = 0.9 + self.rng.f32() * 0.2;
+                io.audio.play_at(Sfx::Hiss, 0.7, pitch);
             }
         }
     }

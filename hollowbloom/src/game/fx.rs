@@ -456,6 +456,10 @@ pub enum ShotKind {
     Breath,
     /// A leafling's leaf, spinning as it flies.
     Leaf,
+    /// A cactling's needle, flying point first.
+    Needle,
+    /// A gob of a cobra's venom.
+    Venom,
 }
 
 /// How long a puff of a drakeling's breath lasts.

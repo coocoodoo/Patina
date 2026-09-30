@@ -428,6 +428,28 @@ impl Play {
                     r.mesh(&a.bank, &a.beasts.leafling.leaf, &m, &o);
                     continue;
                 }
+                ShotKind::Needle => {
+                    // A pale needle, point first, a glint at its tip.
+                    let d = Vec3::new(s.vel.x, 0.0, s.vel.y).normalize_or_zero();
+                    let p = s.world_pos();
+                    r.halo(p, 0.16, CREAM, 0.4);
+                    r.point(p - d * 0.14, 1, SHADOW);
+                    r.point(p - d * 0.07, 2, ROSEWOOD);
+                    r.point(p, 2, KHAKI);
+                    r.point(p + d * 0.07, 2, WHITE);
+                    continue;
+                }
+                ShotKind::Venom => {
+                    // A green gob, dripping as it flies.
+                    let p = s.world_pos();
+                    let back = Vec3::new(s.vel.x, 0.0, s.vel.y) * 0.04;
+                    r.halo(p, 0.22, LIME, 0.5);
+                    r.point(p, 4, GREEN);
+                    r.point(p + Vec3::Y * 0.03, 2, LIME);
+                    r.point(p - back, 2, GREEN);
+                    r.point(p - back * 2.2 - Vec3::Y * 0.05, 1, LIME);
+                    continue;
+                }
                 ShotKind::Spark => {}
             }
             let c = shot_colors(s.color);

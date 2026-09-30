@@ -499,7 +499,16 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   over its **hoard of gold** and a chest or two; and to the **Whispering Tombs**, four
   chambers of carved blocks where **mummies' coffins** lie under their striped headdresses
   and golden faces, among broken columns, canopic jars and grave goods, and where the
-  stairs lead down. Cacti grow in the sand, and sandstone can't be mined.
+  stairs lead down. Cacti grow in the sand, and sandstone can't be mined. Everyone down
+  there is dressed for the desert (mummies, pharaoh's guards, scarabs, dune sneaks).
+* **Cactlings** stand among the canyon's cacti, stout little cacti with a flower on top,
+  looking just like the rest (look closely: they breathe). Come within a couple of steps and
+  one **pops up out of the sand** on its roots, glaring, and waddles after you, arms
+  waving; every so often it swells up, shivers, and **sprays a ring of needles** all round.
+  They drop **cactling needles**, and fiber.
+* **Sand cobras** slither over the sand in long curves. Get close and one **rears up on its
+  coils with its hood spread**, hissing, sways, and **strikes**; from further off it rears
+  up and **spits venom** at you. They drop **cobra skins**, and now and then gold ore.
 * **Bombs** (from Garrick, five a day): throw one and it bounces, fizzes for two seconds and
   goes off, hurting everything close (you too, if you stand too near), bursting pots and
   crates. About half of the floors hide a **cracked patch of floor**; blow it open and a rope
@@ -594,7 +603,8 @@ game picks SDL by itself when there's no desktop; `--sdl` asks for it anywhere.
   shroomling, a crystal crab, a wisp, a beetle, an imp, a skull and crossbones, a golem's
   block, a ghost, a bog frog, a drift jelly, a spiny puffer, a stitched zombie, both goblins,
   a moss spider, a stained-glass snail shell, a book with its book-worm, a drakeling, a
-  leafling, a werewolf, a minotaur with its nose ring, and a griffin with its wings spread).
+  leafling, a werewolf, a minotaur with its nose ring, a griffin with its wings spread, a
+  cactling in its pot, and a coiled cobra with its hood up).
   Found backpacks roll their size (roomier deeper down): in
   treasure chests (often, in gleaming ones), from guardians, from goblins now and then, and
   every creature once in a while drops the one in its own shape. Rowan's guild sells plain
@@ -678,7 +688,7 @@ hollowbloom --deep-shots DIR      # lantern snails, book-worms, ink runes and th
 hollowbloom --sewer-shots DIR     # sewer floors, their clutter, fish, sludge slimes and bony folk
 hollowbloom --glowcave-shots DIR  # the glowcap caves: ruins, glowing cave, nooks, pools, giant
 hollowbloom --labyrinth-shots DIR # the marble labyrinth: maze, arches, courtyard, minotaur, griffin
-hollowbloom --canyon-shots DIR    # the sunscorch canyon: halls, pit, sandfalls, warrens, maw, tombs
+hollowbloom --canyon-shots DIR    # the sunscorch canyon: its places and props, cactlings, cobras
 hollowbloom --beast-shots DIR     # drakelings breathing fire and frost, leaflings, a werewolf
 hollowbloom --pack-shots DIR      # backpacks: the pouch beside the bag, every look on your back
 hollowbloom --music DIR           # every song as a WAV file, and its notes as CSV

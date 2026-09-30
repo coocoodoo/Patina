@@ -58,6 +58,60 @@ pub fn lathe(
     m.lathe(c, &p, seg, TD * 2.0, phase, tex, (cap, cap));
 }
 
+/// A tube swept along `pts`, as thick as `radii` at each, `seg` sided, its ends closed:
+/// horns, fangs, curved bones, a snake. Its texture runs along it from the far end, a texel
+/// to a sixteenth of a unit, so a horn's tip takes the top of the texture; round it, the
+/// texture's middle column lies opposite `up` where the tube starts, the frame carried along
+/// without twisting (so a snake's belly stays underneath it as it rears up).
+pub fn tube(m: &mut Mesh, pts: &[Vec3], radii: &[f32], seg: usize, tex: TexId, up: Vec3) {
+    let n = pts.len();
+    if n < 2 {
+        return;
+    }
+    let mut v = vec![0.0f32; n];
+    for i in (0..n - 1).rev() {
+        v[i] = v[i + 1] + (pts[i + 1] - pts[i]).length() * TD;
+    }
+    let along = |i: usize| (pts[(i + 1).min(n - 1)] - pts[i.saturating_sub(1)]).normalize_or_zero();
+    let t0 = along(0);
+    let mut a = (up - t0 * up.dot(t0))
+        .try_normalize()
+        .unwrap_or_else(|| t0.any_orthonormal_vector());
+    let rings: Vec<Vec<Vec3>> = (0..n)
+        .map(|i| {
+            let t = along(i);
+            a = (a - t * a.dot(t)).try_normalize().unwrap_or(a);
+            let b = t.cross(a);
+            (0..seg)
+                .map(|j| {
+                    let th = j as f32 / seg as f32 * std::f32::consts::TAU;
+                    pts[i] + (a * th.cos() + b * th.sin()) * radii[i].max(0.003)
+                })
+                .collect()
+        })
+        .collect();
+    for i in 0..n - 1 {
+        for j in 0..seg {
+            let k = (j + 1) % seg;
+            let (u0, u1) = (
+                j as f32 * 16.0 / seg as f32,
+                (j + 1) as f32 * 16.0 / seg as f32,
+            );
+            m.quad(
+                [rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]],
+                UvRect::new(u0, v[i + 1], u1, v[i]),
+                tex,
+            );
+        }
+    }
+    let dot = [glam::Vec2::new(8.5, 8.5); 3];
+    for j in 0..seg {
+        let k = (j + 1) % seg;
+        m.tri([pts[0], rings[0][k], rings[0][j]], dot, tex);
+        m.tri([pts[n - 1], rings[n - 1][j], rings[n - 1][k]], dot, tex);
+    }
+}
+
 // ------------------------------------------------------------------------------------------
 // Characters
 // ------------------------------------------------------------------------------------------

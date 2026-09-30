@@ -1653,6 +1653,39 @@ pub fn bench() {
             draw_time * 1000.0 / frames as f64
         );
     }
+    // The sunscorch canyon, stood in the Wyvern's Maw by its bones and glittering hoard.
+    let canyon = {
+        let p = play(&mut game);
+        (6..200).find(|&d| crate::game::canyon::is_canyon(p.seed, d, p.biome_at(d)))
+    };
+    if let Some(depth) = canyon {
+        descend(&mut game, &input, &audio, depth, false);
+        {
+            let p = play(&mut game);
+            let w = &p.level.as_ref().unwrap().world;
+            let wyvern = (0..w.h)
+                .flat_map(|z| (0..w.w).map(move |x| (x, z)))
+                .find(|&(x, z)| matches!(w.obj(x, z), Some(crate::game::world::Obj::Wyvern)));
+            if let Some((x, z)) = wyvern {
+                let (x, z) = w.nearest_open(x + 1, z + 3);
+                p.player.pos = Vec2::new(x as f32 + 0.5, z as f32 + 0.5);
+            }
+        }
+        let t0 = Instant::now();
+        let mut draw_time = 0.0;
+        for _ in 0..frames {
+            tick(&mut game, &input, &audio, 1);
+            let t = Instant::now();
+            game.draw(&mut r, &input);
+            draw_time += t.elapsed().as_secs_f64();
+        }
+        let total = t0.elapsed().as_secs_f64();
+        println!(
+            "sunscorch canyon (floor {depth}): {:.2} ms/frame total, {:.2} ms/frame drawing",
+            total * 1000.0 / frames as f64,
+            draw_time * 1000.0 / frames as f64
+        );
+    }
     // The busiest place: the plaza at noon, everyone out and about.
     {
         let p = play(&mut game);
@@ -6078,5 +6111,197 @@ pub fn canyon_shots(dir: &str) {
             Vec3::new(x0 as f32 + 4.0, 0.3, z0 as f32 + 1.5),
             3.5,
         );
+
+        // The cactling: hidden beside a real cactus, popping up, waddling after you, and
+        // spraying its needles.
+        use crate::game::canyon::DESERT;
+        use crate::game::dungeon::Foe;
+        use crate::game::foes::{Enemy, NEEDLE_LIFE, NEEDLES, SPITTING, STRIKE_SECS, STRIKING, St};
+        use crate::game::fx::{Shot, ShotKind};
+        use crate::palette::{CREAM, GOLD, LIME, SAND};
+        let spot = Vec2::new(x0 as f32 + 3.5, z0 as f32 + 2.5);
+        let focus = Vec3::new(spot.x, 0.4, spot.y);
+        let critter = |game: &mut Game, foe: Foe, alert: bool, st: St, t: f32, yaw: f32| {
+            let p = play(game);
+            p.foes.clear();
+            p.shots.clear();
+            p.fx.pops.clear();
+            let mut f = Enemy::new(foe, spot.x, spot.y, depth, DESERT, false, 7);
+            f.alert = alert;
+            f.st = st;
+            f.t = t;
+            f.yaw = yaw;
+            f.anim = 0.3;
+            p.foes.push(f);
+            p.player.pos = Vec2::new(spot.x + 0.9, spot.y + 2.7);
+            p.player.facing = Vec2::new(-0.3, -1.0).normalize();
+        };
+        {
+            let p = play(&mut game);
+            let w = &mut p.level.as_mut().unwrap().world;
+            for z in z0..z0 + 5 {
+                for x in x0 - 1..x0 + 8 {
+                    if w.wall(x, z) == crate::game::world::Wall::None {
+                        w.set_obj(x, z, None);
+                    }
+                }
+            }
+            w.set_obj(x0 + 2, z0 + 2, Some(Obj::Cactus { var: 0 }));
+        }
+        critter(&mut game, Foe::Cactus, false, St::Idle, 1.0, 0.0);
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c14_cactling_hidden",
+            focus,
+            4.6,
+        );
+        critter(&mut game, Foe::Cactus, true, St::Rest, 0.4, 0.2);
+        {
+            let p = play(&mut game);
+            p.foes[0].squash = 0.9;
+            p.fx.burst(
+                Vec3::new(spot.x, 0.1, spot.y),
+                14,
+                &[SAND, GOLD, CREAM],
+                2.2,
+                1.6,
+            );
+            p.fx.update(0.06);
+        }
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c15_cactling_pops",
+            focus,
+            4.6,
+        );
+        critter(&mut game, Foe::Cactus, true, St::Chase, 2.0, 0.3);
+        play(&mut game).foes[0].anim = 0.2;
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c16_cactling_waddles",
+            focus,
+            4.6,
+        );
+        critter(&mut game, Foe::Cactus, true, St::Windup, 0.2, 0.2);
+        {
+            let p = play(&mut game);
+            for k in 0..NEEDLES {
+                let d = Vec2::from_angle(0.3 + k as f32 / NEEDLES as f32 * std::f32::consts::TAU);
+                p.shots.push(Shot {
+                    pos: spot + d * 0.7,
+                    vel: d * 4.0,
+                    dmg: 1,
+                    life: NEEDLE_LIFE,
+                    color: CREAM,
+                    radius: 0.1,
+                    kind: ShotKind::Needle,
+                });
+            }
+        }
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c17_cactling_needles",
+            focus,
+            5.2,
+        );
+
+        // The sand cobra: slithering, rearing up with its hood spread, striking, spitting.
+        play(&mut game)
+            .level
+            .as_mut()
+            .unwrap()
+            .world
+            .set_obj(x0 + 2, z0 + 2, None);
+        critter(&mut game, Foe::Cobra, true, St::Chase, 2.0, 0.6);
+        play(&mut game).foes[0].dir = Vec2::new(0.55, 0.8).normalize();
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c18_cobra_slithers",
+            focus,
+            4.6,
+        );
+        critter(&mut game, Foe::Cobra, true, St::Windup, 0.05, 0.25);
+        play(&mut game).foes[0].hops = STRIKING;
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c19_cobra_rears",
+            focus,
+            4.2,
+        );
+        critter(
+            &mut game,
+            Foe::Cobra,
+            true,
+            St::Dash,
+            STRIKE_SECS * 0.3,
+            0.25,
+        );
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c20_cobra_strikes",
+            focus,
+            4.2,
+        );
+        critter(&mut game, Foe::Cobra, true, St::Windup, 0.05, 0.25);
+        {
+            let p = play(&mut game);
+            p.foes[0].hops = SPITTING;
+            let to = (p.player.pos - spot).normalize();
+            p.shots.push(Shot {
+                pos: spot + to * 1.1,
+                vel: to * 5.2,
+                dmg: 1,
+                life: 1.0,
+                color: LIME,
+                radius: 0.14,
+                kind: ShotKind::Venom,
+            });
+        }
+        close(
+            &mut game,
+            &mut r,
+            &input,
+            dir,
+            "c21_cobra_spits",
+            focus,
+            4.6,
+        );
+        // The rest of the canyon's folk, dressed for the desert.
+        lineup(
+            play(&mut game),
+            &[
+                Foe::Zombie,
+                Foe::Skeleton,
+                Foe::Bug,
+                Foe::Beetle,
+                Foe::Sneak,
+                Foe::Brute,
+            ],
+            DESERT,
+            depth,
+        );
+        tick(&mut game, &input, &audio, 1);
+        snap(&mut game, &mut r, &input, dir, "c22_desert_folk");
     }
 }

@@ -58,6 +58,9 @@ pub const SAGUARO: u8 = 0;
 pub const BARREL: u8 = 1;
 pub const PADDLE: u8 = 2;
 
+/// How many cactlings at most stand hidden among a canyon's cacti.
+pub const CACTLINGS: usize = 4;
+
 /// The wyvern's bones lie over a block of tiles this big, anchored at its north-west.
 pub const WYVERN_W: i32 = 3;
 pub const WYVERN_H: i32 = 2;
@@ -77,17 +80,20 @@ pub fn is_canyon(seed: u64, depth: u32, biome: usize) -> bool {
         && Rng::new(seed ^ (depth as u64).wrapping_mul(0x27D4_EB2F) ^ 0xCA7).chance(chance)
 }
 
-/// Who lives in the canyon, with weights: the desert's walking dead, bones, goblins, bugs
-/// and beetles, and from floor 11 down the deep folk too.
+/// Who lives in the canyon, with weights: sand cobras and the odd cactling, the desert's
+/// walking dead, bones, goblins, bugs and beetles, and from floor 11 down the deep folk too.
+/// (More cactlings hide among the cacti: see `generate`.)
 pub fn canyon_folk(depth: u32) -> Vec<(Foe, f32)> {
     let mut v = vec![
-        (Foe::Zombie, 1.4),
-        (Foe::Skeleton, 1.5),
-        (Foe::Bug, 1.8),
-        (Foe::Beetle, 1.1),
-        (Foe::Sneak, 1.2),
-        (Foe::Brute, 0.8),
-        (Foe::Ghost, 0.7),
+        (Foe::Cobra, 1.8),
+        (Foe::Cactus, 0.5),
+        (Foe::Zombie, 1.2),
+        (Foe::Skeleton, 1.3),
+        (Foe::Bug, 1.5),
+        (Foe::Beetle, 0.9),
+        (Foe::Sneak, 1.0),
+        (Foe::Brute, 0.7),
+        (Foe::Ghost, 0.6),
     ];
     if depth >= DEEP_FOLK {
         v.extend_from_slice(deep_folk(DESERT));
@@ -818,11 +824,35 @@ pub fn generate(seed: u64, depth: u32, biome: usize) -> Level {
         }
     }
 
-    // Who lives here: the desert's folk.
+    // Who lives here: the desert's folk, and cactlings stood among the cacti beside the way,
+    // looking just like them.
     let foes = canyon_folk(depth);
     let weights: Vec<f32> = foes.iter().map(|f| f.1).collect();
     let cap = (5 + depth as usize / 3).min(22);
     let mut spawns = Vec::new();
+    let mut hidden = 0;
+    for z in 2..h - 2 {
+        for x in 2..w - 2 {
+            if hidden >= CACTLINGS || !matches!(world.obj(x, z), Some(Obj::Cactus { .. })) {
+                continue;
+            }
+            if !r.chance(0.35) {
+                continue;
+            }
+            let (dx, dz) = [(1, 0), (-1, 0), (0, 1), (0, -1)][r.below(4)];
+            let (cx, cz) = (x + dx, z + dz);
+            let d = dist[world.idx(cx, cz)];
+            if d != u32::MAX && d >= 12 && free(&world, cx, cz) {
+                spawns.push(Spawn {
+                    foe: Foe::Cactus,
+                    x: cx as f32 + 0.5,
+                    z: cz as f32 + 0.5,
+                    boss: false,
+                });
+                hidden += 1;
+            }
+        }
+    }
     for _ in 0..cap * 40 {
         if spawns.len() >= cap {
             break;
@@ -984,6 +1014,38 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn cactlings_hide_among_the_cacti_and_cobras_roam() {
+        let mut hidden = 0;
+        let mut cobras = 0;
+        for l in canyons() {
+            let w = &l.world;
+            let beside = l
+                .spawns
+                .iter()
+                .filter(|s| s.foe == Foe::Cactus)
+                .filter(|s| {
+                    let (x, z) = (s.x as i32, s.z as i32);
+                    [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                        .iter()
+                        .any(|&(dx, dz)| matches!(w.obj(x + dx, z + dz), Some(Obj::Cactus { .. })))
+                })
+                .count();
+            assert!(beside <= CACTLINGS);
+            hidden += beside;
+            cobras += l.spawns.iter().filter(|s| s.foe == Foe::Cobra).count();
+            for s in &l.spawns {
+                assert!(
+                    !w.blocked(s.x as i32, s.z as i32),
+                    "{:?} in the rock",
+                    s.foe
+                );
+            }
+        }
+        assert!(hidden >= 6, "{hidden} cactlings hiding");
+        assert!(cobras >= 6, "{cobras} cobras");
     }
 
     #[test]

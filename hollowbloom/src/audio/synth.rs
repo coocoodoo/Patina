@@ -91,6 +91,10 @@ pub enum Sfx {
     Crash,
     /// A griffin's screech.
     Screech,
+    /// A cactling popping up out of the sand.
+    Pop,
+    /// A cobra's hiss.
+    Hiss,
 }
 
 pub const ALL: &[Sfx] = &[
@@ -157,6 +161,8 @@ pub const ALL: &[Sfx] = &[
     Sfx::Bellow,
     Sfx::Crash,
     Sfx::Screech,
+    Sfx::Pop,
+    Sfx::Hiss,
 ];
 
 fn square(phase: f32, duty: f32) -> f32 {
@@ -853,6 +859,32 @@ pub fn make(s: Sfx) -> Vec<f32> {
                 lp += (n - lp) * 0.5;
                 let env = (t * 30.0).min(1.0) * (1.0 - k).powf(1.5);
                 (square(a, 0.3) * 0.3 + sine(a) * 0.25 + lp * 0.15) * env * 0.8
+            })
+        }
+        Sfx::Pop => {
+            // Up out of the sand: a soft pop, and the shush of sand pouring off.
+            let secs = 0.45;
+            let (mut a, mut lp) = (0.0, 0.0);
+            render(secs, |t, n| {
+                let pitch = 180.0 + 900.0 * (t * 18.0).min(1.0) * (-t * 10.0).exp();
+                a += pitch / RATE;
+                lp += (n - lp) * 0.25;
+                let pop = sine(a) * (-t * 22.0).exp() * 0.8;
+                let shush = lp * 0.35 * (t * 8.0).min(1.0) * (-t * 5.0).exp();
+                pop + shush
+            })
+        }
+        Sfx::Hiss => {
+            // A long hiss through bared fangs: bright noise swelling and dying away.
+            let secs = 0.6;
+            let (mut lp, mut last) = (0.0, 0.0);
+            render(secs, |t, n| {
+                let k = t / secs;
+                lp += (n - lp) * 0.6;
+                let hiss = lp - last;
+                last = lp;
+                let env = (t * 14.0).min(1.0) * (1.0 - k).powf(0.8);
+                hiss * 1.1 * env
             })
         }
         Sfx::Piano => {

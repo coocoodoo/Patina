@@ -10,7 +10,7 @@ use super::fx::{BREATH_LIFE, Fx, Shot, ShotKind};
 use super::world::World;
 use crate::assets::{Assets, BIOMES, LOOKS, SEWER_LOOK};
 use crate::palette::*;
-use crate::render::{DrawOpts, Light, Mode, PointLight, Renderer, Warp};
+use crate::render::{DrawOpts, Light, Mesh, Mode, PointLight, Renderer, Warp};
 use crate::util::{Rng, approach};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -48,6 +48,10 @@ pub enum Call {
     Crash,
     /// A griffin's screech, as it takes wing or stoops to dive.
     Screech,
+    /// A cactling popping up out of the sand.
+    Pop,
+    /// A cobra rearing up with a hiss.
+    Hiss,
 }
 
 /// How long a werewolf howls, and how far the howl carries.
@@ -77,6 +81,24 @@ pub const PERCH_Y: f32 = 1.06;
 /// How much bigger than its model a minotaur and a griffin are drawn.
 pub const MINOTAUR_SIZE: f32 = 1.15;
 pub const GRIFFIN_SIZE: f32 = 1.3;
+/// How close you come before a cactling pops up out of the sand; how long it bristles
+/// before its needles fly, how many fly, how fast, and how far they go.
+pub const CACTUS_WAKE: f32 = 2.6;
+pub const NEEDLE_WINDUP: f32 = 0.7;
+pub const NEEDLES: usize = 10;
+pub const NEEDLE_SPEED: f32 = 4.0;
+pub const NEEDLE_LIFE: f32 = 1.4;
+/// How far down in the sand a cactling stands while it hides among the cacti.
+pub const CACTUS_SUNK: f32 = 0.1;
+/// How long a cobra rears with its hood spread before it strikes or spits; how near it
+/// strikes from, and how far off it spits.
+pub const REAR_SECS: f32 = 0.5;
+pub const STRIKE_RANGE: f32 = 1.9;
+pub const SPIT_RANGE: f32 = 5.5;
+pub const STRIKE_SECS: f32 = 0.2;
+/// What a cobra's rearing up for (`Enemy::hops`): to strike, or to spit.
+pub const STRIKING: u32 = 0;
+pub const SPITTING: u32 = 1;
 
 pub struct Enemy {
     pub foe: Foe,
@@ -197,6 +219,8 @@ pub fn base(f: Foe) -> Base {
         Foe::Werewolf => b(52, 14, 3.0, 0.34, 18, "Werewolf"),
         Foe::Minotaur => b(80, 17, 1.6, 0.42, 24, "Minotaur"),
         Foe::Griffin => b(46, 13, 2.6, 0.36, 20, "Griffin"),
+        Foe::Cactus => b(40, 10, 1.2, 0.32, 14, "Cactling"),
+        Foe::Cobra => b(30, 12, 2.5, 0.28, 13, "Sand Cobra"),
     }
 }
 
@@ -296,6 +320,8 @@ pub fn kind_name(f: Foe, biome: usize) -> &'static str {
         Foe::Werewolf => "Werewolf",
         Foe::Minotaur => "Minotaur",
         Foe::Griffin => "Griffin",
+        Foe::Cactus => "Cactling",
+        Foe::Cobra => "Sand Cobra",
     }
 }
 
@@ -598,8 +624,13 @@ impl Enemy {
         let dist = to.length();
         let dirp = to.normalize_or_zero();
         if !self.alert {
-            let sees = dist < 7.0 * self.fury
-                && (self.passes_walls() || world.clear_line(self.pos, player));
+            let sees = if self.foe == Foe::Cactus {
+                // Stood stock still among the cacti until you come right up to it.
+                dist < CACTUS_WAKE * self.fury.sqrt()
+            } else {
+                dist < 7.0 * self.fury
+                    && (self.passes_walls() || world.clear_line(self.pos, player))
+            };
             if sees || (self.boss && dist < 9.0) {
                 self.alert = true;
                 fx.popup(self.world_pos() + Vec3::Y * (0.8 * self.scale()), "!", GOLD);
@@ -617,8 +648,25 @@ impl Enemy {
                     self.t = 0.8;
                     self.call = Some(Call::Screech);
                 }
+                if self.foe == Foe::Cactus {
+                    // Up out of the sand it pops, arms up, sand flying.
+                    self.st = St::Rest;
+                    self.t = 0.5;
+                    self.squash = 1.0;
+                    self.call = Some(Call::Pop);
+                    fx.burst(
+                        self.world_pos() + Vec3::Y * 0.1,
+                        14,
+                        &[SAND, GOLD, CREAM],
+                        2.2,
+                        1.6,
+                    );
+                }
             } else if self.foe == Foe::Griffin {
                 self.perch(dt, world);
+                return;
+            } else if self.foe == Foe::Cactus {
+                self.st = St::Idle;
                 return;
             } else {
                 self.idle_wander(dt, world, rng);
@@ -760,6 +808,8 @@ impl Enemy {
             Foe::Werewolf => self.werewolf(dt, world, dirp, dist, rng),
             Foe::Minotaur => self.minotaur(dt, world, dirp, dist, fx, rng),
             Foe::Griffin => self.griffin(dt, world, dirp, dist, rng),
+            Foe::Cactus => self.cactus(dt, world, dirp, dist, shots, rng),
+            Foe::Cobra => self.cobra(dt, world, dirp, dist, shots, rng),
         }
         // A griffin wheeling round you, or climbing away, faces the way it flies; a dazed
         // minotaur doesn't turn to follow you.
@@ -1220,6 +1270,139 @@ impl Enemy {
                     self.st = St::Windup;
                     self.t = 0.55;
                     self.call = Some(Call::Screech);
+                }
+            }
+        }
+    }
+
+    /// A cactling waddles after you on its roots, and every so often stops, bristles, and
+    /// sprays a ring of needles all round.
+    fn cactus(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        let s = self.scale();
+        match self.st {
+            St::Windup => {
+                if self.t <= 0.0 {
+                    let n = if self.boss { NEEDLES * 2 } else { NEEDLES };
+                    let turn = rng.f32() * std::f32::consts::TAU;
+                    for k in 0..n {
+                        let d =
+                            Vec2::from_angle(turn + k as f32 / n as f32 * std::f32::consts::TAU);
+                        shots.push(Shot {
+                            pos: self.pos + d * (0.3 * s),
+                            vel: d * NEEDLE_SPEED,
+                            dmg: (self.dmg * 3 / 4).max(1),
+                            life: NEEDLE_LIFE,
+                            color: CREAM,
+                            radius: 0.1,
+                            kind: ShotKind::Needle,
+                        });
+                    }
+                    self.squash = 0.8;
+                    self.st = St::Rest;
+                    self.t = 0.5;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(1.6, 2.6);
+                }
+            }
+            _ => {
+                self.dir = dirp;
+                if self.t <= 0.0 && dist < 4.5 * self.reach() {
+                    self.st = St::Windup;
+                    self.t = NEEDLE_WINDUP;
+                } else if dist > 0.8 * self.reach() {
+                    // A waddle, rocking from root to root.
+                    let rock = 0.5 + 0.7 * (self.anim * 7.0).sin().abs();
+                    self.step(world, dirp * self.speed * rock * dt);
+                }
+            }
+        }
+    }
+
+    /// A sand cobra slithers after you in long curves. Close by it rears up, hood spread,
+    /// and strikes; further off it now and then rears and spits venom at you.
+    fn cobra(
+        &mut self,
+        dt: f32,
+        world: &World,
+        dirp: Vec2,
+        dist: f32,
+        shots: &mut Vec<Shot>,
+        rng: &mut Rng,
+    ) {
+        match self.st {
+            St::Windup => {
+                // Reared up and swaying, hood spread, eyes on you.
+                self.dir = dirp;
+                if self.t <= 0.0 {
+                    if self.hops == SPITTING {
+                        shots.push(Shot {
+                            pos: self.pos + dirp * (0.3 * self.scale()),
+                            vel: dirp * 5.2,
+                            dmg: self.dmg,
+                            life: 1.3,
+                            color: LIME,
+                            radius: 0.14,
+                            kind: ShotKind::Venom,
+                        });
+                        self.st = St::Rest;
+                        self.t = 0.6;
+                    } else {
+                        self.st = St::Dash;
+                        self.t = STRIKE_SECS;
+                    }
+                }
+            }
+            St::Dash => {
+                // The strike: head and neck flung out at you.
+                let d = self.dir * self.speed * 3.6 * dt;
+                self.step(world, d);
+                if self.t <= 0.0 {
+                    self.st = St::Rest;
+                    self.t = 0.55;
+                }
+            }
+            St::Rest => {
+                if self.t <= 0.0 {
+                    self.st = St::Chase;
+                    self.t = rng.range_f(0.8, 1.6);
+                }
+            }
+            _ => {
+                let sees = world.clear_line(self.pos, self.pos + dirp * dist);
+                if self.t <= 0.0 && dist < STRIKE_RANGE * self.reach() {
+                    self.st = St::Windup;
+                    self.hops = STRIKING;
+                    self.t = REAR_SECS;
+                    self.dir = dirp;
+                    self.call = Some(Call::Hiss);
+                } else if self.t <= 0.0 && dist < SPIT_RANGE && sees {
+                    if rng.chance(0.6) {
+                        self.st = St::Windup;
+                        self.hops = SPITTING;
+                        self.t = REAR_SECS + 0.15;
+                        self.dir = dirp;
+                        self.call = Some(Call::Hiss);
+                    } else {
+                        self.t = rng.range_f(0.6, 1.2);
+                    }
+                } else {
+                    // Slithering in long curves.
+                    let side = Vec2::new(-dirp.y, dirp.x);
+                    let weave = side * (self.anim * 2.6 + self.seed as f32).sin() * 0.7;
+                    self.dir = (dirp + weave).normalize_or_zero();
+                    self.step(world, self.dir * self.speed * dt);
                 }
             }
         }
@@ -1819,6 +2002,8 @@ impl Enemy {
             (Foe::Werewolf, _) => KHAKI,
             (Foe::Minotaur, _) => RUST,
             (Foe::Griffin, _) => SAND,
+            (Foe::Cactus, _) => GREEN,
+            (Foe::Cobra, _) => LIME,
         }
     }
 
@@ -2271,6 +2456,8 @@ impl Enemy {
             Foe::Werewolf => self.draw_werewolf(r, a, &o),
             Foe::Minotaur => self.draw_minotaur(r, a, &o),
             Foe::Griffin => self.draw_griffin(r, a, &o),
+            Foe::Cactus => self.draw_cactus(r, a, &o),
+            Foe::Cobra => self.draw_cobra(r, a, &o),
             Foe::Imp | Foe::Skeleton | Foe::Zombie | Foe::Brute | Foe::Sneak => {
                 let looks = &a.monsters;
                 let h = match self.foe {
@@ -2641,6 +2828,225 @@ impl Enemy {
                     r.point(q, 1, if t < 0.5 { WHITE } else { CREAM });
                 }
             }
+        }
+    }
+
+    /// A cactling: stood a little down in the sand among the cacti with its face hidden,
+    /// or up on its roots glaring, waving its arms and waddling; swelling up and shivering,
+    /// its needles glinting, before they fly.
+    fn draw_cactus(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::desert_art::{
+            CACTLING_EYE, CACTLING_FOOT, CACTLING_SHOULDER, CACTLING_TOP,
+        };
+        let art = &a.desert.cactling;
+        let s = self.scale();
+        let awake = self.alert;
+        // Hidden, it keeps still but for a slow breath (if you're looking closely).
+        let (sunk, breathe) = if awake {
+            (0.0, 0.0)
+        } else {
+            (-CACTUS_SUNK, (self.anim * 1.3).sin() * 0.012)
+        };
+        let bristle = self.st == St::Windup;
+        let shiver = if bristle {
+            (self.anim * 45.0).sin() * 0.015
+        } else {
+            0.0
+        };
+        let walking = awake && self.st == St::Chase;
+        let rock = if walking {
+            (self.anim * 7.0).sin() * 0.14
+        } else {
+            0.0
+        };
+        let puff = if bristle { 0.06 } else { 0.0 };
+        let (squash, widen) = (
+            1.0 - self.squash * 0.28 + breathe + puff,
+            1.0 + self.squash * 0.2 + puff,
+        );
+        let root = Mat4::from_translation(Vec3::new(self.pos.x + shiver, sunk * s, self.pos.y))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_scale(Vec3::splat(s));
+        // Awake, it stands up on its roots.
+        let body = root
+            * Mat4::from_translation(Vec3::Y * if awake { 0.05 } else { 0.0 })
+            * Mat4::from_rotation_z(rock)
+            * Mat4::from_scale(Vec3::new(widen, squash, widen));
+        r.mesh(&a.bank, &art.trunk, &body, o);
+        if awake {
+            r.mesh(&a.bank, &art.face, &body, o);
+        }
+        // Its arms, one higher than the other like any cactus's: waving once it's awake,
+        // and flung up as it bristles.
+        for side in [1.0f32, -1.0] {
+            let wave = if bristle {
+                0.3
+            } else if awake {
+                (self.anim * 6.0 + side).sin() * 0.3
+            } else {
+                0.0
+            };
+            let high = if side < 0.0 { 0.08 } else { 0.0 };
+            let turn = if side > 0.0 { 0.0 } else { PI };
+            let m =
+                body * Mat4::from_translation(Vec3::new(
+                    side * CACTLING_SHOULDER.x,
+                    CACTLING_SHOULDER.y + high,
+                    0.0,
+                )) * Mat4::from_rotation_y(turn)
+                    * Mat4::from_rotation_z(wave);
+            r.mesh(&a.bank, &art.arm, &m, o);
+        }
+        for side in [1.0f32, -1.0] {
+            let step = self.anim * 7.0 + if side > 0.0 { 0.0 } else { PI };
+            let lift = if walking {
+                step.sin().max(0.0) * 0.05
+            } else {
+                0.0
+            };
+            let m = root
+                * Mat4::from_translation(Vec3::new(side * CACTLING_FOOT.x, lift, CACTLING_FOOT.z));
+            r.mesh(&a.bank, &art.foot, &m, o);
+        }
+        let nod = (self.anim * 2.0).sin() * 0.1;
+        let m = body
+            * Mat4::from_translation(Vec3::Y * (CACTLING_TOP - 0.01))
+            * Mat4::from_rotation_x(nod);
+        r.mesh(&a.bank, &art.flower, &m, o);
+        if awake {
+            for sx in [-1.0f32, 1.0] {
+                let eye = body.transform_point3(Vec3::new(
+                    sx * CACTLING_EYE.x,
+                    CACTLING_EYE.y - 0.006,
+                    CACTLING_EYE.z + 0.02,
+                ));
+                r.halo(eye, 0.035 * s, RED, 0.18);
+            }
+        }
+        if bristle {
+            // Its needles standing up, glinting all over it.
+            for k in 0..10 {
+                let t = k as f32 / 10.0 * std::f32::consts::TAU + self.anim * 0.5;
+                let y = 0.15 + (k % 4) as f32 * 0.15;
+                let p = body.transform_point3(Vec3::new(t.cos() * 0.23, y, t.sin() * 0.23));
+                if (self.anim * 25.0 + k as f32 * 1.7).sin() > 0.0 {
+                    r.point(p, 1, WHITE);
+                }
+            }
+        }
+    }
+
+    /// A sand cobra: slithering along in curves, or reared up on its coils with its hood
+    /// spread and its mouth open, swaying; flung out at you in a strike.
+    fn draw_cobra(&self, r: &mut Renderer, a: &Assets, o: &DrawOpts) {
+        use crate::assets::desert_art::COBRA_EYE;
+        use crate::assets::models::tube;
+        const N: usize = 16;
+        const NECK: usize = 6;
+        const SEG: f32 = 0.085;
+        let art = &a.desert.cobra;
+        let s = self.scale();
+        let moving = self.dir.length_squared() > 0.0 && matches!(self.st, St::Chase | St::Idle);
+        // How far it has reared up, and how far out it has struck.
+        let (rear, strike) = match self.st {
+            St::Windup => (
+                (0.35 + (1.0 - self.t / REAR_SECS) * 1.3).clamp(0.35, 1.0),
+                0.0,
+            ),
+            St::Dash => (1.0, (1.0 - self.t / STRIKE_SECS).clamp(0.0, 1.0)),
+            St::Rest => ((self.t / 0.6).clamp(0.0, 1.0), 0.0),
+            _ if moving => (0.0, 0.0),
+            _ => (0.3, 0.0),
+        };
+        let fwd = Vec3::new(self.yaw.sin(), 0.0, self.yaw.cos());
+        let travel = if moving {
+            Vec3::new(self.dir.x, 0.0, self.dir.y).normalize_or(fwd)
+        } else {
+            fwd
+        };
+        let across = |d: Vec3| Vec3::new(d.z, 0.0, -d.x);
+        let base = Vec3::new(self.pos.x, 0.0, self.pos.y);
+        // Thickest a little behind its head, down to a point at its tail.
+        let thick = |k: usize| {
+            let f = k as f32 / (N - 1) as f32;
+            ((0.057 + 0.018 * (f * 6.0).min(1.0)) * (1.0 - f * f) + 0.009) * s
+        };
+        let phase = self.anim * 9.0;
+        let slither = |k: usize| {
+            let d = k as f32 * SEG;
+            let swing = (phase - d * 7.5).sin() * 0.09 * (d / 0.35).min(1.0);
+            let lift = if k < 2 { 0.05 } else { 0.0 };
+            base + (-travel * d + across(travel) * swing) * s + Vec3::Y * (thick(k) + lift * s)
+        };
+        let head_at =
+            base + fwd * ((0.06 + strike * 0.45) * s) + Vec3::Y * ((0.72 - strike * 0.35) * s);
+        let foot = base - fwd * (0.08 * s);
+        let reared = |k: usize| {
+            if k < NECK {
+                // Up its neck, bowed forward over its coils, swaying.
+                let f = k as f32 / (NECK - 1) as f32;
+                let sway = across(fwd) * ((self.anim * 4.0).sin() * 0.04 * s * (1.0 - f));
+                let bow = fwd * ((f * PI).sin() * -0.06 * s);
+                head_at.lerp(foot + Vec3::Y * thick(k), f) + bow + sway
+            } else {
+                // Round and round in coils on the sand, widening outwards.
+                let j = (k - NECK) as f32;
+                let t = j * 0.62 + self.yaw + PI;
+                let rad = (0.1 + j * 0.018) * s;
+                foot + Vec3::new(t.sin(), 0.0, t.cos()) * rad + Vec3::Y * thick(k)
+            }
+        };
+        let pts: Vec<Vec3> = (0..N).map(|k| slither(k).lerp(reared(k), rear)).collect();
+        // The body, swept from the tail up to the head, its belly underneath.
+        let tail_first: Vec<Vec3> = pts.iter().rev().copied().collect();
+        let radii: Vec<f32> = (0..N).rev().map(thick).collect();
+        let mut body = Mesh::new();
+        tube(&mut body, &tail_first, &radii, 6, art.scales, Vec3::Y);
+        r.mesh(&a.bank, &body, &Mat4::IDENTITY, o);
+        // Its head: leading the way as it slithers, looking at you as it rears.
+        let neck = (pts[0] - pts[1]).normalize_or(fwd);
+        let flat = Vec3::new(neck.x, 0.0, neck.z).normalize_or(fwd);
+        let look = flat.lerp(fwd, rear).normalize_or(fwd);
+        let pitch = strike * 0.35 - (1.0 - rear) * 0.1;
+        let head = Mat4::from_translation(pts[0])
+            * Mat4::from_rotation_y(look.x.atan2(look.z))
+            * Mat4::from_rotation_x(pitch)
+            * Mat4::from_scale(Vec3::splat(s * 1.3));
+        r.mesh(&a.bank, &art.head, &head, o);
+        let gape = rear * 0.3 + strike * 0.45;
+        r.mesh(&a.bank, &art.jaw, &(head * Mat4::from_rotation_x(gape)), o);
+        // Its tongue, flicking in and out.
+        let flick = ((self.anim * 1.7 + self.seed as f32 * 0.1).fract() * 4.0).min(1.0);
+        if flick < 1.0 {
+            let out = (flick * PI).sin();
+            let m = head
+                * Mat4::from_translation(Vec3::new(0.0, -0.014, 0.13))
+                * Mat4::from_rotation_x(gape * 0.5)
+                * Mat4::from_scale(Vec3::new(1.0, 1.0, out.max(0.05)));
+            r.mesh(&a.bank, &art.tongue, &m, o);
+        }
+        // Its hood, spread as it rears up.
+        let spread = ((rear - 0.3) / 0.7).clamp(0.0, 1.0);
+        if spread > 0.0 {
+            // Flared back a little behind its head.
+            let at = pts[0] - Vec3::Y * (0.15 * s) - look * (0.04 * s);
+            let m = Mat4::from_translation(at)
+                * Mat4::from_rotation_y(look.x.atan2(look.z))
+                * Mat4::from_rotation_x(-0.35)
+                * Mat4::from_scale(Vec3::new(
+                    s * (0.3 + 0.7 * spread),
+                    s * (0.55 + 0.35 * spread),
+                    s,
+                ));
+            r.mesh(&a.bank, &art.hood, &m, o);
+        }
+        for sx in [-1.0f32, 1.0] {
+            let eye = head.transform_point3(Vec3::new(
+                sx * (COBRA_EYE.x + 0.01),
+                COBRA_EYE.y,
+                COBRA_EYE.z,
+            ));
+            r.halo(eye, 0.045 * s, RED, 0.25);
         }
     }
 

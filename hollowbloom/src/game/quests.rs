@@ -3101,6 +3101,8 @@ pub fn foe_name(f: Foe) -> &'static str {
         Foe::Werewolf => "werewolf",
         Foe::Minotaur => "minotaur",
         Foe::Griffin => "griffin",
+        Foe::Cactus => "cactling",
+        Foe::Cobra => "sand cobra",
     }
 }
 

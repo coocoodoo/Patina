@@ -386,6 +386,14 @@ fn foe_bits(foe: Foe, biome: usize, rng: &mut Rng) -> Vec<Stack> {
             roll(o, rng, Item::GriffinFeather, 0.75, 1, 3);
             roll(o, rng, Item::GoldOre, 0.15, 1, 1);
         }
+        Foe::Cactus => {
+            roll(o, rng, Item::CactlingNeedle, 0.7, 1, 3);
+            roll(o, rng, Item::Fiber, 0.35, 1, 2);
+        }
+        Foe::Cobra => {
+            roll(o, rng, Item::CobraSkin, 0.65, 1, 2);
+            roll(o, rng, Item::GoldOre, 0.1, 1, 1);
+        }
     }
     out
 }
@@ -435,6 +443,8 @@ pub fn monster_pack(foe: Foe) -> Item {
         Foe::Werewolf => Item::WolfPack,
         Foe::Minotaur => Item::MinotaurPack,
         Foe::Griffin => Item::GriffinPack,
+        Foe::Cactus => Item::CactlingPack,
+        Foe::Cobra => Item::CobraPack,
     }
 }
 

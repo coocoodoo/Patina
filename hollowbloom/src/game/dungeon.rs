@@ -54,6 +54,13 @@ pub enum Foe {
     /// A griffin, nesting in the labyrinth's sunlit courtyard. It wheels round overhead and
     /// dives at you talons first.
     Griffin,
+    /// A cactling: a stout little cactus standing among the canyon's cacti, looking just
+    /// like them until you come close. Then it pops up out of the sand, waddles after you on
+    /// its roots, and every so often bristles and sprays a ring of needles all round.
+    Cactus,
+    /// A sand cobra, slithering over the canyon's sand. Close by it rears up with its hood
+    /// spread and strikes; from further off it rears and spits venom.
+    Cobra,
 }
 
 /// The first floor the lantern snails and book-worms live on.

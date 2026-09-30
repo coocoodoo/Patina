@@ -40,6 +40,8 @@ pub struct CanyonArt {
     pub gateway: Mesh,
     /// The labyrinth's columns, carved from sandstone for the tombs.
     pub columns: [Mesh; 3],
+    /// A cactus's ribbed, spiny skin (the cactlings wear it too).
+    pub skin: TexId,
 }
 
 /// Layered rock: bands of colour running across, each boundary wandering a little and
@@ -583,51 +585,9 @@ fn horn(m: &mut Mesh, at: Vec3, dir: Vec3, len: f32, r: f32, tex: TexId) {
     m.append(&p, Mat4::from_translation(at) * Mat4::from_quat(rot));
 }
 
-/// A tube swept along `pts`, as thick as `radii` at each: horns, fangs and curved bones.
-/// Its texture runs along it from the far end, so a horn's tip takes the top of the texture.
+/// A tube swept along `pts` (see `models::tube`): horns, fangs and curved bones.
 fn tube(m: &mut Mesh, pts: &[Vec3], radii: &[f32], seg: usize, tex: TexId) {
-    let n = pts.len();
-    let mut v = vec![0.0f32; n];
-    for i in (0..n - 1).rev() {
-        v[i] = v[i + 1] + (pts[i + 1] - pts[i]).length() * 16.0;
-    }
-    let along = |i: usize| (pts[(i + 1).min(n - 1)] - pts[i.saturating_sub(1)]).normalize();
-    // Carry a frame along the curve so the tube never twists.
-    let mut a = along(0).any_orthonormal_vector();
-    let rings: Vec<Vec<Vec3>> = (0..n)
-        .map(|i| {
-            let t = along(i);
-            a = (a - t * a.dot(t)).normalize();
-            let b = t.cross(a);
-            (0..seg)
-                .map(|j| {
-                    let th = j as f32 / seg as f32 * std::f32::consts::TAU;
-                    pts[i] + (a * th.cos() + b * th.sin()) * radii[i].max(0.003)
-                })
-                .collect()
-        })
-        .collect();
-    for i in 0..n - 1 {
-        for j in 0..seg {
-            let k = (j + 1) % seg;
-            let (u0, u1) = (
-                j as f32 * 16.0 / seg as f32,
-                (j + 1) as f32 * 16.0 / seg as f32,
-            );
-            m.quad(
-                [rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]],
-                UvRect::new(u0, v[i + 1], u1, v[i]),
-                tex,
-            );
-        }
-    }
-    // Close the ends.
-    let dot = [Vec2::new(8.5, 8.5); 3];
-    for j in 0..seg {
-        let k = (j + 1) % seg;
-        m.tri([pts[0], rings[0][k], rings[0][j]], dot, tex);
-        m.tri([pts[n - 1], rings[n - 1][j], rings[n - 1][k]], dot, tex);
-    }
+    super::models::tube(m, pts, radii, seg, tex, Vec3::Y);
 }
 
 /// A block from its eight corners, numbered by bits: 1 for +x, 2 for +y, 4 for +z (as
@@ -1807,6 +1767,7 @@ pub fn build(bank_: &mut TexBank, marble: (TexId, TexId, TexId), columns: &[Mesh
         gold: gold_pile,
         gateway,
         columns,
+        skin: rib,
     }
 }
 
