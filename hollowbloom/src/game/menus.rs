@@ -1758,8 +1758,7 @@ impl Play {
                         y + 1,
                     );
                     c.shade(x + 1, y + 1, 16, 16, 1);
-                    c.text(x + 24, y + 1, "None on", KHAKI);
-                    c.text(x + 24, y + 10, "(more room!)", KHAKI);
+                    c.text(x + 24, y + 5, "None on", KHAKI);
                 }
             }
         }
